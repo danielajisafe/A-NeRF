@@ -1,0 +1,65 @@
+expname = mirror_default
+basedir = ./logs
+datadir = ./data/mirror/3/f8480b9b-b1e2-4bf6-a7cf-a34c19244afd_cam_3/2022-05-03-22
+
+# mirror setup
+dataset_type = mirror
+subject = subset
+use_background = True
+fg_ratio = 1.0
+ext_scale = 0.00100 # indicator showing in m, 1.0 for mm
+chunk = 3600
+
+# skeleton relative encoding
+bone_type = reldir
+kp_dist_type = reldist
+view_type = relray
+
+
+use_cutoff = True
+cutoff_viewdir = True
+cutoff_inputs = True
+use_viewdirs = True
+
+
+# network setting 
+netwidth = 256
+netwidth_fine = 256
+multires = 7
+multires_views = 4
+
+
+### pose (rotation) refinement
+
+# training setting
+# use_val = True # to train on train/val split
+image_batching = True
+
+# debugging?
+N_sample_images = 256       #check here
+N_rand = 3072               #check here
+N_samples = 64
+N_importance = 16
+n_iters = 500000            #check here
+lrate_decay = 500000        #check here
+decay_unit = 1
+raw_noise_std = 1.0
+loss_fn = L1
+
+# pose_opt setting
+opt_rot6d = True
+opt_pose_tol = 0.01
+opt_pose_type = BE
+opt_pose = True
+opt_pose_step = 50
+opt_pose_lrate = 0.0005 # too small?
+opt_pose_decay_rate = 1.
+opt_pose_lrate_decay = 2
+opt_pose_decay_unit = 1000
+opt_pose_joint = True
+opt_pose_coef = 2.0 # 0.5? metre
+opt_framecode = True
+
+# logging
+render_factor = 1 # 1 for CC
+i_testset = 25000

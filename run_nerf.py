@@ -611,8 +611,8 @@ def train():
 
         # Rest is logging
         if i % args.i_weights == 0:
-            path = os.path.join(basedir, expname, f"%06d_{args.slurm_job_id}.tar"%i)
-            #path = os.path.join(basedir, expname, '{:06d}.tar'.format(i))
+            #path = os.path.join(basedir, expname, f"%06d_{args.slurm_job_id}.tar"%i)
+            path = os.path.join(basedir, expname, '{:06d}.tar'.format(i))
             trainer.save_nerf(path, global_step)
 
         save_opt_pose = args.opt_pose and ((args.opt_pose_stop is None) or (args.opt_pose_stop > i))

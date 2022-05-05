@@ -1337,6 +1337,27 @@ def generate_sweep_vid(embedder, path, cam_pose, kp, axis="x",
     return imgs
 
 
+def plot_vector(init, vec=None, fig=None,color="green"):
+
+    lx, ly, lz = [], [], []
+    for k, v in zip(init, vec):
+        #import pdb; pdb.set_trace()
+        lx += [k[0], k[0]+v[0], None]
+        ly += [k[1], k[1]+v[1], None]
+        lz += [k[2], k[2]+v[2], None]
+    #import pdb; pdb.set_trace()
+    lines = go.Scatter3d(x=lx, y=ly, z=lz, mode="lines",
+                               line=dict(color=color, width=2),
+                               hoverinfo="none")
+
+    data = [lines]
+    if fig is not None:
+        for d in data:
+            fig.add_trace(d)
+    else:
+        fig = go.Figure(data=data)
+    return fig
+
 def plot_joint_axis(kp, l2ws=None, fig=None, scale=0.1):
 
     rights = np.array([1., 0., 0., 1. / scale]) * scale
