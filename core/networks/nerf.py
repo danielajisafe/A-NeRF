@@ -33,7 +33,7 @@ class NeRF(nn.Module):
 
         self.cam_ch = 1 if self.use_framecode else 0
 
-        self.N_joints = 24
+        self.N_joints = 26
         self.output_ch = output_ch
         self.skel_type = skel_type
         self.density_scale = density_scale

@@ -8,15 +8,24 @@ from collections import deque
 from copy import copy, deepcopy
 from collections import namedtuple
 from scipy.spatial.transform import Rotation
+
+import platform
 import torch.nn.functional as F
 import matplotlib.pyplot as plt
 import pytorch3d.transforms.rotation_conversions as p3dr
+
+import sys
+local_dir = "/scratch/dajisafe/smpl" if platform.node() == "naye" else "/home/dajisafe/scratch/Anerf-dev"
+sys.path.append(local_dir)
+
+from skeleton_utils import get_parent_idx
+from kinematic_chain import KinematicChain
 
 #################################
 #         Skeleton Helpers      #
 #################################
 
-Skeleton = namedtuple("Skeleton", ["joint_names", "joint_trees", "root_id", "nonroot_id", "cutoffs", "end_effectors"])
+
 
 def rotate_x(phi):
     cos = np.cos(phi)
@@ -58,124 +67,171 @@ def hmm(A, B):
     T = R_A @ T_B + T_A
     return torch.cat([R, T], dim=-1)
 
-CanonicalSkeleton = Skeleton(
-    joint_names=[
-        # 0-4
-        'head_top', 'neck', 'right_shoulder', 'right_elbow', 'right_wrist',
-        # 5-9
-        'left_shoulder', 'left_elbow', 'left_wrist', 'right_hip', 'right_knee',
-        # 10-14
-        'right_ankle', 'left_hip', 'left_knee', 'left_ankle', 'pelvis',
-        # 15-16
-        'spine', 'head',
-    ],
-    joint_trees=np.array([
-        1, 15, 1, 2, 3,
-        1, 5, 6, 14, 8,
-        9, 14, 11, 12, 14,
-        14, 1]),
-    root_id=14,
-    nonroot_id=[i for i in range(16) if i != 14],
-    cutoffs={},
-    end_effectors=None,
-)
+
+# --------------------------------------------------------------------------------
+# class definition, and attributes
+Skeleton = namedtuple("Skeleton", ["joint_names", "joint_trees", "root_id", "nonroot_id", "joint_parents"])
+joint_names= ['pelvis', 'right_hip', 'right_knee', 'right_ankle', 
+        # 4-7
+        'right_heel', 'right_big_toe', 'right_small_toe', 'left_hip',
+        # 8-11
+        'left_knee', 'left_ankle',  'left_heel', 'left_big_toe', 
+        # 12-15
+        'left_small_toe', 'neck', 'nose', 'right_eye', 
+        # 16-19
+        'right_ear', 'left_eye', 'left_ear', 'head', 
+        # 20-23 -   why left shoulder before right?
+        'left_shoulder', 'left_elbow', 'left_wrist', 'right_shoulder', 
+        #24-25
+        'right_elbow', 'right_wrist']
+joint_parents = ['pelvis', 'pelvis', 'right_hip', 'right_knee', 
+                    'right_ankle', 'right_heel', 'right_heel', 'pelvis', 
+                    'left_hip', 'left_knee', 'left_ankle', 'left_heel', 
+                    'left_heel', 'pelvis', 'neck', 'nose', 
+                    'right_eye', 'nose', 'left_eye', 'nose', 
+                    'neck','left_shoulder', 'left_elbow', 'neck',
+                    'right_shoulder', 'right_elbow']
+
+# array([ 0,  0,  1,  2,  
+#         3,  4,  4,  0,  
+#         7,  8,  9, 10, 
+#         10,  0, 13, 14, 
+#         15, 14, 17, 14, 
+#         13, 20, 21, 13, 
+#         23, 24])
 
 SMPLSkeleton = Skeleton(
-    joint_names=[
-        # 0-3
-        'pelvis', 'left_hip', 'right_hip', 'spine1',
-        # 4-7
-        'left_knee', 'right_knee', 'spine2', 'left_ankle',
-        # 8-11
-        'right_ankle', 'spine3', 'left_foot', 'right_foot',
-        # 12-15
-        'neck', 'left_collar', 'right_collar', 'head',
-        # 16-19
-        'left_shoulder', 'right_shoulder', 'left_elbow', 'right_elbow',
-        # 20-23,
-        'left_wrist', 'right_wrist', 'left_hand', 'right_hand'
-    ],
-    joint_trees=np.array(
-                [0, 0, 0, 0,
-                 1, 2, 3, 4,
-                 5, 6, 7, 8,
-                 9, 9, 9, 12,
-                 13, 14, 16, 17,
-                 18, 19, 20, 21]),
-    root_id=0,
-    nonroot_id=[i for i in range(24) if i != 0],
-    cutoffs={'hip': 200, 'spine': 300, 'knee': 70, 'ankle': 70, 'foot': 40, 'collar': 100,
-            'neck': 100, 'head': 120, 'shoulder': 70, 'elbow': 70, 'wrist': 60, 'hand': 60},
-    end_effectors=[10, 11, 15, 22, 23],
-)
+    joint_names= joint_names,
+    joint_parents= joint_parents,
+
+    root_id=0, #root joint is at index 0 which makes it easier to implement
+    nonroot_id=[i for i in range(26) if i != 0],
+    joint_trees = np.array(get_parent_idx(joint_names, joint_parents))
+    )
 
 # for backward compatibility
 CMUSkeleton = SMPLSkeleton
+# --------------------------------------------------------------------------------
 
-SMPLSkeletonExtended = Skeleton(
-    joint_names=[
-        # 0-3
-        'pelvis', 'left_hip', 'right_hip', 'spine1',
-        # 4-7
-        'left_knee', 'right_knee', 'spine2', 'left_ankle',
-        # 8-11
-        'right_ankle', 'spine3', 'left_foot', 'right_foot',
-        # 12-15
-        'neck', 'left_collar', 'right_collar', 'head',
-        # 16-19
-        'left_shoulder', 'right_shoulder', 'left_upper_arm', 'right_upper_arm',
-        # 20-23,
-        'left_elbow', 'right_elbow', 'left_lower_arm', 'right_lower_arm',
-        # 24-27
-        'left_wrist', 'right_wrist', 'left_hand', 'right_hand'
-    ],
-    joint_trees=np.array(
-                [0, 0, 0, 0,
-                 1, 2, 3, 4,
-                 5, 6, 7, 8,
-                 9, 9, 9, 12,
-                 13, 14, 16, 17,
-                 18, 19, 20, 21,
-                 22, 23, 24, 25]),
-    root_id=0,
-    nonroot_id=[i for i in range(27) if i != 0],
-    cutoffs={},
-    end_effectors=None,
-)
+# Skeleton = namedtuple("Skeleton", ["joint_names", "joint_trees", "root_id", "nonroot_id", "cutoffs", "end_effectors"])
+# CanonicalSkeleton = Skeleton(
+#     joint_names=[
+#         # 0-4
+#         'head_top', 'neck', 'right_shoulder', 'right_elbow', 'right_wrist',
+#         # 5-9
+#         'left_shoulder', 'left_elbow', 'left_wrist', 'right_hip', 'right_knee',
+#         # 10-14
+#         'right_ankle', 'left_hip', 'left_knee', 'left_ankle', 'pelvis',
+#         # 15-16
+#         'spine', 'head',
+#     ],
+#     joint_trees=np.array([
+#         1, 15, 1, 2, 3,
+#         1, 5, 6, 14, 8,
+#         9, 14, 11, 12, 14,
+#         14, 1]),
+#     root_id=14,
+#     nonroot_id=[i for i in range(16) if i != 14],
+#     cutoffs={},
+#     end_effectors=None,
+# )
+
+# SMPLSkeleton = Skeleton(
+#     joint_names=[
+#         # 0-3
+#         'pelvis', 'left_hip', 'right_hip', 'spine1',
+#         # 4-7
+#         'left_knee', 'right_knee', 'spine2', 'left_ankle',
+#         # 8-11
+#         'right_ankle', 'spine3', 'left_foot', 'right_foot',
+#         # 12-15
+#         'neck', 'left_collar', 'right_collar', 'head',
+#         # 16-19
+#         'left_shoulder', 'right_shoulder', 'left_elbow', 'right_elbow',
+#         # 20-23,
+#         'left_wrist', 'right_wrist', 'left_hand', 'right_hand'
+#     ],
+#     joint_trees=np.array(
+#                 [0, 0, 0, 0,
+#                  1, 2, 3, 4,
+#                  5, 6, 7, 8,
+#                  9, 9, 9, 12,
+#                  13, 14, 16, 17,
+#                  18, 19, 20, 21]),
+#     root_id=0,
+#     nonroot_id=[i for i in range(24) if i != 0],
+#     cutoffs={'hip': 200, 'spine': 300, 'knee': 70, 'ankle': 70, 'foot': 40, 'collar': 100,
+#             'neck': 100, 'head': 120, 'shoulder': 70, 'elbow': 70, 'wrist': 60, 'hand': 60},
+#     end_effectors=[10, 11, 15, 22, 23],
+# )
+
+# # for backward compatibility
+# CMUSkeleton = SMPLSkeleton
+
+# SMPLSkeletonExtended = Skeleton(
+#     joint_names=[
+#         # 0-3
+#         'pelvis', 'left_hip', 'right_hip', 'spine1',
+#         # 4-7
+#         'left_knee', 'right_knee', 'spine2', 'left_ankle',
+#         # 8-11
+#         'right_ankle', 'spine3', 'left_foot', 'right_foot',
+#         # 12-15
+#         'neck', 'left_collar', 'right_collar', 'head',
+#         # 16-19
+#         'left_shoulder', 'right_shoulder', 'left_upper_arm', 'right_upper_arm',
+#         # 20-23,
+#         'left_elbow', 'right_elbow', 'left_lower_arm', 'right_lower_arm',
+#         # 24-27
+#         'left_wrist', 'right_wrist', 'left_hand', 'right_hand'
+#     ],
+#     joint_trees=np.array(
+#                 [0, 0, 0, 0,
+#                  1, 2, 3, 4,
+#                  5, 6, 7, 8,
+#                  9, 9, 9, 12,
+#                  13, 14, 16, 17,
+#                  18, 19, 20, 21,
+#                  22, 23, 24, 25]),
+#     root_id=0,
+#     nonroot_id=[i for i in range(27) if i != 0],
+#     cutoffs={},
+#     end_effectors=None,
+# )
 
 
 
-Mpi3dhpSkeleton = Skeleton(
-    joint_names=[
-    # 0-3
-    'spine3', 'spine4', 'spine2', 'spine',
-    # 4-7
-    'pelvis', 'neck', 'head', 'head_top',
-    # 8-11
-    'left_clavicle', 'left_shoulder', 'left_elbow', 'left_wrist',
-    # 12-15
-    'left_hand',  'right_clavicle', 'right_shoulder', 'right_elbow',
-    # 16-19
-    'right_wrist', 'right_hand', 'left_hip', 'left_knee',
-    # 20-23
-    'left_ankle', 'left_foot', 'left_toe', 'right_hip',
-    # 24-27
-    'right_knee', 'right_ankle', 'right_foot', 'right_toe'
-    ],
-    joint_trees=np.array([
-        2, 0, 3, 4,
-        4, 1, 5, 6,
-        5, 8, 9, 10,
-        11, 5, 13, 14,
-        15, 16, 4, 18,
-        19, 20, 21, 4,
-        23, 24, 25, 26
-    ]),
-    root_id=4,
-    nonroot_id=[i for i in range(27) if i != 4],
-    cutoffs={},
-    end_effectors=None,
-)
+# Mpi3dhpSkeleton = Skeleton(
+#     joint_names=[
+#     # 0-3
+#     'spine3', 'spine4', 'spine2', 'spine',
+#     # 4-7
+#     'pelvis', 'neck', 'head', 'head_top',
+#     # 8-11
+#     'left_clavicle', 'left_shoulder', 'left_elbow', 'left_wrist',
+#     # 12-15
+#     'left_hand',  'right_clavicle', 'right_shoulder', 'right_elbow',
+#     # 16-19
+#     'right_wrist', 'right_hand', 'left_hip', 'left_knee',
+#     # 20-23
+#     'left_ankle', 'left_foot', 'left_toe', 'right_hip',
+#     # 24-27
+#     'right_knee', 'right_ankle', 'right_foot', 'right_toe'
+#     ],
+#     joint_trees=np.array([
+#         2, 0, 3, 4,
+#         4, 1, 5, 6,
+#         5, 8, 9, 10,
+#         11, 5, 13, 14,
+#         15, 16, 4, 18,
+#         19, 20, 21, 4,
+#         23, 24, 25, 26
+#     ]),
+#     root_id=4,
+#     nonroot_id=[i for i in range(27) if i != 4],
+#     cutoffs={},
+#     end_effectors=None,
+# )
 
 def get_skeleton_type(kps):
 
@@ -374,6 +430,27 @@ def get_smpl_l2ws(pose, rest_pose=None, scale=1., skel_type=SMPLSkeleton, coord=
     l2ws = np.array(l2ws)
 
     return l2ws
+
+def get_smpl_l2ws_kc(bones, rest_pose, scale, bone_factor, skel_type=SMPLSkeleton):
+    """updated version: get l2ws from Kchain (note, you need each bone factor)"""
+    
+    need_kwards = {}
+    need_kwards["joint_names"] = SMPLSkeleton.joint_names
+    need_kwards["joint_parents"] = SMPLSkeleton.joint_parents
+
+    #import ipdb; ipdb.set_trace()
+    if len(bones.shape)<3:
+        bones = bones[None, ...]
+
+    #import ipdb; ipdb.set_trace()
+    # move from numpy onto tensor
+    KC = KinematicChain(torch.Tensor(rest_pose), skeleton_type=CMUSkeleton, use_rot6d=False)
+    _, _, l2ws_kc, _ = KC(torch.Tensor(bones), bone_factor=torch.Tensor(bone_factor), **need_kwards)
+    if l2ws_kc.shape[0]==1:
+        l2ws_kc = l2ws_kc.squeeze(0)
+    #import ipdb; ipdb.set_trace()
+    return l2ws_kc.detach().cpu().numpy()
+
 
 def get_rest_pose_from_l2ws(l2ws, skel_type=SMPLSkeleton):
     """
@@ -934,13 +1011,13 @@ def plot_points3d(pts, fig=None, label=False, marker_size=3, color="orange"):
             fig.add_trace(d)
     return fig
 
-def plot_cameras(extrinsics=None, viewmats=None, fig=None):
+def plot_cameras(extrinsics=None, viewmats=None, fig=None, scale=0.5):
     if extrinsics is not None:
         viewmats = np.array([np.linalg.inv(ext) for ext in extrinsics])
     cam_pos = viewmats[:, :3, 3]
-    rights = viewmats[:, :3, 0] * 0.5
-    ups = viewmats[:, :3, 1] * 0.5
-    fwds = viewmats[:, :3, 2] * 0.5
+    rights = viewmats[:, :3, 0] * scale
+    ups = viewmats[:, :3, 1] * scale
+    fwds = viewmats[:, :3, 2] * scale
 
     rlx, rly, rlz = [], [], []
     ulx, uly, ulz = [], [], []
@@ -1166,10 +1243,10 @@ def plot_bounding_cylinder(kp, cylinder_params=None, fig=None, **kwargs):
 
     return fig
 
-def plot_surface(coords, fig=None, amp=None):
+def plot_surface(coords, fig=None, amp=None,cmax=1., cmin=-1.):
     surface = go.Surface(x=coords[..., 0], y=coords[..., 1], z=coords[...,2],
                          surfacecolor=amp, colorscale="Spectral", opacity=0.5,
-                         cmax=1., cmin=-1.)
+                         cmax=cmax, cmin=cmin)
 
     if fig is not None:
         for trace in fig['data']:
@@ -1228,7 +1305,7 @@ def get_surface_fig(kp, embedder, joint_names, n_sample=640, joint_idx=0,
     return fig
 
 def generate_sweep_vid(embedder, path, cam_pose, kp, axis="x",
-                       joint_idx=SMPLSkeleton.joint_names.index("right_hand"),
+                       joint_idx=SMPLSkeleton.joint_names.index("right_wrist"),
                        offset=5, n_sample=80, freq=0, ext_scale=0.001, H=512, W=512, focal=100):
     import imageio
     from ray_utils import get_corner_rays
@@ -1343,7 +1420,10 @@ def world_to_cam(pts, extrinsic, H, W, focal, center=None):
 
     cam_pts = pts @ extrinsic.T @ intrinsic.T
     cam_pts = cam_pts[..., :2] / cam_pts[..., 2:3]
+
     cam_pts[cam_pts == np.inf] = 0.
+    cam_pts[np.isnan(cam_pts)] = 0. # back up
+
     cam_pts[..., 0] += offset_x
     cam_pts[..., 1] += offset_y
     return cam_pts

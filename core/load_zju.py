@@ -85,7 +85,7 @@ def get_smpls(path, kp_idxs, gender='neutral', ext_scale=1.0, scale_to_ref=True,
     zju_vertices = []
     for kp_idx in kp_idxs:
         params = np.load(os.path.join(path, param_path, f'{kp_idx}.npy'), allow_pickle=True).item()
-        bone = params['poses'].reshape(-1, 24, 3)
+        bone = params['poses'].reshape(-1, 26, 3)
         beta = params['shapes']
         # load the provided vertices
         zju_vert = np.load(os.path.join(path, vertices_path, f'{kp_idx}.npy')).astype(np.float32)
@@ -105,7 +105,7 @@ def get_smpls(path, kp_idxs, gender='neutral', ext_scale=1.0, scale_to_ref=True,
     # intentionally separate these for clarity
     Rn = torch.FloatTensor(zju_to_nerf_rot[None]) # rotation to align ground plane to x-z
     zju_global_orient = axisang_to_rot(torch.FloatTensor(root_bones))
-    rots = axisang_to_rot(torch.FloatTensor(bones)).view(-1, 24, 3, 3)
+    rots = axisang_to_rot(torch.FloatTensor(bones)).view(-1, 26, 3, 3)
     rots[..., 0, :, :] = Rn @ zju_global_orient
     root_bones = rot_to_axisang(rots[..., 0, :, :].clone()).numpy()
     betas = torch.FloatTensor(betas)
@@ -121,7 +121,7 @@ def get_smpls(path, kp_idxs, gender='neutral', ext_scale=1.0, scale_to_ref=True,
 
 
     # 1. get T
-    dummy = torch.zeros(1, 24, 3, 3).float()
+    dummy = torch.zeros(1, 26, 3, 3).float()
     smpl = SMPL(model_path=model_path, gender=gender, joint_mapper=SMPL_JOINT_MAPPER)
 
     T = smpl(betas=betas.mean(0)[None],
@@ -129,7 +129,7 @@ def get_smpls(path, kp_idxs, gender='neutral', ext_scale=1.0, scale_to_ref=True,
              global_orient=dummy[:, :1],
              pose2rot=False).joints[0, 0]
     # 2. get the rest pose
-    dummy = torch.eye(3).view(1, 1, 3, 3).expand(-1, 24, -1, -1)
+    dummy = torch.eye(3).view(1, 1, 3, 3).expand(-1, 26, -1, -1)
 
     rest_pose = smpl(betas=betas.mean(0)[None],
                      body_pose=dummy[:, 1:],
@@ -165,7 +165,7 @@ def get_smpls(path, kp_idxs, gender='neutral', ext_scale=1.0, scale_to_ref=True,
     vertices *= pose_scale
 
     root_locs = joints[:, 0].numpy()
-    bones = bones.reshape(-1, 24, 3)
+    bones = bones.reshape(-1, 26, 3)
     bones[:, 0] = root_bones
     l2ws = np.array([get_smpl_l2ws(bone, rest_pose=rest_pose) for bone in bones])
     l2ws[..., :3, -1] += root_locs[:, None]

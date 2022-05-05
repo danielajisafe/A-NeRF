@@ -24,7 +24,7 @@ def create_popt(args, data_attrs, ckpt=None, device=None):
     kp_map = data_attrs.get('kp_map', None)
     kp_uidxs = data_attrs.get('kp_uidxs', None)
     rest_pose_idxs = data_attrs.get('rest_pose_idxs', None)
-
+    
     poseopt_kwargs = {}
     poseopt_class = PoseOptLayer
 
@@ -40,6 +40,7 @@ def create_popt(args, data_attrs, ckpt=None, device=None):
                                use_rot6d=args.opt_rot6d,
                                **poseopt_kwargs)
 
+    #import ipdb; ipdb.set_trace() # issue is here
     grad_opt_vars = list(popt_layer.parameters())
     pose_optimizer = torch.optim.Adam(params=grad_opt_vars,
                                       lr=args.opt_pose_lrate,
@@ -48,6 +49,7 @@ def create_popt(args, data_attrs, ckpt=None, device=None):
     # initalize anchor (for regularization loss)
     anchor_kps, anchor_bones, anchor_beta = init_kps, init_bones, beta
 
+    
     if (ckpt is not None or args.init_poseopt is not None) and not (args.no_poseopt_reload):
         # load from checkpoint
         pose_ckpt = torch.load(args.init_poseopt) if args.init_poseopt is not None else ckpt
@@ -58,6 +60,7 @@ def create_popt(args, data_attrs, ckpt=None, device=None):
             anchor_kps = pose_ckpt["poseopt_anchors"]["kps"]
             anchor_bones = pose_ckpt["poseopt_anchors"]["bones"]
             anchor_beta = pose_ckpt["poseopt_anchors"]["beta"]
+            
 
         if args.use_ckpt_anchor:
             # use the poses data from ckpt as optimization constraint
@@ -66,6 +69,7 @@ def create_popt(args, data_attrs, ckpt=None, device=None):
             anchor_kps, anchor_bones = anchor_kps.cpu().clone(), anchor_bones.cpu().clone()
             anchor_beta = popt_layer.get_beta()
         print('load smpl state dict')
+
 
     # recompute anchor_rots to ensure it's consistent with bones
     anchor_rots = axisang_to_rot(anchor_bones.view(-1, 3)).view(*anchor_kps.shape[:2], 3, 3)
@@ -80,6 +84,7 @@ def create_popt(args, data_attrs, ckpt=None, device=None):
                    'popt_layer': popt_layer,
                    'skel_type': skel_type}
 
+    #import ipdb; ipdb.set_trace() #stopped here
     return pose_optimizer, popt_kwargs
 
 def sample_patch_idx(H, W, valid_y, valid_x, patch_size, N_patch):
@@ -263,7 +268,7 @@ class PoseOptLayer(nn.Module):
 
         if skel_type == SMPLSkeleton:
             self.root_id = skel_type.root_id
-            self.unroll_kinematic_chain = True
+            self.unroll_kinematic_chain = False
         else:
             raise NotImplementedError("only support SMPLSkeleton now")
 
@@ -307,6 +312,7 @@ class PoseOptLayer(nn.Module):
         self.cache_l2ws = l2ws
         self.cache_rots = rots
         #self.rest_pose = self.get_rest_pose()
+        import ipdb; ipdb.set_trace()
 
     def forward(self, idxs, rest_pose_idxs=None):
         if not self.use_cache:
@@ -399,6 +405,7 @@ class PoseOptLayer(nn.Module):
         root_l2w = mat_to_hom(torch.cat([rots[:, root_id], rest_pose[:, root_id, :, None]], dim=-1))
         l2ws.append(root_l2w)
 
+
         # create joint-to-joint transformation
         children_rots = torch.cat([rots[:, :root_id], rots[:, root_id+1:]], dim=1)
         children_locs = torch.cat([rest_pose[:, :root_id], rest_pose[:, root_id+1:]], dim=1)[..., None]
@@ -416,8 +423,9 @@ class PoseOptLayer(nn.Module):
             for i, parent in enumerate(parent_ids):
                 l2ws.append(l2ws[parent] @ joint_rel_transforms[:, i])
             l2ws = torch.stack(l2ws, dim=-3)
-            import pdb; pdb.set_trace()
-            print("hold up this shouldn't happen!")
+            #import pdb; pdb.set_trace()
+            #print("hold up this shouldn't happen!")
+        
 
         # can't do inplace, so do this instead
         zeros = torch.zeros(N, 4, 3).to(l2ws.device)
@@ -442,6 +450,7 @@ class PoseOptLayer(nn.Module):
 
         kp = l2ws[..., :3, -1]
 
+        #import ipdb; ipdb.set_trace() issue here, check bones shape
         return kp, bone, skts, l2ws, rots
 
 
@@ -452,7 +461,7 @@ def get_kinematic_chain_T(rest_pose, bones, skel_type=SMPLSkeleton):
     root_id = skel_type.root_id
     joint_trees = skel_type.joint_trees
 
-    # assume to be 24 joints
+    # assume to be 26 joints
     N_B, N_J, N_D = bones.shape
     rest_pose = rest_pose.reshape(-1, N_J, 3).expand(N_B, N_J, 3)
     rots = bones_to_rot(bones.reshape(-1, N_D)).reshape(-1, N_J, 3, 3)

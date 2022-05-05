@@ -168,6 +168,7 @@ class BaseH5Dataset(Dataset):
         self.gt_kp3d = dataset['gt_kp3d'][:] if 'gt_kp3d' in self.dataset_keys else None
         self.kp_map, self.kp_uidxs = None, None # only not None when self.multiview = True
         self.kp3d, self.bones, self.skts, self.cyls = self._load_pose_data(dataset)
+        
 
         self.focals, self.c2ws = self._load_camera_data(dataset)
         self.temp_validity = self.init_temporal_validity()
@@ -643,6 +644,7 @@ class ConcatH5Dataset(ConcatDataset):
     def get_render_data(self):
 
         render_data = [d.get_render_data() for d in self.datasets]
+        import ipdb; ipdb.set_trace()
         merged_data = {}
 
         # TODO: TEMPORARY HACK, TO ONLY RENDER ONE DATASET IF IMAGE SHAPES

@@ -82,6 +82,7 @@ def batchify_rays(rays_flat, chunk=1024*32, ray_caster=None, **kwargs):
 def render(H, W, focal, chunk=1024*32, rays=None, c2w=None,
            near=0., far=1., center=None,
            use_viewdirs=False, c2w_staticcam=None,
+           index=None,
             **kwargs):
     """Render rays
     Args:
@@ -107,7 +108,7 @@ def render(H, W, focal, chunk=1024*32, rays=None, c2w=None,
     if (c2w is not None) and (rays is None):
         # special case to render full image
         center = center.ravel() if center is not None else None
-        import pdb; pdb.set_trace()
+        import ipdb; ipdb.set_trace()
         rays_o, rays_d = get_rays(H, W, focal, c2w, center=center)
     else:
         # use provided ray batch
@@ -142,6 +143,40 @@ def render(H, W, focal, chunk=1024*32, rays=None, c2w=None,
         k_sh = list(sh[:-1]) + list(all_ret[k].shape[1:])
         all_ret[k] = torch.reshape(all_ret[k], k_sh)
 
+    #import ipdb; ipdb.set_trace()
+    def anony(name,index):
+        import sys; sys.path.append("/scratch/dajisafe/smpl/mirror_project_dir")
+        from util_loading import save2pickle
+
+        filename = f"/scratch/dajisafe/smpl/mirror_project_dir/authors_eval_data/temp_dir/entrance_params_{name}_{index}.pickle"
+        to_pickle = [("center",center), ("near", near), ("far", far), ("rays", rays), ("rays_o", rays_o),
+        ("rays_d", rays_d), ("viewdirs", viewdirs),("c2w_staticcam", c2w_staticcam), 
+        ("all_ret", all_ret), ("c2w", c2w), ("chunk", chunk), ("H", H), ("W", W),
+        ("focal", focal),
+        ("kp_batch", kwargs['kp_batch']), ("skts", kwargs['skts']), ("bones", kwargs['bones']), 
+        ("cyls", kwargs['cyls']), ("cams", kwargs['cams']), ("perturb", kwargs['perturb']), 
+        ("N_importance", kwargs['N_importance']), ("N_samples", kwargs['N_samples']), 
+        ("raw_noise_std", kwargs['raw_noise_std']), ("lindisp", kwargs['lindisp']), 
+        ("nerf_type", kwargs['nerf_type']), 
+        ]
+        save2pickle(filename, to_pickle)
+
+    # import ipdb; ipdb.set_trace()
+    if index==None:
+        name = "post"
+        #print(f"using {name}")
+        anony(name,index)
+    elif index%25==0:
+        name = "train_time"
+        #print(f"using {name}")
+        anony(name,index)
+    else:
+        name = "off_time"
+        #print(f"using {name}")
+        anony(name,index)
+
+    #print("render_kwargs", render_kwargs)
+    #import ipdb; ipdb.set_trace()
     return all_ret
 
 def get_loss_fn(loss_name, beta):
@@ -244,8 +279,11 @@ class Trainer:
         fwd_args = self.get_fwd_args(batch)
 
         # step 2: ray caster forward
+        #if i in [4,5]:
+        #print(f"{i}: render called in train_batch function")
+        #import ipdb; ipdb.set_trace()
         preds = render(H, W, focal, chunk=args.chunk, verbose=i < 10,
-                      retraw=False, **kp_args, **fwd_args, **self.render_kwargs_train)
+                      retraw=False, index=i, **kp_args, **fwd_args, **self.render_kwargs_train)
 
         # step 3: loss computation and updates
         loss_dict, stats = self.compute_loss(batch, preds, kp_opts={**kp_args, **extra_args},
@@ -296,11 +334,15 @@ class Trainer:
         if torch.is_tensor(kp_idx):
             kp_idx = kp_idx.cpu().numpy()
 
+        #import ipdb; ipdb.set_trace()
         # forward to get optimized pose data
         popt_layer = self.popt_kwargs['popt_layer']
         kps, bones, skts, _, rots = popt_layer(kp_idx)
         kp_args = self._create_kp_args_dict(kps=kps, skts=skts,
                                             bones=bones, cyls=batch['cyls'])
+        # print("bones", bones[0,0])
+        # print("skts", skts[0,0,:3,-1])
+        # print("kps", kps.max())
 
         # not for ray casting, for loss computation only.
         extras['rots'] = rots

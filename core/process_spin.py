@@ -110,7 +110,7 @@ def get_keypoints_from_betas(betas, joints, rot_mats,
     from torchgeometry import rotation_matrix_to_angle_axis
 
     with torch.no_grad():
-        dummy = torch.eye(3).view(1, 1, 3, 3).expand(len(betas), 24, 3, 3)
+        dummy = torch.eye(3).view(1, 1, 3, 3).expand(len(betas), 26, 3, 3)
         smpl = SMPL(f"smpl/SMPL_{gender}.pkl",
                      joint_mapper=mapper
                     )
@@ -142,9 +142,9 @@ def get_keypoints_from_betas(betas, joints, rot_mats,
     pelvis = joints[:, align_joint_idx].numpy() # (N, 3)
     pelvis = pelvis[..., None] * pose_scale
 
-    zeros = torch.FloatTensor(rot_mats.shape[0], 24, 3, 1).zero_()
+    zeros = torch.FloatTensor(rot_mats.shape[0], 26, 3, 1).zero_()
     rot_mats = torch.cat([rot_mats, zeros], dim=-1)
-    bones = rotation_matrix_to_angle_axis(rot_mats.view(-1, 3, 4)).view(rot_mats.shape[0], 24, 3).numpy()
+    bones = rotation_matrix_to_angle_axis(rot_mats.view(-1, 3, 4)).view(rot_mats.shape[0], 26, 3).numpy()
     l2ws = np.array([get_smpl_l2ws(bone, rest_pose=rest_pose) for bone in bones])
 
     pelvis = pelvis.reshape(pelvis.shape[0], 1, 3)

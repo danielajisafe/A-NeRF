@@ -23,7 +23,10 @@ GT_PREFIXES = {
     'surreal': None,
     'perfcap': 'data/',
     'mixamo': 'data/mixamo',
+    'mirror':'data/mirror',
 }
+
+n_joints = 26
 
 def config_parser():
     import configargparse
@@ -38,10 +41,13 @@ def config_parser():
                         help='path to ckpt')
 
     # render config
-    parser.add_argument('--render_res', nargs='+', type=int, default=[1000, 1000],
+    parser.add_argument('--render_res', nargs='+', type=int, default=[1080, 1920],
                         help='tuple of resolution in (H, W) for rendering')
     parser.add_argument('--dataset', type=str, required=True,
                         help='dataset to render')
+    parser.add_argument("--data_path", type=str, default='./data/llff/fern',
+                        help='input data directory')
+
     parser.add_argument('--entry', type=str, required=True,
                         help='entry in the dataset catalog to render')
     parser.add_argument('--white_bkgd', action='store_true',
@@ -98,6 +104,7 @@ def load_nerf(args, nerf_args, skel_type=CMUSkeleton):
 
     # load poseopt_layer (if exist)
     popt_layer = None
+    #import ipdb; ipdb.set_trace()
     if nerf_args.opt_pose:
         popt_layer = load_poseopt_from_state_dict(nerf_sdict)
     nerf_args.finetune = True
@@ -134,6 +141,7 @@ def load_render_data(args, nerf_args, poseopt_layer=None, opt_framecode=True):
 
 
     if args.render_refined:
+        #import ipdb; ipdb.set_trace()
         if 'refined' in catalog:
             print(f"loading refined poses from {catalog['refined']}")
             #poseopt_layer = load_poseopt_from_state_dict(torch.load(catalog['refined']))
@@ -143,6 +151,7 @@ def load_render_data(args, nerf_args, poseopt_layer=None, opt_framecode=True):
                 bones = poseopt_layer.get_bones().cpu().numpy()
                 kps = poseopt_layer(np.arange(len(bones)))[0].cpu().numpy()
 
+        
         if render_data is not None:
             render_data['refined'] = [kps, bones]
             render_data['idx_map'] = catalog.get('idx_map', None)
@@ -153,14 +162,16 @@ def load_render_data(args, nerf_args, poseopt_layer=None, opt_framecode=True):
         render_data['idx_map'] = catalog.get('idx_map', None)
 
     pose_keys = ['/kp3d', '/bones']
-    cam_keys = ['/c2ws', '/focals']
+    cam_keys = ['/c2ws', '/focals', '/centers']
     # Do partial load here!
     # Need:
     # 1. kps: for root location
     # 2. bones: for bones
     # 3. camera stuff: focals, c2ws, ... etc
-    c2ws, focals = dd.io.load(data_h5, cam_keys)
+    c2ws, focals, centers_n = dd.io.load(data_h5, cam_keys)
+    #centers_n = centers_n.detach.numpy()
     _, H, W, _ = dd.io.load(data_h5, ['/img_shape'])[0]
+    #import ipdb; ipdb.set_trace()
 
     # handel resolution
     if args.render_res is not None:
@@ -183,7 +194,9 @@ def load_render_data(args, nerf_args, poseopt_layer=None, opt_framecode=True):
         print(f'Load data for bullet time effect!')
         kps, skts, c2ws, cam_idxs, focals, bones = load_bullettime(data_h5, c2ws, focals,
                                                                    rest_pose, pose_keys,
+                                                                  #centers=centers_n,
                                                                    **render_data)
+        #import ipdb; ipdb.set_trace()
     elif args.render_type == 'poserot':
 
         kps, skts, bones, c2ws, cam_idxs, focals = load_pose_rotate(data_h5, c2ws, focals,
@@ -288,7 +301,9 @@ def load_render_data(args, nerf_args, poseopt_layer=None, opt_framecode=True):
                 'bones': bones,
                 'bg_imgs': bg_imgs,
                 'bg_indices': bg_indices,
-                'subject_idxs': subject_idxs}
+                'subject_idxs': subject_idxs,
+                #'centers': centers, # May 4 addition
+                }
 
     gt_dict = {'gt_paths': gt_paths,
                'gt_mask_paths': gt_mask_paths,
@@ -298,11 +313,12 @@ def load_render_data(args, nerf_args, poseopt_layer=None, opt_framecode=True):
 
     return ret_dict, gt_dict
 
-def init_catalog(args, n_bullet=10):
+def init_catalog(args, n_bullet=30):
 
     RenderCatalog = {
         'h36m': None,
         'surreal': None,
+        'mirror': None,
         'perfcap': None,
         'mixamo': None,
         '3dhp': None,
@@ -349,6 +365,32 @@ def init_catalog(args, n_bullet=10):
                             joints=np.array([3,6,9,12,15,16,18])),
         'bubble': set_dict(s11_idx, n_step=30),
         'val': set_dict(load_idxs('data/h36m/S11_val_idxs.npy'), length=1, skip=1),
+    }
+
+    # MIRROR
+    easy_idx = [0] #[10, 70, 350, 420, 490, 910, 980, 1050]
+    mirror_easy = {
+        'data_h5': args.data_path + '/mirror_train_h5py.h5',
+        'retarget': set_dict(easy_idx, length=25, skip=2, center_kps=True),
+        'bullet': set_dict(easy_idx, n_bullet=n_bullet),
+        'bubble': set_dict(easy_idx, n_step=30),
+    }
+
+    mirror_val = {
+        'data_h5': args.data_path + '/mirror_val_h5py.h5',
+        'val': set_dict(load_idxs(args.data_path + '/mirror_val_idxs.npy'), length=1, skip=1),
+        'val2': set_dict(load_idxs(args.data_path + '/mirror_val_idxs.npy')[:300], length=1, skip=1),
+    }
+    
+    hard_idx = [140, 210, 280, 490, 560, 630, 700, 770, 840, 910]
+    mirror_hard = {
+        'data_h5': args.data_path + '/mirror_train_h5py.h5',
+        'retarget': set_dict(hard_idx, length=60, skip=5, center_kps=True),
+        #'bullet': set_dict([190,  210,  230,  490,  510,  530,  790,  810,  830,  910,  930, 950, 1090, 1110, 1130],
+        #                   n_bullet=n_bullet, center_kps=True, center_cam=False),
+        'bubble': set_dict(hard_idx, n_step=30),
+        #'val': set_dict(np.array([1200 * i + np.arange(420, 700)[::5] for i in range(0, 9, 2)]).reshape(-1), length=1, skip=1),
+        #'mesh': set_dict([930], length=1, skip=1),
     }
 
     # SURREAL
@@ -455,6 +497,11 @@ def init_catalog(args, n_bullet=10):
         'easy': surreal_easy,
         'hard': surreal_hard,
     }
+    RenderCatalog['mirror'] = {
+        'val': mirror_val,
+        'easy': mirror_easy,
+        'hard': mirror_hard,
+    }
     RenderCatalog['perfcap'] = {
         'weipeng': perfcap_weipeng,
         'nadia': perfcap_nadia,
@@ -501,14 +548,14 @@ def load_correction(pose_h5, c2ws, focals, rest_pose, pose_keys,
         interp_bones.append(interp_bone)
     interp_bones = np.concatenate(interp_bones, axis=0)
     l2ws = np.array([get_smpl_l2ws(bone, rest_pose, 1.0) for bone in interp_bones])
-    l2ws = l2ws.reshape(len(selected_idxs), n_step, 24, 4, 4)
+    l2ws = l2ws.reshape(len(selected_idxs), n_step, 26, 4, 4)
     l2ws[..., :3, -1] += refined_kps[:, None, :1, :]
-    l2ws = l2ws.reshape(-1, 24, 4, 4)
+    l2ws = l2ws.reshape(-1, 26, 4, 4)
     kps = l2ws[..., :3, -1]
     skts = np.linalg.inv(l2ws)
 
     c2ws = c2ws[:, None].repeat(n_step, 1).reshape(-1, 4, 4)
-    focals = focals[:, None].repeat(n_step, 1).reshape(-1)
+    focals = focals[:, None].repeat(n_step, 1).reshape(-1,2)
     cam_idxs = selected_idxs[:, None].repeat(n_step, 1).reshape(-1)
 
     return kps, skts, c2ws, cam_idxs, focals
@@ -536,12 +583,12 @@ def load_retarget(pose_h5, c2ws, focals, rest_pose, pose_keys,
         elif is_neuralbody:
             kps, bones = dd.io.load(pose_h5, pose_keys)
             # TODO: hard-coded, could be problematic
-            kps = kps.reshape(-1, 1, 24, 3).repeat(6, 1).reshape(-1, 24, 3)
-            bones = bones.reshape(-1, 1, 24, 3).repeat(6, 1).reshape(-1, 24, 3)
+            kps = kps.reshape(-1, 1, 26, 3).repeat(6, 1).reshape(-1, 26, 3)
+            bones = bones.reshape(-1, 1, 26, 3).repeat(6, 1).reshape(-1, 26, 3)
         else:
             kps, bones = dd.io.load(pose_h5, pose_keys)
-            kps = kps[None].repeat(9, 0).reshape(-1, 24, 3)[selected_idxs]
-            bones = bones[None].repeat(9, 0).reshape(-1, 24, 3)[selected_idxs]
+            kps = kps[None].repeat(9, 0).reshape(-1, 26, 3)[selected_idxs]
+            bones = bones[None].repeat(9, 0).reshape(-1, 26, 3)[selected_idxs]
         selected_idxs = find_idxs_with_map(selected_idxs, idx_map)
     else:
         selected_idxs = find_idxs_with_map(selected_idxs, idx_map)
@@ -578,6 +625,8 @@ def load_animate(pose_h5, c2ws, focals, rest_pose, pose_keys,
         focals = np.array([focals] * len(selected_idxs))
     else:
         focals = focals[selected_idxs]
+
+    # TODO: Update this part to (-1,2)
     #focals = focals[:, None].repeat(n_bullet, 1).reshape(-1)
     #cam_idxs = selected_idxs[:, None].repeat(n_bullet, 1).reshape(-1)
 
@@ -719,23 +768,21 @@ def load_interpolate(pose_h5, c2ws, focals, rest_pose, pose_keys,
     return kps, skts, c2ws, cam_idxs, focals
 
 def load_bullettime(pose_h5, c2ws, focals, rest_pose, pose_keys,
-                    selected_idxs, refined=None, n_bullet=30,
+                    selected_idxs, refined=None, n_bullet=30, 
+                    #centers=None,
                     undo_rot=False, center_cam=True, center_kps=True,
                     idx_map=None):
 
+    undo_rot=False; center_cam=True; center_kps=True
+    #import ipdb; ipdb.set_trace()
     # prepare camera
     c2ws = c2ws[selected_idxs]
+    #centers = centers[selected_idxs]
+
     if center_cam:
         shift_x = c2ws[..., 0, -1].copy()
         shift_y = c2ws[..., 1, -1].copy()
         c2ws[..., :2, -1] = 0.
-    c2ws = generate_bullet_time(c2ws, n_bullet).transpose(1, 0, 2, 3).reshape(-1, 4, 4)
-
-    if isinstance(focals, float):
-        focals = np.array([focals] * len(selected_idxs))
-    else:
-        focals = focals[selected_idxs]
-    focals = focals[:, None].repeat(n_bullet, 1).reshape(-1)
 
     # prepare pose
     # TODO: hard-coded for now so we can quickly view the outcomes!
@@ -748,18 +795,33 @@ def load_bullettime(pose_h5, c2ws, focals, rest_pose, pose_keys,
         kps = kps[selected_idxs]
         bones = bones[selected_idxs]
     cam_idxs = selected_idxs[:, None].repeat(n_bullet, 1).reshape(-1)
-
+    
+    #import ipdb; ipdb.set_trace()
     if center_kps:
         root = kps[..., :1, :].copy() # assume to be CMUSkeleton
+        # move kps to 0 and cam to -root
         kps[..., :, :] -= root
+        c2ws[..., :3, -1] -= root.reshape(1,3)
+
     elif center_cam:
         kps[..., :, 0] -= shift_x[:, None]
         kps[..., :, 1] -= shift_y[:, None]
+
+    #import ipdb; ipdb.set_trace()
+    c2ws = generate_bullet_time(c2ws, n_bullet).transpose(1, 0, 2, 3).reshape(-1, 4, 4)
+
+    if isinstance(focals, float):
+        focals = np.array([focals] * len(selected_idxs))
+    else:
+        focals = focals[selected_idxs]
+    focals = focals[:, None].repeat(n_bullet, 1).reshape(n_bullet,-1)
+
 
     if undo_rot:
         bones[..., 0, :] = np.array([1.5708, 0., 0.], dtype=np.float32).reshape(1, 1, 3)
 
     l2ws = np.array([get_smpl_l2ws(bone, rest_pose, 1.0) for bone in bones])
+    #import ipdb; ipdb.set_trace()
     l2ws[..., :3, -1] += kps[..., :1, :].copy()
     kps = l2ws[..., :3, -1]
     skts = np.linalg.inv(l2ws)
@@ -767,8 +829,14 @@ def load_bullettime(pose_h5, c2ws, focals, rest_pose, pose_keys,
     # expand shape for repeat
     kps = kps[:, None].repeat(n_bullet, 1).reshape(len(selected_idxs) * n_bullet, -1, 3)
     skts = skts[:, None].repeat(n_bullet, 1).reshape(len(selected_idxs) * n_bullet, -1, 4, 4)
+    #centers = centers[:, None].repeat(n_bullet, 1).reshape(len(selected_idxs) * n_bullet, 2)
+    #import ipdb; ipdb.set_trace()
 
-    return kps, skts, c2ws, cam_idxs, focals, bones
+    # name = "pose_opt_may3"
+    # np.save(f"/scratch/dajisafe/smpl/mirror_project_dir/authors_eval_data/temp_dir/cam_trajectory_{name}.npy", np.array(c2ws))
+    # np.save(f"/scratch/dajisafe/smpl/mirror_project_dir/authors_eval_data/temp_dir/kps_{name}.npy", np.array(kps))
+
+    return kps, skts, c2ws, cam_idxs, focals, bones#, centers
 
 def load_selected(pose_h5, c2ws, focals, rest_pose, pose_keys,
                   selected_idxs, refined=None, idx_map=None):
@@ -814,7 +882,7 @@ def load_bubble(pose_h5, c2ws, focals, rest_pose, pose_keys,
         focals = np.array([focals] * len(selected_idxs))
     else:
         focals = focals[selected_idxs]
-    focals = focals[:, None].repeat(n_step, 1).reshape(-1)
+    focals = focals[:, None].repeat(n_step, 1).reshape(-1,2)
 
     motions = np.linspace(0., 2 * np.pi, n_step, endpoint=True)
     x_motions = (np.cos(motions) - 1.) * x_rad
@@ -867,12 +935,14 @@ def load_bubble(pose_h5, c2ws, focals, rest_pose, pose_keys,
 def to_tensors(data_dict):
     tensor_dict = {}
     for k in data_dict:
-        if isinstance(data_dict[k], np.ndarray):
+        if k == "centers": # added May 4 
+            tensor_dict[k] = data_dict[k]
+        elif isinstance(data_dict[k], np.ndarray):
             if k == 'bg_indices' or k == 'subject_idxs':
                 tensor_dict[k] = torch.tensor(data_dict[k]).long()
             else:
                 tensor_dict[k] = torch.tensor(data_dict[k]).float()
-        elif k == 'hwf' or k == 'cams' or k == 'bones':
+        elif k == 'hwf' or k == 'cams' or k == 'bones': 
             tensor_dict[k] = data_dict[k]
         elif data_dict[k] is None:
             tensor_dict[k] = None
@@ -988,6 +1058,11 @@ def render_mesh(basedir, render_kwargs, tensor_data, chunk=1024, radius=1.80,
 def run_render():
     args = config_parser().parse_args()
 
+    # update data_path
+    if args.dataset== 'mirror':
+        GT_PREFIXES[args.dataset] = args.data_path
+    #import ipdb; ipdb.set_trace()
+
     # parse nerf model args
     nerf_args = txt_to_argstring(args.nerf_args)
     nerf_args, unknown_args = nerf_config_parser().parse_known_args(nerf_args)
@@ -1006,8 +1081,9 @@ def run_render():
         render_mesh(basedir, render_kwargs, tensor_data, res=args.mesh_res, chunk=nerf_args.chunk)
         return
 
+    #import ipdb; ipdb.set_trace()
     rgbs, _, accs, _, bboxes = render_path(render_kwargs=render_kwargs,
-                                      chunk=nerf_args.chunk,
+                                      chunk=nerf_args.chunk//8, #added May 4
                                       ext_scale=nerf_args.ext_scale,
                                       ret_acc=True,
                                       white_bkgd=args.white_bkgd,
@@ -1038,13 +1114,19 @@ def run_render():
     os.makedirs(os.path.join(basedir, 'acc'), exist_ok=True)
 
     for i, (rgb, acc, skel) in enumerate(zip(rgbs, accs, skeletons)):
+        #print(f"i {i}")
         imageio.imwrite(os.path.join(basedir, 'image', f'{i:05d}.png'), rgb)
         imageio.imwrite(os.path.join(basedir, 'acc', f'{i:05d}.png'), acc)
         imageio.imwrite(os.path.join(basedir, 'skel', f'{i:05d}.png'), skel)
+    
+    #import ipdb; ipdb.set_trace()
     np.save(os.path.join(basedir, 'bboxes.npy'), bboxes, allow_pickle=True)
-    imageio.mimwrite(os.path.join(basedir, "render_rgb.mp4"), rgbs, fps=args.fps)
+    #imageio.mimwrite(os.path.join(basedir, "render_rgb.mp4"), rgbs, fps=args.fps)
 
-
+    # make the block size dynamic
+    kargs = { 'macro_block_size': None }
+    print("saving video.....")
+    imageio.mimwrite(os.path.join(basedir, "render_rgb_no_skel.mp4"), rgbs, fps=args.fps,**kargs)
 
 if __name__ == '__main__':
     torch.set_default_tensor_type('torch.cuda.FloatTensor')

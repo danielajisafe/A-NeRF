@@ -5,18 +5,20 @@ from torch.utils.data import DataLoader
 
 from .dataset import *
 from .load_surreal import SurrealDataset
+from .load_mirror import MirrorDataset 
 from .load_h36m import H36MDataset
 from .load_mixamo import MixamoDataset
 from .load_perfcap import MonoPerfCapDataset
 from .load_zju import ZJUMocapDataset
 from .utils.skeleton_utils import rotate_y, rotate_x, rotate_z
-from .utils.skeleton_utils import SMPLSkeleton, Mpi3dhpSkeleton, CanonicalSkeleton
+from .utils.skeleton_utils import SMPLSkeleton#, Mpi3dhpSkeleton, CanonicalSkeleton
 
 DATASET_SKELETON_MAP = {"3dhp": SMPLSkeleton,
                         "surreal": SMPLSkeleton,
                         "h36m": SMPLSkeleton,
                         "zju": SMPLSkeleton,
                         "mixamo": SMPLSkeleton,
+                        "mirror": SMPLSkeleton,
                         "perfcap": SMPLSkeleton,}
 
 DATASET_CATALOG = {
@@ -32,6 +34,9 @@ DATASET_CATALOG = {
     },
     'surreal': {
         'female': 'data/surreal/surreal_train_h5py.h5',
+    },
+    'mirror': {
+        'subset': 'data/mirror/mirror_train_h5py.h5',
     },
     'mixamo': {
         'james': 'data/mixamo/James_processed_h5py.h5',
@@ -54,9 +59,15 @@ def generate_bullet_time(c2w, n_views=20, axis='y'):
 
     y_angles = np.linspace(0, math.radians(360), n_views+1)[:-1]
     c2ws = []
+    # for a in y_angles:
+    #     c = rotate_fn(a) @ c2w
+    #     c2ws.append(c)
+
     for a in y_angles:
-        c = rotate_fn(a) @ c2w
+        c = rotate_fn(a).reshape(1,4,4)  @ c2w
         c2ws.append(c)
+    
+    #import ipdb; ipdb.set_trace()
     return np.array(c2ws)
 
 def generate_bullet_time_kp(kp, n_views=20):
@@ -136,6 +147,17 @@ def get_dataset_from_catalog(args, N_samples, dataset_type, subject=None, N_nms=
         shared_kwargs['split'] = 'train'
         dataset = SurrealDataset(path, N_cams=args.N_cams, N_rand_kps=args.rand_train_kps,
                                  **shared_kwargs)
+    elif dataset_type == 'mirror':
+        shared_kwargs['split'] = 'train'
+        #import ipdb; ipdb.set_trace()
+
+        # update path
+        DATASET_CATALOG[dataset_type][subject] = args.data_path +'/mirror_train_h5py.h5'
+        path = DATASET_CATALOG[dataset_type][subject]
+        
+        dataset = MirrorDataset(path, N_cams=args.N_cams, N_rand_kps=args.rand_train_kps,
+                                 **shared_kwargs)
+    
     elif dataset_type == 'zju':
         dataset = ZJUMocapDataset(path, **shared_kwargs)
     else:

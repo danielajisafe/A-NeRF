@@ -11,6 +11,7 @@ from tqdm import tqdm, trange
 # our own codes
 from core.trainer import *
 from core.utils.ray_utils import *
+from core.utils.log_utils import * 
 from core.utils.run_nerf_helpers import *
 from core.utils.evaluation_helpers import evaluate_metric, evaluate_pampjpe_from_smpl_params
 from core.utils.skeleton_utils import draw_skeletons_3d
@@ -28,9 +29,29 @@ DEBUG = True
 def render_path(render_poses, hwf, chunk, render_kwargs,
                 centers=None, kp=None, skts=None, cyls=None, bones=None,
                 gt_imgs=None, bg_imgs=None, bg_indices=None,
-                cams=None, subject_idxs=None, render_factor=0,
+                cams=None, subject_idxs=None, render_factor=1, # added May 4
                 white_bkgd=False, ret_acc=False,
-                ext_scale=0.00035, base_bg=1.0):
+                ext_scale=0.00035, base_bg=1.0, index=None):
+
+
+    
+    #import ipdb; ipdb.set_trace()
+    # #if index%100==0:
+    # if index==None:
+    #     #import ipdb; ipdb.set_trace()
+    #     import sys; sys.path.append("/scratch/dajisafe/smpl/mirror_project_dir")
+    #     from util_loading import save2pickle
+
+    #     name = "post" # "train_time"  "post"
+    #     filename = f"/scratch/dajisafe/smpl/mirror_project_dir/authors_eval_data/temp_dir/entrance_params_{name}_{index}.pickle"
+    #     to_pickle = [("render_poses",render_poses), ("hwf", hwf), ("chunk", chunk), ("gt_imgs", gt_imgs),
+    #      # ("render_kwargs", render_kwargs), 
+    #     ("bg_imgs", bg_imgs), ("bg_indices", bg_indices),("centers", centers), ("kp", kp),("skts", skts),
+    #     ("cyls", cyls),("bones", bones),("cams", cams),("subject_idxs", subject_idxs),("render_factor", render_factor),
+    #     ("ext_scale", ext_scale),("white_bkgd", white_bkgd),("ret_acc", ret_acc),("base_bg", base_bg)]
+
+    #     print("render_kwargs", render_kwargs)
+        #import ipdb; ipdb.set_trace()
 
     H, W, focal = hwf
 
@@ -47,14 +68,21 @@ def render_path(render_poses, hwf, chunk, render_kwargs,
             if centers is not None:
                 centers = centers.copy() / render_factor
 
+    #import ipdb; ipdb.set_trace()
+    #centers = torch.FloatTensor(centers).to(kp.device) # added May 5
     if kp is not None or cyls is not None:
         # only render part of the image
         rays, valid_idxs, cyls, bboxes = kp_to_valid_rays(render_poses, H, W,
                                                           focal, kps=kp, cylinder_params=cyls,
                                                           skts=skts, ext_scale=ext_scale,
-                                                          centers=centers)
+                                                          #centers=centers
+                                                          )
     else:
         rays, valid_idxs = None, None
+
+    # to_pickle += [("rays",rays), ("valid_idxs",valid_idxs),
+    #             ("cyls",cyls), ("bboxes",bboxes)]
+    # save2pickle(filename, to_pickle)
 
     rgbs, disps, accs = [], [], []
 
@@ -74,12 +102,17 @@ def render_path(render_poses, hwf, chunk, render_kwargs,
         return y
     #reuse_input = lambda x: x[i%x.shape[0]:i%x.shape[0]+1] if x is not None and x.shape[0] > 1 else x
 
+    # to tensors
+    #import ipdb; ipdb.set_trace()
+    #centers = torch.tensor(centers)
+    
     for i, c2w in enumerate(tqdm(render_poses)):
         print(i, time.time() - t)
         t = time.time()
         h = H if isinstance(H, int) else H[i]
         w = W if isinstance(W, int) else W[i]
 
+        #import ipdb; ipdb.set_trace()
         ray_input = rays[i] if rays is not None else None
         expand = len(ray_input[0])
         kp_input = reuse_input(kp, expand)
@@ -90,13 +123,20 @@ def render_path(render_poses, hwf, chunk, render_kwargs,
         subject_input = reuse_input(subject_idxs, expand)
         #center_input = reuse_input(centers, expand)
 
+        #import ipdb; ipdb.set_trace()
         if len(ray_input[0]) > 0:
+            #print(f"{index}: render called in render_path function")
             ret_dict = render(h, w, focal, rays=ray_input, chunk=chunk, c2w=c2w[:3,:4],
                               kp_batch=kp_input, skts=skt_input, cyls=cyl_input, cams=cam_input,
                               subject_idxs=subject_input,
-                              bones=bone_input, **render_kwargs)
-            rgb, disp, acc = ret_dict['rgb_map'], ret_dict['disp_map'], ret_dict['acc_map']
-
+                              bones=bone_input, 
+                              index=index, # added May 4 
+                              #center=center_input, # added May 1
+                              **render_kwargs)
+            rgb, disp, acc = ret_dict['rgb_map'], ret_dict['disp_map'], ret_dict['acc_map'] 
+        else:
+            print("No rays for this view.")
+        #import ipdb; ipdb.set_trace()
         if valid_idxs is not None:
             # in this case, we only render the rays that are within the foreground or cylinder
             valid_idx = valid_idxs[i]
@@ -135,13 +175,21 @@ def render_path(render_poses, hwf, chunk, render_kwargs,
             rgbs.append(rgb.cpu().numpy())
             disps.append(disp.cpu().numpy())
 
+        # if i == 2:
+        #     import ipdb; ipdb.set_trace()
+
     rgbs = np.stack(rgbs, 0)
     disps = np.stack(disps, 0)
     disps_nan = np.isnan(disps)
     disps[disps_nan] = 0.
-    if ret_acc:
-        accs = np.stack(accs, 0)
 
+    
+    if ret_acc:
+        try:
+            accs = np.stack(accs, 0)
+        except:
+            #TODO:  why first acc is empty?
+            accs = np.array([])
     return rgbs, disps, accs, valid_idxs, bboxes
 
 @torch.no_grad()
@@ -149,14 +197,17 @@ def render_testset(poses, hwf, args, render_kwargs, kps=None, skts=None, cyls=No
                    bones=None, subject_idxs=None, gt_imgs=None, gt_masks=None, bg_imgs=None, bg_indices=None,
                    vid_base=None, rgb_vid="rgb.mp4", disp_vid="disp.mp4", eval_metrics=False,
                    render_factor=0, eval_postfix="", save_npy=False, eval_both=False, centers=None,
-                   save_image=False):
+                   save_image=False, index=None):
 
     render_kwargs["ray_caster"].eval()
+
+    
     rgbs, disps, _, valid_idxs, bboxes = render_path(poses, hwf, args.chunk//8, render_kwargs,
                                                      bg_imgs=bg_imgs, bg_indices=bg_indices,
-                                                     centers=centers, kp=kps, skts=skts, cyls=cyls, bones=bones,
+                                                     #centers=centers, 
+                                                     kp=kps, skts=skts, cyls=cyls, bones=bones,
                                                      cams=cams, subject_idxs=subject_idxs, render_factor=args.render_factor,
-                                                     ext_scale=args.ext_scale, white_bkgd=args.white_bkgd)
+                                                     ext_scale=args.ext_scale, white_bkgd=args.white_bkgd, index=index)
     render_kwargs["ray_caster"].train()
     if save_image:
         print("Warning: this is super hacky. Should terminate in the right way.")
@@ -192,6 +243,8 @@ def config_parser():
     parser.add_argument("--basedir", type=str, default='./logs/',
                         help='where to store ckpts and logs')
     parser.add_argument("--datadir", type=str, default='./data/llff/fern',
+                        help='input data directory')
+    parser.add_argument("--data_path", type=str, default='./data/llff/fern',
                         help='input data directory')
 
     # training options
@@ -279,7 +332,7 @@ def config_parser():
     parser.add_argument("--multires_views", type=int, default=4,
                         help='log2 of max freq for positional encoding (2D direction)')
     parser.add_argument("--multires_bones", type=int, default=0,
-                        help='log2 of max freq for positional encoding on joint rotations (24 x 3D)')
+                        help='log2 of max freq for positional encoding on joint rotations (26 x 3D)')
     parser.add_argument("--raw_noise_std", type=float, default=0.,
                         help='std dev of noise added to regularize sigma_a output, 1e0 recommended')
     parser.add_argument("--ray_noise_std", type=float, default=0.,
@@ -474,6 +527,7 @@ def config_parser():
                         help='frequency of console printout and metric loggin')
     parser.add_argument("--i_weights", type=int, default=10000,
                         help='frequency of weight ckpt saving')
+    
     parser.add_argument("--i_pose_weights", type=int, default=2000,
                         help='frequency of saving pose weights')
     parser.add_argument("--i_testset", type=int, default=50000,
@@ -492,8 +546,11 @@ def train():
 
     parser = config_parser()
     args = parser.parse_args()
+    #import ipdb; ipdb.set_trace()
 
     train_loader, render_data, data_attrs = load_data(args)
+    
+
     skel_type = data_attrs['skel_type']
     hwf = data_attrs["hwf"]
     H, W, focal = hwf
@@ -502,6 +559,15 @@ def train():
     # Create log dir and copy the config file
     basedir = args.basedir
     expname = args.expname
+
+    if args.no_reload:
+        #update with new timestmap
+        expname = args_to_str(args)
+    else:
+        # use timestamp added from terminal
+        pass
+    print(f"Current timestamp: {expname.split('/')[-1]}")
+
     os.makedirs(os.path.join(basedir, expname), exist_ok=True)
     f = os.path.join(basedir, expname, 'args.txt')
     with open(f, 'w') as file:
@@ -522,7 +588,8 @@ def train():
         gt_kps = data_attrs['gt_kp3d']
         pose_optimizer, popt_kwargs = create_popt(args, data_attrs, ckpt=loaded_ckpt, device=device)
     print('done creating popt')
-
+    #import ipdb; ipdb.set_trace()
+    
     N_iters = args.n_iters + 1
 
     # tensorboard summary writer
@@ -538,11 +605,14 @@ def train():
     for i in trange(start, N_iters):
         time0 = time.time()
         batch = next(train_iter)
+        #import ipdb; ipdb.set_trace()
         loss_dict, stats = trainer.train_batch(batch, i, global_step)
+
 
         # Rest is logging
         if i % args.i_weights == 0:
-            path = os.path.join(basedir, expname, '{:06d}.tar'.format(i))
+            path = os.path.join(basedir, expname, f"%06d_{args.slurm_job_id}.tar"%i)
+            #path = os.path.join(basedir, expname, '{:06d}.tar'.format(i))
             trainer.save_nerf(path, global_step)
 
         save_opt_pose = args.opt_pose and ((args.opt_pose_stop is None) or (args.opt_pose_stop > i))
@@ -552,16 +622,20 @@ def train():
 
 
         # TODO: deal with this
+        
         if i % args.i_testset==0 and i > 0:
+            # model with optimization
             if args.opt_pose and render_data["kp_idxs"] is not None:
                 popt_layer = popt_kwargs['popt_layer']
                 with torch.no_grad():
                     kp_val, bone_val, skt_val, _, _ = popt_layer(render_data["kp_idxs"])
             else:
+                # model without optimization
                 kp_val = torch.tensor(render_data["kp3d"]).to(device)
                 skt_val = torch.tensor(render_data["skts"]).to(device)
                 bone_val = torch.tensor(render_data["bones"]).to(device)
 
+            #import ipdb; ipdb.set_trace()
             pose_val = torch.tensor(render_data["c2ws"]).to(device)
 
             gt_imgs = render_data["imgs"]
@@ -580,11 +654,11 @@ def train():
             else:
                 masked_gts = gt_imgs * gt_masks + (1 - gt_masks) * bg_imgs
 
-
+            #import ipdb; ipdb.set_trace()
             metrics, rgbs, disps = render_testset(pose_val, render_data["hwf"], args, render_kwargs_test, cams=cams_val,
                                                   kps=kp_val, skts=skt_val, bones=bone_val, subject_idxs=subject_val,
                                                   gt_imgs=masked_gts, gt_masks=gt_masks, vid_base=moviebase, centers=centers,
-                                                  bg_imgs=bg_imgs, bg_indices=bg_indices, eval_metrics=True, eval_both=True)
+                                                  bg_imgs=bg_imgs, bg_indices=bg_indices, eval_metrics=True, eval_both=True, index=i)
 
             fps  = 5
             writer.add_video("Val/ValRGB", torch.tensor(rgbs).permute(0, 3, 1, 2)[None], i, fps=fps)

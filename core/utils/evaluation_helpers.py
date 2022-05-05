@@ -259,6 +259,7 @@ def evaluate_metric(rgbs, gt_imgs, disps=None, gt_masks=None, valid_idxs=None, p
                     vid_base=None, eval_postfix="", eval_both=False, white_bkgd=False,
                     render_factor=0):
 
+    #import ipdb; ipdb.set_trace()
     if eval_both and (valid_idxs is None or render_factor != 0):
         RH, RW, Rfocal = hwf
         print("Valid idxs not provided or is calculated at different resolution. Calculate them from keypoints ...")

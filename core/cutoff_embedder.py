@@ -63,7 +63,7 @@ class CutoffEmbedder(Embedder):
     def __init__(self, cutoff_dist=500*0.00035,
                  std=0.1, normalize=False, dist_inputs=False,
                  cutoff_inputs=False, opt_cutoff=False,
-                 cutoff_dim=24, freq_schedule=False, init_alpha=0.,
+                 cutoff_dim=26, freq_schedule=False, init_alpha=0.,
                  cut_to_cutoff=False, shift_inputs=False, **kwargs):
         """
         cutoff_inputs: apply cutoff to the none-encoded input as well
@@ -126,6 +126,7 @@ class CutoffEmbedder(Embedder):
             dists = inputs
             if self.cut_to_cutoff:
                 inputs = self.get_cutoff_dist() - inputs
+                
             if self.shift_inputs:
                 cutoff_dist = self.get_cutoff_dist()
                 # so that the frequencies, after applying cutoff, span [-1, 1]
@@ -162,7 +163,7 @@ class CutoffEmbedder(Embedder):
             # TODO: currently assume last dimension is 3, and weights are the same for all 3 dims!
             w_sh = w.shape
             e_sh = embedded.shape
-            dists = dists.view(-1, 24, 3)
+            dists = dists.view(-1, 26, 3)
             # mask out things that are close to zero, and normalize the rest.
             is_zero = torch.isclose(w.view(-1, 3)[:, :1], torch.tensor(0.), atol=1e-6).float()
             embedded = F.normalize(embedded.view(-1, 3), p=2, dim=-1)

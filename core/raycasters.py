@@ -39,6 +39,7 @@ def create_raycaster(args, data_attrs, device=None):
         "init_alpha": args.init_freq,
     }
 
+    #import ipdb; ipdb.set_trace()
     # function to encode input (RGB/view to PE)
     embedpts_fn, input_ch_pts = None, None # only for mnerf
     dist_cutoff_kwargs = deepcopy(cutoff_kwargs)
@@ -424,6 +425,7 @@ class RayCaster(nn.Module):
         # prepare local coordinate system
         joint_coords = self.get_subject_joint_coords(subject_idxs, pts.device)
 
+        #import ipdb; ipdb.set_trace()
         # Step 3: encode
         encoded = self.encode_inputs(pts, [rays_o[:, None, :], rays_d[:, None, :]], kp_batch,
                                      skts, bones, cam_idxs=cams, subject_idxs=subject_idxs,
@@ -515,6 +517,8 @@ class RayCaster(nn.Module):
 
         # Step 1: keypoint encoding
         v = kp_input_fn(pts, pts_t, kps)
+        #if abs(v.mean()) > 1.5:
+        #    import ipdb; ipdb.set_trace()
 
         # Step 2: bone encoding
         # TODO: could be None

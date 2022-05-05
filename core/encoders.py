@@ -38,7 +38,7 @@ def transform_batch_rays(rays_o, rays_d, skt):
 
 class BaseEncoder(nn.Module):
 
-    def __init__(self, N_joints=24, N_dims=None):
+    def __init__(self, N_joints=26, N_dims=None):
         super().__init__()
         self.N_joints = N_joints
         self.N_dims = N_dims if N_dims is not None else 1
@@ -100,7 +100,7 @@ class JointCenteredEncoder(BaseEncoder):
 # KP-position encoders
 class RelDistEncoder(BaseEncoder):
 
-    def __init__(self, N_joints=24, N_dims=1):
+    def __init__(self, N_joints=26, N_dims=1):
         super().__init__(N_joints, N_dims)
 
     @property
@@ -123,7 +123,7 @@ class RelDistEncoder(BaseEncoder):
 
 class RelPosEncoder(BaseEncoder):
 
-    def __init__(self, N_joints=24, N_dims=3):
+    def __init__(self, N_joints=26, N_dims=3):
         super().__init__(N_joints, N_dims)
 
     @property
@@ -143,7 +143,7 @@ class RelPosEncoder(BaseEncoder):
 
 class KPCatEncoder(BaseEncoder):
 
-    def __init__(self, N_joints=24, N_dims=3):
+    def __init__(self, N_joints=26, N_dims=3):
         super().__init__(N_joints, N_dims)
 
     @property
@@ -171,7 +171,7 @@ class KPCatEncoder(BaseEncoder):
 # View/Bone encoding
 class VecNormEncoder(BaseEncoder):
 
-    def __init__(self, N_joints=24, N_dims=3):
+    def __init__(self, N_joints=26, N_dims=3):
         super().__init__(N_joints, N_dims)
 
     @property
@@ -194,7 +194,7 @@ class VecNormEncoder(BaseEncoder):
 
 class RayAngEncoder(BaseEncoder):
 
-    def __init__(self, N_joints=24, N_dims=1):
+    def __init__(self, N_joints=26, N_dims=1):
         super().__init__(N_joints, N_dims)
 
     @property
