@@ -47,6 +47,8 @@ def config_parser():
                         help='dataset to render')
     parser.add_argument("--data_path", type=str, default='./data/llff/fern',
                         help='input data directory')
+    parser.add_argument('--n_bullet', type=int, default=3,
+                        help='no of bullet views to render')
 
     parser.add_argument('--entry', type=str, required=True,
                         help='entry in the dataset catalog to render')
@@ -313,7 +315,9 @@ def load_render_data(args, nerf_args, poseopt_layer=None, opt_framecode=True):
 
     return ret_dict, gt_dict
 
-def init_catalog(args, n_bullet=30):
+def init_catalog(args, n_bullet=3):
+    n_bullet = args.n_bullet
+    #import ipdb; ipdb.set_trace()
 
     RenderCatalog = {
         'h36m': None,
@@ -372,7 +376,7 @@ def init_catalog(args, n_bullet=30):
     mirror_easy = {
         'data_h5': args.data_path + '/mirror_train_h5py.h5',
         'retarget': set_dict(easy_idx, length=25, skip=2, center_kps=True),
-        'bullet': set_dict(easy_idx, n_bullet=n_bullet),
+        'bullet': set_dict(easy_idx, n_bullet=args.n_bullet),
         'bubble': set_dict(easy_idx, n_step=30),
     }
 

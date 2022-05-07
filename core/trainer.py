@@ -148,32 +148,32 @@ def render(H, W, focal, chunk=1024*32, rays=None, c2w=None,
         import sys; sys.path.append("/scratch/dajisafe/smpl/mirror_project_dir")
         from util_loading import save2pickle
 
-        filename = f"/scratch/dajisafe/smpl/mirror_project_dir/authors_eval_data/temp_dir/entrance_params_{name}_{index}.pickle"
-        to_pickle = [("center",center), ("near", near), ("far", far), ("rays", rays), ("rays_o", rays_o),
-        ("rays_d", rays_d), ("viewdirs", viewdirs),("c2w_staticcam", c2w_staticcam), 
-        ("all_ret", all_ret), ("c2w", c2w), ("chunk", chunk), ("H", H), ("W", W),
-        ("focal", focal),
-        ("kp_batch", kwargs['kp_batch']), ("skts", kwargs['skts']), ("bones", kwargs['bones']), 
-        ("cyls", kwargs['cyls']), ("cams", kwargs['cams']), ("perturb", kwargs['perturb']), 
-        ("N_importance", kwargs['N_importance']), ("N_samples", kwargs['N_samples']), 
-        ("raw_noise_std", kwargs['raw_noise_std']), ("lindisp", kwargs['lindisp']), 
-        ("nerf_type", kwargs['nerf_type']), 
-        ]
-        save2pickle(filename, to_pickle)
+        # filename = f"/scratch/dajisafe/smpl/mirror_project_dir/authors_eval_data/temp_dir/entrance_params_{name}_{index}.pickle"
+        # to_pickle = [("center",center), ("near", near), ("far", far), ("rays", rays), ("rays_o", rays_o),
+        # ("rays_d", rays_d), ("viewdirs", viewdirs),("c2w_staticcam", c2w_staticcam), 
+        # ("all_ret", all_ret), ("c2w", c2w), ("chunk", chunk), ("H", H), ("W", W),
+        # ("focal", focal),
+        # ("kp_batch", kwargs['kp_batch']), ("skts", kwargs['skts']), ("bones", kwargs['bones']), 
+        # ("cyls", kwargs['cyls']), ("cams", kwargs['cams']), ("perturb", kwargs['perturb']), 
+        # ("N_importance", kwargs['N_importance']), ("N_samples", kwargs['N_samples']), 
+        # ("raw_noise_std", kwargs['raw_noise_std']), ("lindisp", kwargs['lindisp']), 
+        # ("nerf_type", kwargs['nerf_type']), 
+        # ]
+        #save2pickle(filename, to_pickle)
 
     # import ipdb; ipdb.set_trace()
     if index==None:
         name = "post"
         #print(f"using {name}")
-        anony(name,index)
+        #anony(name,index)
     elif index%25==0:
         name = "train_time"
         #print(f"using {name}")
-        anony(name,index)
+        #anony(name,index)
     else:
         name = "off_time"
         #print(f"using {name}")
-        anony(name,index)
+        #anony(name,index)
 
     #print("render_kwargs", render_kwargs)
     #import ipdb; ipdb.set_trace()

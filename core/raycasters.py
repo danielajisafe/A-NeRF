@@ -422,6 +422,14 @@ class RayCaster(nn.Module):
         pts, z_vals = self.sample_pts(rays_o, rays_d, near, far, N_rays, N_samples,
                                       perturb, lindisp, pytest=pytest, ray_noise_std=ray_noise_std)
 
+        # TODO:
+        # repeat
+        # stack both
+        # Nsample//2
+        # Nothing changes after
+        # view dependent effects, rays_d
+        #                      
+
         # prepare local coordinate system
         joint_coords = self.get_subject_joint_coords(subject_idxs, pts.device)
 
