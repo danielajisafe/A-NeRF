@@ -365,6 +365,7 @@ class RayCaster(nn.Module):
                     kp_batch,
                     skts=None,
                     cyls=None,
+                    cyls_v=None,
                     bones=None,
                     cams=None,
                     subject_idxs=None,
@@ -412,16 +413,25 @@ class RayCaster(nn.Module):
         # Step 1: prep ray data
         # Note: last dimension for ray direction needs to be normalized
         N_rays = ray_batch.shape[0]
+
+        import ipdb; ipdb.set_trace()
         rays_o, rays_d = ray_batch[:,0:3], ray_batch[:,3:6] # [N_rays, 3] each
+        rays_o_v, rays_d_v = ray_batch[:,6:9], ray_batch[:,9:12] # [N_rays, 3] each
+
         viewdirs = ray_batch[:,-3:] if ray_batch.shape[-1] > 8 else None
         bounds = torch.reshape(ray_batch[...,6:8], [-1,1,2])
         near, far = bounds[...,0], bounds[...,1] # [-1,1]
 
         # Step 2: Sample 'coarse' sample from the ray segment within the bounding cylinder
         near, far =  get_near_far_in_cylinder(rays_o, rays_d, cyls, near=near, far=far)
+        near, far =  get_near_far_in_cylinder(rays_o_v, rays_d_v, cyls_v, near=near_v, far=far_v)
+
         pts, z_vals = self.sample_pts(rays_o, rays_d, near, far, N_rays, N_samples,
                                       perturb, lindisp, pytest=pytest, ray_noise_std=ray_noise_std)
+        pts, z_vals = self.sample_pts(rays_o_v, rays_d_v, near_v, far_v, N_rays, N_samples,
+                                      perturb, lindisp, pytest=pytest, ray_noise_std=ray_noise_std)
 
+        import ipdb; ipdb.set_trace()
         # TODO:
         # repeat
         # stack both

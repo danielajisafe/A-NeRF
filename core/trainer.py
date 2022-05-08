@@ -467,6 +467,7 @@ class Trainer:
             prev_kps, prev_bones = prev_kps.detach(), prev_bones.detach()
             next_kps, next_bones = next_kps.detach(), next_bones.detach()
             temp_valid = batch['temp_val']
+            import ipdb; ipdb.set_trace()
             kps = kp_opts['kp_batch']
 
             ang_vel = ((bones - prev_bones) - (next_bones - bones)).pow(2.).sum(-1)

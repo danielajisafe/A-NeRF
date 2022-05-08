@@ -19,8 +19,8 @@ dataset_catalog = {
 
 class BaseH5Dataset(Dataset):
     # TODO: poor naming
-    def __init__(self, h5_path, N_samples=96, patch_size=1, split='full',
-                 N_nms=0, subject=None, mask_img=False, multiview=False):
+    def __init__(self, h5_path, h5_path_v, N_samples=96, patch_size=1, patch_size_v=1, split='full',
+                 N_nms=0,N_nms_v=0, subject=None, mask_img=False, multiview=False):
         '''
         Base class for multi-proc h5 dataset
 
@@ -36,23 +36,36 @@ class BaseH5Dataset(Dataset):
         multiview (bool): to enable multiview optimization
         '''
         self.h5_path = h5_path
+        self.h5_path_v = h5_path_v
         self.split = split
+        
         self.dataset = None
+        self.dataset_v = None
+
         self.subject = subject
         self.mask_img = mask_img
         self.multiview = multiview
 
-        self.N_samples = N_samples
+        self.N_samples = N_samples # 32?
         self.patch_size = patch_size
+        self.patch_size_v = patch_size_v
+
         self.N_nms = int(math.floor(N_nms)) if N_nms >= 1.0 else float(N_nms)
+        self.N_nms_v  = int(math.floor(N_nms_v )) if N_nms_v  >= 1.0 else float(N_nms_v)
+
         self._idx_map = None # map queried idx to predefined idx
         self._render_idx_map = None # map idx for render
 
         self.init_meta()
         self.init_len()
+
         self.box2d = None
+        self.box2d_v = None
+
         if self.N_nms > 0.0:
             self.init_box2d()
+        if self.N_nms_v > 0.0:
+            self.init_box2d_v()
 
     def __getitem__(self, q_idx):
         '''
@@ -70,7 +83,7 @@ class BaseH5Dataset(Dataset):
         # or implement a different sampler
         # as we may not actually use the idx here
 
-        if self.dataset is None:
+        if self.dataset is None and self.dataset_v is None:
             self.init_dataset()
 
         # get camera information
@@ -78,28 +91,44 @@ class BaseH5Dataset(Dataset):
 
         # get kp index and kp, skt, bone, cyl
         kp_idxs, kps, bones, skts, cyls = self.get_pose_data(idx, q_idx, self.N_samples)
+        kp_idxs_v, kps_v, cyls_v = self.get_pose_data_v(idx, q_idx, self.N_samples)
 
         # sample pixels
         pixel_idxs = self.sample_pixels(idx, q_idx)
+        pixel_idxs_v = self.sample_pixels_v(idx, q_idx)
 
         # maybe get a version that computes only sampled points?
         rays_o, rays_d = self.get_rays(c2w, focal, pixel_idxs, center)
+        rays_o_v, rays_d_v = self.get_rays_v(c2w, focal, pixel_idxs_v, center)
 
         # load the image, foreground and background,
         # and get values from sampled pixels
         rays_rgb, fg, bg = self.get_img_data(idx, pixel_idxs)
+        rays_rgb_v, fg_v, _ = self.get_img_data_v(idx, pixel_idxs_v)
 
         return_dict = {'rays_o': rays_o,
                        'rays_d': rays_d,
+                       'rays_o_v': rays_o_v,
+                       'rays_d_v': rays_d_v,
+
                        'target_s': rays_rgb,
+                       'target_s_v': rays_rgb_v,
+
                        'kp_idx': kp_idxs,
+                       'kp_idx_v': kp_idxs_v, # though should be same
                        'kp3d': kps,
+                       'kp3d_v': kps_v,
+
                        'bones': bones,
                        'skts': skts,
+
                        'cyls': cyls,
+                       'cyls_v': cyls_v,
                        'cam_idxs': cam_idxs,
                        'fgs': fg,
-                       'bgs': bg,
+                       'fgs_v': fg_v,
+
+                       'bgs': bg # unique per camera/video
                        }
 
         return return_dict
@@ -116,11 +145,12 @@ class BaseH5Dataset(Dataset):
 
     def init_dataset(self):
 
-        if self.dataset is not None:
+        if self.dataset is not None and self.dataset_v is not None:
             return
         print('init dataset')
 
         self.dataset = h5py.File(self.h5_path, 'r')
+        self.dataset_v = h5py.File(self.h5_path_v, 'r')
 
     def init_meta(self):
         '''
@@ -182,6 +212,33 @@ class BaseH5Dataset(Dataset):
 
         dataset.close()
 
+
+        '''virtual data starts here'''
+
+        dataset_v = h5py.File(self.h5_path_v, 'r', swmr=True)
+
+        self.dataset_keys_v = [k for k in dataset_v.keys()]
+
+        # pre-computed direction, the first two cols
+        # need to be divided by focal
+        self._dirs_v = np.stack([ (i-offset_x),
+                              -(j-offset_y),
+                              -np.ones_like(i)], axis=-1)
+
+        # pre-computed pixel indices
+        self._pixel_idxs_v = np.arange(np.prod(self.HW)).reshape(*self.HW)
+
+        # store pose and camera data directly in memory (they are small)
+        self.gt_kp3d_v = dataset_v['gt_kp3d'][:] if 'gt_kp3d' in self.dataset_keys_v else None
+        self.kp_map_v, self.kp_uidxs_v = None, None # only not None when self.multiview = True
+        self.kp3d_v, self.cyls_v = self._load_pose_data_v(dataset_v)
+
+        #self.focals, self.c2ws = self._load_camera_data(dataset)
+        self.temp_validity_v = self.init_temporal_validity()
+
+
+        dataset_v.close()
+
     def _load_pose_data(self, dataset):
         '''
         read pose data from .h5 file
@@ -191,6 +248,15 @@ class BaseH5Dataset(Dataset):
         if self.multiview:
             return self._load_multiview_pose(dataset, kp3d, bones, skts, cyls)
         return kp3d, bones, skts, cyls
+
+    def _load_pose_data_v(self, dataset):
+        '''
+        read pose data from .h5 file
+        '''
+        kp3d, cyls = dataset['kp3d'][:], dataset['cyls'][:]
+        # if self.multiview:
+        #     return self._load_multiview_pose(dataset, kp3d, cyls)
+        return kp3d, cyls
 
     def _load_multiview_pose(self, dataset, kp3d, bones, skts, cyls):
         '''
@@ -233,6 +299,37 @@ class BaseH5Dataset(Dataset):
         self.box2d = np.array(self.box2d)
         dataset.close()
 
+    def init_box2d_v(self):
+        '''
+        pre-compute box2d
+        '''
+        # use images from real data
+        dataset = h5py.File(self.h5_path, 'r', swmr=True)
+
+        l = len(self)
+
+        H, W = self.HW
+        self.box2d_v = []
+
+        # use images from real data
+        for i in range(len(dataset['imgs'])):
+            q_idx = i
+            #if self._idx_map is not None:
+            #    idx = self._idx_map[q_idx]
+            #else:
+            idx = q_idx
+
+            # get camera information
+            c2w, focal, center, cam_idxs = self.get_camera_data(idx, q_idx, 1)
+
+            # get kp index and kp, cyl
+            _, _, cyls_v = self.get_pose_data_v(idx, q_idx, 1)
+            tl, br, _ = cylinder_to_box_2d(cyls_v[0], [H, W, focal], nerf_c2w_to_extrinsic(c2w),
+                                           center=center, scale=1.3)
+            self.box2d_v.append((tl, br))
+        self.box2d_v = np.array(self.box2d_v)
+        dataset.close()
+
     def init_temporal_validity(self):
         return None
 
@@ -271,6 +368,28 @@ class BaseH5Dataset(Dataset):
             bg = self.bgs[bg_idx, pixel_idxs].astype(np.float32) / 255.
 
             if self.mask_img:
+                img = img * fg + (1. - fg) * bg
+
+        return img, fg, bg
+
+    def get_img_data_v(self, idx, pixel_idxs):
+        '''
+        get image data (in np.uint8)
+        '''
+
+        fg = self.dataset_v['masks'][idx, pixel_idxs].astype(np.float32)
+        # reuse image from real data
+        img = self.dataset['imgs'][idx, pixel_idxs].astype(np.float32) / 255.
+
+        bg = None
+        if self.has_bg:
+            bg_idx = self.bg_idxs[idx]
+            bg = self.bgs[bg_idx, pixel_idxs].astype(np.float32) / 255.
+
+            if self.mask_img:
+                # pick foreground out from crowded image + create blank space for that spot in background
+                # result: clean background with foreground
+                # update: result is of size pixel_idxs
                 img = img * fg + (1. - fg) * bg
 
         return img, fg, bg
@@ -322,6 +441,56 @@ class BaseH5Dataset(Dataset):
         sampled_idxs = np.sort(sampled_idxs)
         return sampled_idxs
 
+
+    def sample_pixels_v(self, idx, q_idx):
+        '''
+        return sampled pixels_v (in (H*W,) indexing, not (H, W))
+        '''
+        p = self.patch_size_v
+        N_rand = self.N_samples // int(p**2)
+        # TODO: check if sampling masks need adjustment
+        # assume sampling masks are of shape (N, H, W, 1)
+        sampling_mask_v = self.dataset_v['sampling_masks'][idx].reshape(-1)
+
+        valid_idxs_v, = np.where(sampling_mask_v>0)
+        sampled_idxs_v = np.random.choice(valid_idxs_v,
+                                        N_rand,
+                                        replace=False)
+        if self.patch_size_v > 1:
+            H, W = self.HW
+            hs, ws = sampled_idxs_v // W, sampled_idxs_v % W
+            # clip to valid range
+            hs = np.clip(hs, a_min=0, a_max=H-p)
+            ws = np.clip(ws, a_min=0, a_max=W-p)
+            _s = []
+            for h, w in zip(hs, ws):
+                patch = self._pixel_idxs_v[h:h+p, w:w+p].reshape(-1)
+                _s.append(patch)
+
+            # update sampled idxs to fall within valid range
+            sampled_idxs_v = np.array(_s).reshape(-1)
+
+        # hdf5 takes increasing index order
+
+        # if self.N_nms >= 1
+        if isinstance(self.N_nms_v, int):
+            N_nms = self.N_nms_v
+        else:
+            # roll a dice
+            #dice = np.random.random()
+            #N_nms = int(self.N_nms > dice)
+            N_nms = int(self.N_nms_v > np.random.random())
+
+        if N_nms > 0:
+            # replace some empty-space samples of out-of-mask samples
+            nms_idxs = self._sample_in_box2d_v(idx, q_idx, sampling_mask_v, N_nms)
+
+            sampled_idxs_v = np.sort(sampled_idxs_v)
+            sampled_idxs_v[np.random.choice(len(sampled_idxs_v), size=(N_nms,), replace=False)] = nms_idxs
+
+        sampled_idxs_v = np.sort(sampled_idxs_v)
+        return sampled_idxs_v
+
     def _sample_in_box2d(self, idx, q_idx, fg, N_samples):
 
         H, W = self.HW
@@ -344,6 +513,28 @@ class BaseH5Dataset(Dataset):
 
         return selected_idxs
 
+    def _sample_in_box2d_v(self, idx, q_idx, fg, N_samples):
+
+        H, W = self.HW
+        # get bounding box
+        real_idx, _ = self.get_cam_idx(idx, q_idx)
+        tl, br = self.box2d_v[real_idx].copy()
+
+        fg = fg.reshape(H, W)
+        cropped = fg[tl[1]:br[1], tl[0]:br[0]]
+        vy, vx = np.where(cropped < 1)
+
+        # put idxs from cropped ones back to the non-cropped ones
+        vy = vy + tl[1]
+        vx = vx + tl[0]
+        idxs = vy * W + vx
+
+        #selected_idxs = np.random.choice(idxs, size=(N_samples,), replace=False)
+        # This is faster for small N_samples
+        selected_idxs_v = np.random.default_rng().choice(idxs, size=(N_samples,), replace=False)
+
+        return selected_idxs_v
+
     def get_rays(self, c2w, focal, pixel_idxs, center=None):
 
         dirs = self._dirs[pixel_idxs].copy()
@@ -352,6 +543,27 @@ class BaseH5Dataset(Dataset):
             center[1] *= -1
             dirs[..., :2] -= center
 
+        dirs[:, :2] /= focal
+
+        I = np.eye(3)
+
+        if np.isclose(I, c2w[:3, :3]).all():
+            rays_d = dirs # no rotation required if rotation is identity
+        else:
+            rays_d = np.sum(dirs[..., np.newaxis, :] * c2w[:3,:3], -1)  # dot product, equals to: [c2w.dot(dir) for dir in dirs]
+
+        rays_o = np.broadcast_to(c2w[:3, -1], rays_d.shape)
+        return rays_o.copy(), rays_d.copy()
+
+    def get_rays_v(self, c2w, focal, pixel_idxs, center=None):
+
+        dirs = self._dirs_v[pixel_idxs].copy()
+        if center is not None:
+            center = center.copy()
+            center[1] *= -1
+            dirs[..., :2] -= center
+
+        # goes from 2d pixel location to 3d point with direction (with origin at the cam position).
         dirs[:, :2] /= focal
 
         I = np.eye(3)
@@ -388,6 +600,26 @@ class BaseH5Dataset(Dataset):
 
         return kp_idx, kp, bone, skt, cyl
 
+    def get_pose_data_v(self, idx, q_idx, N_samples):
+
+        # real_idx: the real data we want to sample from
+        # kp_idx: for looking up the optimized kp in poseopt layer (or other purpose)
+        real_idx, kp_idx = self.get_kp_idx(idx, q_idx)
+
+        kp = self.kp3d_v[real_idx:real_idx+1].astype(np.float32)
+        cyl = self.cyls_v[real_idx:real_idx+1].astype(np.float32)
+
+        # TODO: think this part through
+        temp_val = None
+        if self.temp_validity_v is not None:
+            temp_val = self.temp_validity_v[real_idx:real_idx+1]
+
+        kp_idx = np.array([kp_idx]).repeat(N_samples, 0)
+        kp = kp.repeat(N_samples, 0)
+        cyl = cyl.repeat(N_samples, 0)
+
+        return kp_idx, kp, cyl
+
 
     def get_kp_idx(self, idx, q_idx):
         '''
@@ -395,6 +627,7 @@ class BaseH5Dataset(Dataset):
         q_idx: the 'queried' index(s) received from the sampler,
                may not coincide with idx.
         '''
+        # TODO: check if it considers gap in frames for videos with unequal length
         return idx, q_idx
 
     def get_cam_idx(self, idx, q_idx):
@@ -484,11 +717,23 @@ class BaseH5Dataset(Dataset):
             'kp_uidxs': self.kp_uidxs, # important for multiview setting
         }
 
-        dataset.close()
+        #dataset.close()
 
+        '''virtual data starts here'''
+
+        data_attrs['gt_kp3d_v'] = self.gt_kp3d_v[k_idxs] if self.gt_kp3d_v is not None else None,
+        data_attrs['kp3d_v'] = self.kp3d_v[k_idxs],
+        #data_attrs['kp_map'] = self.kp_map, # important for multiview setting
+        #data_attrs['kp_uidxs'] = self.kp_uidxs, # important for multiview setting
+
+        dataset.close()
+        
         return data_attrs
 
     def get_render_data(self):
+
+        # TODO:
+        # do we need virtual here? 
 
         dataset = h5py.File(self.h5_path, 'r', swmr=True)
 
@@ -542,157 +787,159 @@ class BaseH5Dataset(Dataset):
 
         return render_data
 
-class PoseRefinedDataset(BaseH5Dataset):
+# class PoseRefinedDataset(BaseH5Dataset):
 
-    def __init__(self, *args, load_refined=False, **kwargs):
-        self.load_refined = load_refined
-        super(PoseRefinedDataset, self).__init__(*args, **kwargs)
+#     def __init__(self, *args, load_refined=False, **kwargs):
+#         self.load_refined = load_refined
+#         super(PoseRefinedDataset, self).__init__(*args, **kwargs)
 
-    def _load_pose_data(self, dataset):
-        '''
-        read pose data from .h5 or refined poses
-        NOTE: refined poses are defined in a per-dataset basis.
-        '''
-        if not self.load_refined:
-            return super(PoseRefinedDataset, self)._load_pose_data(dataset)
+#     def _load_pose_data(self, dataset):
+#         '''
+#         read pose data from .h5 or refined poses
+#         NOTE: refined poses are defined in a per-dataset basis.
+#         '''
+#         if not self.load_refined:
+#             return super(PoseRefinedDataset, self)._load_pose_data(dataset)
 
-        assert hasattr(self, 'refined_paths'), \
-            f'Paths to refined poses are not defined for {self.__class__}.'
+#         assert hasattr(self, 'refined_paths'), \
+#             f'Paths to refined poses are not defined for {self.__class__}.'
 
-        refined_path, legacy = self.refined_paths[self.subject]
-        print(f'Read refined poses from {refined_path}')
-        # the first 4 is kp3d, bones, skts, cyls
-        kp3d, bones, skts, cyls = pose_ckpt_to_pose_data(refined_path, ext_scale=0.001, legacy=legacy)[:4]
+#         refined_path, legacy = self.refined_paths[self.subject]
+#         print(f'Read refined poses from {refined_path}')
+#         # the first 4 is kp3d, bones, skts, cyls
+#         kp3d, bones, skts, cyls = pose_ckpt_to_pose_data(refined_path, ext_scale=0.001, legacy=legacy)[:4]
 
-        if self.multiview:
-            return self._load_multiview_pose(dataset, kp3d, bones, skts, cyls)
-        return kp3d, bones, skts, cyls
+#         if self.multiview:
+#             return self._load_multiview_pose(dataset, kp3d, bones, skts, cyls)
+#         return kp3d, bones, skts, cyls
 
-class ConcatH5Dataset(ConcatDataset):
-    # TODO: poor naming
-    # TODO: also allows it to call get_pose?
-    def __init__(self, datasets):
-        super().__init__(datasets)
+# # Do we use ConcatH5Dataset?
 
-        metas = [d.get_meta() for d in self.datasets]
-        self.cumulative_views = np.cumsum([m['n_views'] for m in metas])
-        self.cumulative_kps = np.cumsum([len(m['kp3d']) for m in metas])
+# class ConcatH5Dataset(ConcatDataset):
+#     # TODO: poor naming
+#     # TODO: also allows it to call get_pose?
+#     def __init__(self, datasets):
+#         super().__init__(datasets)
 
-    def __getitem__(self, idx):
-        if idx < 0:
-            if -idx > len(self):
-                raise ValueError("absolute value of index should not exceed dataset length")
-            idx = len(self) + idx
-        dataset_idx = bisect.bisect_right(self.cumulative_sizes, idx)
-        if dataset_idx == 0:
-            sample_idx = idx
-        else:
-            sample_idx = idx - self.cumulative_sizes[dataset_idx - 1]
-        ret = self.datasets[dataset_idx][sample_idx]
+#         metas = [d.get_meta() for d in self.datasets]
+#         self.cumulative_views = np.cumsum([m['n_views'] for m in metas])
+#         self.cumulative_kps = np.cumsum([len(m['kp3d']) for m in metas])
 
-        if dataset_idx != 0:
-            # properly offset the index
-            ret['cam_idxs'] = ret['cam_idxs'] + self.cumulative_views[dataset_idx - 1]
-            ret['kp_idx'] = ret['kp_idx'] + self.cumulative_kps[dataset_idx - 1]
-        # assume 1 dataset == 1 subject
-        ret['subject_idxs'] = np.array([dataset_idx]).repeat(len(ret['cam_idxs']), 0)
+#     def __getitem__(self, idx):
+#         if idx < 0:
+#             if -idx > len(self):
+#                 raise ValueError("absolute value of index should not exceed dataset length")
+#             idx = len(self) + idx
+#         dataset_idx = bisect.bisect_right(self.cumulative_sizes, idx)
+#         if dataset_idx == 0:
+#             sample_idx = idx
+#         else:
+#             sample_idx = idx - self.cumulative_sizes[dataset_idx - 1]
+#         ret = self.datasets[dataset_idx][sample_idx]
 
-        return ret
+#         if dataset_idx != 0:
+#             # properly offset the index
+#             ret['cam_idxs'] = ret['cam_idxs'] + self.cumulative_views[dataset_idx - 1]
+#             ret['kp_idx'] = ret['kp_idx'] + self.cumulative_kps[dataset_idx - 1]
+#         # assume 1 dataset == 1 subject
+#         ret['subject_idxs'] = np.array([dataset_idx]).repeat(len(ret['cam_idxs']), 0)
 
-    def get_meta(self):
+#         return ret
 
-        # get meta from all dataset
-        metas = [d.get_meta() for d in self.datasets]
+#     def get_meta(self):
 
-        merged_meta = {}
-        to_stack = ['joint_coords', 'rest_pose']
-        to_cat = ['gt_kp3d', 'kp3d', 'bones', 'betas']
+#         # get meta from all dataset
+#         metas = [d.get_meta() for d in self.datasets]
 
-        # TODO: currently assume all scalars are the same
-        H = np.concatenate([m['hwf'][0] for m in metas])
-        W = np.concatenate([m['hwf'][1] for m in metas])
-        focals = np.concatenate([m['hwf'][2] for m in metas])
-        merged_meta['hwf'] = (H, W, focals)
-        merged_meta['near'] = metas[0]['near']
-        merged_meta['far'] = metas[0]['far']
-        merged_meta['n_views'] = np.sum([m['n_views'] for m in metas])
-        merged_meta['skel_type'] = metas[0]['skel_type']
+#         merged_meta = {}
+#         to_stack = ['joint_coords', 'rest_pose']
+#         to_cat = ['gt_kp3d', 'kp3d', 'bones', 'betas']
 
-        # stack arrays
-        for k in to_stack:
-            merged_meta[k] = np.stack([m[k] for m in metas], axis=0)
+#         # TODO: currently assume all scalars are the same
+#         H = np.concatenate([m['hwf'][0] for m in metas])
+#         W = np.concatenate([m['hwf'][1] for m in metas])
+#         focals = np.concatenate([m['hwf'][2] for m in metas])
+#         merged_meta['hwf'] = (H, W, focals)
+#         merged_meta['near'] = metas[0]['near']
+#         merged_meta['far'] = metas[0]['far']
+#         merged_meta['n_views'] = np.sum([m['n_views'] for m in metas])
+#         merged_meta['skel_type'] = metas[0]['skel_type']
 
-        # check if gt exists for all data. If not, ignore them
-        has_gt = all(['gt_kp3d' in m for m in metas])
-        for k in to_cat:
-            if k == 'gt_kp3d' and (not has_gt):
-                continue # no GT available
-            try:
-                merged_meta[k] = np.concatenate([m[k] for m in metas])
-            except:
-                print(f'Key {k} is skipped due to inconsistent shape. Stop if not expected')
+#         # stack arrays
+#         for k in to_stack:
+#             merged_meta[k] = np.stack([m[k] for m in metas], axis=0)
 
-        # handle rest pose
-        kp_lens = np.cumsum([len(m['kp3d']) for m in metas])
-        rest_pose_idxs = np.searchsorted(kp_lens, np.arange(len(merged_meta['kp3d'])),
-                                         side='right')
+#         # check if gt exists for all data. If not, ignore them
+#         has_gt = all(['gt_kp3d' in m for m in metas])
+#         for k in to_cat:
+#             if k == 'gt_kp3d' and (not has_gt):
+#                 continue # no GT available
+#             try:
+#                 merged_meta[k] = np.concatenate([m[k] for m in metas])
+#             except:
+#                 print(f'Key {k} is skipped due to inconsistent shape. Stop if not expected')
 
-        merged_meta['rest_pose_idxs'] = rest_pose_idxs
-        merged_meta['n_subjects'] = len(self.datasets)
-        return merged_meta
+#         # handle rest pose
+#         kp_lens = np.cumsum([len(m['kp3d']) for m in metas])
+#         rest_pose_idxs = np.searchsorted(kp_lens, np.arange(len(merged_meta['kp3d'])),
+#                                          side='right')
 
-    def get_render_data(self):
+#         merged_meta['rest_pose_idxs'] = rest_pose_idxs
+#         merged_meta['n_subjects'] = len(self.datasets)
+#         return merged_meta
 
-        render_data = [d.get_render_data() for d in self.datasets]
-        import ipdb; ipdb.set_trace()
-        merged_data = {}
+#     def get_render_data(self):
 
-        # TODO: TEMPORARY HACK, TO ONLY RENDER ONE DATASET IF IMAGE SHAPES
-        #       DOES NOT MATCH
-        not_match = False
-        for i in range(1, len(render_data)):
-            H_prev, W_prev, _ = render_data[i-1]['hwf']
-            H_cur, W_cur, _ = render_data[i]['hwf']
-            if (H_prev != H_cur).any() or (W_prev != W_cur).any():
-                not_match = True
-                break
-        if not_match:
-            render_data = render_data[:1]
+#         render_data = [d.get_render_data() for d in self.datasets]
+#         import ipdb; ipdb.set_trace()
+#         merged_data = {}
+
+#         # TODO: TEMPORARY HACK, TO ONLY RENDER ONE DATASET IF IMAGE SHAPES
+#         #       DOES NOT MATCH
+#         not_match = False
+#         for i in range(1, len(render_data)):
+#             H_prev, W_prev, _ = render_data[i-1]['hwf']
+#             H_cur, W_cur, _ = render_data[i]['hwf']
+#             if (H_prev != H_cur).any() or (W_prev != W_cur).any():
+#                 not_match = True
+#                 break
+#         if not_match:
+#             render_data = render_data[:1]
 
 
-        # concate hwf
-        H = np.concatenate([r['hwf'][0] for r in render_data])
-        W = np.concatenate([r['hwf'][1] for r in render_data])
-        focals = np.concatenate([r['hwf'][2] for r in render_data])
-        merged_data['hwf'] = (H, W, focals)
+#         # concate hwf
+#         H = np.concatenate([r['hwf'][0] for r in render_data])
+#         W = np.concatenate([r['hwf'][1] for r in render_data])
+#         focals = np.concatenate([r['hwf'][2] for r in render_data])
+#         merged_data['hwf'] = (H, W, focals)
 
-        # TODO: temporary: assume no center given
-        merged_data['center'] = None
+#         # TODO: temporary: assume no center given
+#         merged_data['center'] = None
 
-        # data that can be concatenate directly
-        to_cat = ['imgs', 'fgs', 'bgs', 'c2ws',
-                  'kp3d', 'skts', 'bones']
-        to_cat_offset = ['cam_idxs', 'kp_idxs', 'bg_idxs']
-        for k in to_cat:
-            merged_data[k] = np.concatenate([r[k] for r in render_data])
+#         # data that can be concatenate directly
+#         to_cat = ['imgs', 'fgs', 'bgs', 'c2ws',
+#                   'kp3d', 'skts', 'bones']
+#         to_cat_offset = ['cam_idxs', 'kp_idxs', 'bg_idxs']
+#         for k in to_cat:
+#             merged_data[k] = np.concatenate([r[k] for r in render_data])
 
-        # offset indexs in multi-dataset setting
-        for k in to_cat_offset:
-            # indices are expected to be stored in (idxs, max_idxs) tuples.
-            cumulated_lens = np.cumsum([r[k+'_len'] for r in render_data])
-            array = [render_data[0][k]] # first data does not need offset
-            for i, r in enumerate(render_data[1:]):
-                array.append(r[k] + cumulated_lens[i])
-            merged_data[k] = np.concatenate(array)
+#         # offset indexs in multi-dataset setting
+#         for k in to_cat_offset:
+#             # indices are expected to be stored in (idxs, max_idxs) tuples.
+#             cumulated_lens = np.cumsum([r[k+'_len'] for r in render_data])
+#             array = [render_data[0][k]] # first data does not need offset
+#             for i, r in enumerate(render_data[1:]):
+#                 array.append(r[k] + cumulated_lens[i])
+#             merged_data[k] = np.concatenate(array)
 
-        # create subject idxs.
-        subject_idxs = []
-        for i, r in enumerate(render_data):
-            n_imgs = len(r['imgs'])
-            subject_idxs.extend([i] * n_imgs)
-        merged_data['subject_idxs'] = np.array(subject_idxs)
+#         # create subject idxs.
+#         subject_idxs = []
+#         for i, r in enumerate(render_data):
+#             n_imgs = len(r['imgs'])
+#             subject_idxs.extend([i] * n_imgs)
+#         merged_data['subject_idxs'] = np.array(subject_idxs)
 
-        return merged_data
+#         return merged_data
 
 class DatasetWrapper:
 
@@ -800,6 +1047,8 @@ def ray_collate_fn(batch):
     # default collate results in shape (N_images, N_rays_per_images, ...)
     # flatten the first two dimensions.
     batch = {k: batch[k].flatten(end_dim=1) for k in batch}
-    batch['rays'] = torch.stack([batch['rays_o'], batch['rays_d']], dim=0)
+    #batch['rays'] = torch.stack([batch['rays_o'], batch['rays_d']], dim=0)
+    batch['rays'] = torch.stack([batch['rays_o'], batch['rays_d'], 
+                                batch['rays_o_v'], batch['rays_d_v']], dim=0)
     return batch
 
