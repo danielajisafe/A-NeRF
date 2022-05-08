@@ -80,7 +80,7 @@ def batchify_rays(rays_flat, chunk=1024*32, ray_caster=None, **kwargs):
 
 
 def render(H, W, focal, chunk=1024*32, rays=None, c2w=None,
-           near=0., far=1., center=None,
+           near=0., far=1., near_v=0., far_v=1., center=None,
            use_viewdirs=False, c2w_staticcam=None,
            index=None,
             **kwargs):
@@ -109,34 +109,53 @@ def render(H, W, focal, chunk=1024*32, rays=None, c2w=None,
         # special case to render full image
         center = center.ravel() if center is not None else None
         import ipdb; ipdb.set_trace()
-        rays_o, rays_d = get_rays(H, W, focal, c2w, center=center)
+        rays_o, rays_d, rays_o_v, rays_d_v = get_rays(H, W, focal, c2w, center=center)
     else:
         # use provided ray batch
-        rays_o, rays_d = rays
+        #rays_o, rays_d, _, _  = rays
+        rays_o, rays_d, rays_o_v, rays_d_v  = rays
 
     if use_viewdirs:
         # provide ray directions as input
         viewdirs = rays_d
+        viewdirs_v = rays_d_v
+
         if c2w_staticcam is not None:
             # special case to visualize effect of viewdirs
-            rays_o, rays_d = get_rays(H, W, focal, c2w_staticcam)
+            rays_o, rays_d, rays_o_v, rays_d_v = get_rays(H, W, focal, c2w_staticcam)
+        
         # normalize ray length
         viewdirs = viewdirs / torch.norm(viewdirs, dim=-1, keepdim=True)
         viewdirs = torch.reshape(viewdirs, [-1,3]).float()
+
+        # normalize ray length (virt)
+        viewdirs_v = viewdirs_v / torch.norm(viewdirs_v, dim=-1, keepdim=True)
+        viewdirs_v = torch.reshape(viewdirs_v, [-1,3]).float()
 
     # Create ray batch
     sh = rays_d.shape # [..., 3]
     rays_o = torch.reshape(rays_o, [-1,3]).float()
     rays_d = torch.reshape(rays_d, [-1,3]).float()
+    rays_o_v = torch.reshape(rays_o_v, [-1,3]).float()
+    rays_d_v = torch.reshape(rays_d_v, [-1,3]).float()
 
+    # 0s and 1s
     near, far = near * torch.ones_like(rays_d[...,:1]), far * torch.ones_like(rays_d[...,:1])
+    near_v, far_v = near_v * torch.ones_like(rays_d_v[...,:1]), far_v * torch.ones_like(rays_d_v[...,:1])
+
     #rays = torch.cat([rays_o, rays_d, near, far], -1)
     rays = torch.cat([rays_o.to(near.device), rays_d.to(near.device), near, far], -1)
+    rays_v = torch.cat([rays_o_v.to(near_v.device), rays_d_v.to(near_v.device), near_v, far_v], -1)
+
     if use_viewdirs:
         rays = torch.cat([rays, viewdirs], -1)
+        rays_v = torch.cat([rays_v, viewdirs_v], -1)
 
+    import ipdb; ipdb.set_trace()
     # Render and reshape
     all_ret = batchify_rays(rays, chunk, **kwargs)
+    all_ret_v = batchify_rays(rays_v, chunk, **kwargs)
+
     for k in all_ret:
         if all_ret[k].dim() >= 4:
             continue
@@ -280,7 +299,7 @@ class Trainer:
 
         # step 2: ray caster forward
         #if i in [4,5]:
-        #print(f"{i}: render called in train_batch function")
+        print(f"{i}: render called in train_batch function")
         #import ipdb; ipdb.set_trace()
         preds = render(H, W, focal, chunk=args.chunk, verbose=i < 10,
                       retraw=False, index=i, **kp_args, **fwd_args, **self.render_kwargs_train)

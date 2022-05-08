@@ -385,9 +385,9 @@ class MirrorDataset(BaseH5Dataset):
         data_attrs['n_views'] = self._N_cams
         return data_attrs
 
-if __name__ == "__main__":
-    print("process data")
+# if __name__ == "__main__":
+#     print("process data")
 
-    path_to_surreal = "data/mirror/"
+#     path_to_surreal = "data/mirror/"
     # process_surreal_data(os.path.join(path_to_surreal, "surreal_val_h5py.h5"),
     #                      os.path.join(path_to_surreal, "surreal_val"))

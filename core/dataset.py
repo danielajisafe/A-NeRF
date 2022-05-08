@@ -19,7 +19,7 @@ dataset_catalog = {
 
 class BaseH5Dataset(Dataset):
     # TODO: poor naming
-    def __init__(self, h5_path, h5_path_v, N_samples=96, patch_size=1, patch_size_v=1, split='full',
+    def __init__(self, h5_path, h5_path_v, N_samples=96, patch_size=1, split='full',
                  N_nms=0,N_nms_v=0, subject=None, mask_img=False, multiview=False):
         '''
         Base class for multi-proc h5 dataset
@@ -48,7 +48,6 @@ class BaseH5Dataset(Dataset):
 
         self.N_samples = N_samples # 32?
         self.patch_size = patch_size
-        self.patch_size_v = patch_size_v
 
         self.N_nms = int(math.floor(N_nms)) if N_nms >= 1.0 else float(N_nms)
         self.N_nms_v  = int(math.floor(N_nms_v )) if N_nms_v  >= 1.0 else float(N_nms_v)
@@ -446,7 +445,7 @@ class BaseH5Dataset(Dataset):
         '''
         return sampled pixels_v (in (H*W,) indexing, not (H, W))
         '''
-        p = self.patch_size_v
+        p = self.patch_size
         N_rand = self.N_samples // int(p**2)
         # TODO: check if sampling masks need adjustment
         # assume sampling masks are of shape (N, H, W, 1)
@@ -456,7 +455,7 @@ class BaseH5Dataset(Dataset):
         sampled_idxs_v = np.random.choice(valid_idxs_v,
                                         N_rand,
                                         replace=False)
-        if self.patch_size_v > 1:
+        if self.patch_size > 1:
             H, W = self.HW
             hs, ws = sampled_idxs_v // W, sampled_idxs_v % W
             # clip to valid range
@@ -787,31 +786,31 @@ class BaseH5Dataset(Dataset):
 
         return render_data
 
-# class PoseRefinedDataset(BaseH5Dataset):
+class PoseRefinedDataset(BaseH5Dataset):
 
-#     def __init__(self, *args, load_refined=False, **kwargs):
-#         self.load_refined = load_refined
-#         super(PoseRefinedDataset, self).__init__(*args, **kwargs)
+    def __init__(self, *args, load_refined=False, **kwargs):
+        self.load_refined = load_refined
+        super(PoseRefinedDataset, self).__init__(*args, **kwargs)
 
-#     def _load_pose_data(self, dataset):
-#         '''
-#         read pose data from .h5 or refined poses
-#         NOTE: refined poses are defined in a per-dataset basis.
-#         '''
-#         if not self.load_refined:
-#             return super(PoseRefinedDataset, self)._load_pose_data(dataset)
+    def _load_pose_data(self, dataset):
+        '''
+        read pose data from .h5 or refined poses
+        NOTE: refined poses are defined in a per-dataset basis.
+        '''
+        if not self.load_refined:
+            return super(PoseRefinedDataset, self)._load_pose_data(dataset)
 
-#         assert hasattr(self, 'refined_paths'), \
-#             f'Paths to refined poses are not defined for {self.__class__}.'
+        assert hasattr(self, 'refined_paths'), \
+            f'Paths to refined poses are not defined for {self.__class__}.'
 
-#         refined_path, legacy = self.refined_paths[self.subject]
-#         print(f'Read refined poses from {refined_path}')
-#         # the first 4 is kp3d, bones, skts, cyls
-#         kp3d, bones, skts, cyls = pose_ckpt_to_pose_data(refined_path, ext_scale=0.001, legacy=legacy)[:4]
+        refined_path, legacy = self.refined_paths[self.subject]
+        print(f'Read refined poses from {refined_path}')
+        # the first 4 is kp3d, bones, skts, cyls
+        kp3d, bones, skts, cyls = pose_ckpt_to_pose_data(refined_path, ext_scale=0.001, legacy=legacy)[:4]
 
-#         if self.multiview:
-#             return self._load_multiview_pose(dataset, kp3d, bones, skts, cyls)
-#         return kp3d, bones, skts, cyls
+        if self.multiview:
+            return self._load_multiview_pose(dataset, kp3d, bones, skts, cyls)
+        return kp3d, bones, skts, cyls
 
 # # Do we use ConcatH5Dataset?
 

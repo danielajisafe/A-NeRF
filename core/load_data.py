@@ -123,7 +123,7 @@ def get_dataset(args):
     return dataset
 
 
-def get_dataset_from_catalog(args, N_samples, dataset_type, subject=None, N_nms=0):
+def get_dataset_from_catalog(args, N_samples, dataset_type, subject=None, N_nms=0,N_nms_v=0):
 
     split = 'full' if not args.use_val else 'train'
 
@@ -133,6 +133,7 @@ def get_dataset_from_catalog(args, N_samples, dataset_type, subject=None, N_nms=
                      'patch_size': args.patch_size,
                      'subject': subject,
                      'N_nms': N_nms,
+                     'N_nms_v': N_nms_v,
                      'multiview': args.multiview,}
     refined_kwargs = {'load_refined': args.load_refined}
 
@@ -154,8 +155,9 @@ def get_dataset_from_catalog(args, N_samples, dataset_type, subject=None, N_nms=
         # update path
         DATASET_CATALOG[dataset_type][subject] = args.data_path +'/mirror_train_h5py.h5'
         path = DATASET_CATALOG[dataset_type][subject]
+        path_v = args.data_path +'/v_mirror_train_h5py.h5'
         
-        dataset = MirrorDataset(path, N_cams=args.N_cams, N_rand_kps=args.rand_train_kps,
+        dataset = MirrorDataset(path, path_v, N_cams=args.N_cams, N_rand_kps=args.rand_train_kps,
                                  **shared_kwargs)
     
     elif dataset_type == 'zju':
