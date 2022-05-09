@@ -90,7 +90,7 @@ class BaseH5Dataset(Dataset):
 
         # get kp index and kp, skt, bone, cyl
         kp_idxs, kps, bones, skts, cyls = self.get_pose_data(idx, q_idx, self.N_samples)
-        kp_idxs_v, kps_v, cyls_v = self.get_pose_data_v(idx, q_idx, self.N_samples)
+        kp_idxs_v, kps_v, cyls_v, A_dash = self.get_pose_data_v(idx, q_idx, self.N_samples)
 
         # sample pixels
         pixel_idxs = self.sample_pixels(idx, q_idx)
@@ -127,7 +127,8 @@ class BaseH5Dataset(Dataset):
                        'fgs': fg,
                        'fgs_v': fg_v,
 
-                       'bgs': bg # unique per camera/video
+                       'bgs': bg, # unique per camera/video
+                       'A_dash':A_dash
                        }
 
         return return_dict
@@ -231,6 +232,7 @@ class BaseH5Dataset(Dataset):
         self.gt_kp3d_v = dataset_v['gt_kp3d'][:] if 'gt_kp3d' in self.dataset_keys_v else None
         self.kp_map_v, self.kp_uidxs_v = None, None # only not None when self.multiview = True
         self.kp3d_v, self.cyls_v = self._load_pose_data_v(dataset_v)
+        self.A_dash = dataset_v['A_dash'][:]
 
         #self.focals, self.c2ws = self._load_camera_data(dataset)
         self.temp_validity_v = self.init_temporal_validity()
@@ -607,6 +609,7 @@ class BaseH5Dataset(Dataset):
 
         kp = self.kp3d_v[real_idx:real_idx+1].astype(np.float32)
         cyl = self.cyls_v[real_idx:real_idx+1].astype(np.float32)
+        A_dash = self.A_dash[real_idx:real_idx+1].astype(np.float32)
 
         # TODO: think this part through
         temp_val = None
@@ -616,8 +619,9 @@ class BaseH5Dataset(Dataset):
         kp_idx = np.array([kp_idx]).repeat(N_samples, 0)
         kp = kp.repeat(N_samples, 0)
         cyl = cyl.repeat(N_samples, 0)
+        A_dash = A_dash.repeat(N_samples, 0)
 
-        return kp_idx, kp, cyl
+        return kp_idx, kp, cyl, A_dash
 
 
     def get_kp_idx(self, idx, q_idx):
@@ -721,7 +725,8 @@ class BaseH5Dataset(Dataset):
         '''virtual data starts here'''
 
         data_attrs['gt_kp3d_v'] = self.gt_kp3d_v[k_idxs] if self.gt_kp3d_v is not None else None,
-        data_attrs['kp3d_v'] = self.kp3d_v[k_idxs],
+        data_attrs['kp3d_v'] = self.kp3d_v[k_idxs]
+        data_attrs['A_dash'] = self.A_dash[k_idxs]
         #data_attrs['kp_map'] = self.kp_map, # important for multiview setting
         #data_attrs['kp_uidxs'] = self.kp_uidxs, # important for multiview setting
 

@@ -15,7 +15,7 @@ import matplotlib.pyplot as plt
 import pytorch3d.transforms.rotation_conversions as p3dr
 
 import sys
-local_dir = "/scratch/dajisafe/smpl" if platform.node() == "naye" else "/home/dajisafe/scratch/Anerf-dev"
+local_dir = "/scratch/dajisafe/smpl" if platform.node() == "naye" else "/home/dajisafe/scratch/anerf_mirr"
 sys.path.append(local_dir)
 
 from skeleton_utils import get_parent_idx

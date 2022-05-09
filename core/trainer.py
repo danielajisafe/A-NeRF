@@ -61,7 +61,7 @@ def img2psnr(img, target):
     return mse2psnr(img2mse(img, target))
 
 
-def batchify_rays(rays_flat, chunk=1024*32, ray_caster=None, **kwargs):
+def batchify_rays(rays_flat, rays_flat_v, chunk=1024*32, ray_caster=None, **kwargs):
     """Render rays in smaller minibatches to avoid OOM.
     """
     all_ret = {}
@@ -69,7 +69,7 @@ def batchify_rays(rays_flat, chunk=1024*32, ray_caster=None, **kwargs):
     for i in range(0, rays_flat.shape[0], chunk):
         batch_kwargs = {k: kwargs[k][i:i+chunk] if torch.is_tensor(kwargs[k]) else kwargs[k]
                         for k in kwargs}
-        ret = ray_caster(rays_flat[i:i+chunk], **batch_kwargs)
+        ret = ray_caster(rays_flat[i:i+chunk], rays_flat_v[i:i+chunk], **batch_kwargs)
         for k in ret:
             if k not in all_ret:
                 all_ret[k] = []
@@ -105,6 +105,8 @@ def render(H, W, focal, chunk=1024*32, rays=None, c2w=None,
       acc_map: [batch_size]. Accumulated opacity (alpha) along a ray.
       extras: dict with everything returned by render_rays().
     """
+
+    #import ipdb; ipdb.set_trace()
     if (c2w is not None) and (rays is None):
         # special case to render full image
         center = center.ravel() if center is not None else None
@@ -151,10 +153,10 @@ def render(H, W, focal, chunk=1024*32, rays=None, c2w=None,
         rays = torch.cat([rays, viewdirs], -1)
         rays_v = torch.cat([rays_v, viewdirs_v], -1)
 
-    import ipdb; ipdb.set_trace()
+    #import ipdb; ipdb.set_trace()
     # Render and reshape
-    all_ret = batchify_rays(rays, chunk, **kwargs)
-    all_ret_v = batchify_rays(rays_v, chunk, **kwargs)
+    all_ret = batchify_rays(rays, rays_v, chunk, **kwargs)
+    #all_ret_v = batchify_rays(rays_v, chunk, **kwargs)
 
     for k in all_ret:
         if all_ret[k].dim() >= 4:
@@ -346,8 +348,13 @@ class Trainer:
 
         extras = {}
         if self.popt_kwargs is None or self.popt_kwargs['popt_layer'] is None:
+            # is this for non-pose_opt model?
+            import ipdb; ipdb.set_trace()
             return self._create_kp_args_dict(kps=batch['kp3d'], skts=batch['skts'],
-                                             bones=batch['bones'], cyls=batch['cyls']), extras
+                                             bones=batch['bones'], cyls=batch['cyls'],
+                                             #use virt pose + real pose
+                                            kps_v=batch['kp3d_v'], cyls_v=batch['cyls_v'],
+                                            A_dash=batch['A_dash']), extras
 
         kp_idx = batch['kp_idx']
         if torch.is_tensor(kp_idx):
@@ -358,7 +365,13 @@ class Trainer:
         popt_layer = self.popt_kwargs['popt_layer']
         kps, bones, skts, _, rots = popt_layer(kp_idx)
         kp_args = self._create_kp_args_dict(kps=kps, skts=skts,
-                                            bones=bones, cyls=batch['cyls'])
+                                            bones=bones, cyls=batch['cyls'], 
+                                            #use virt pose + optimized real pose
+                                            kps_v=batch['kp3d_v'], cyls_v=batch['cyls_v'],
+                                            A_dash=batch['A_dash'])
+
+        #import ipdb; ipdb.set_trace()
+
         # print("bones", bones[0,0])
         # print("skts", skts[0,0,:3,-1])
         # print("kps", kps.max())
@@ -373,9 +386,11 @@ class Trainer:
         return kp_args, extras
 
 
-    def _create_kp_args_dict(self, kps, skts, bones=None, cyls=None, rots=None):
+    def _create_kp_args_dict(self, kps, skts=None, kps_v=None, cyls_v=None, A_dash=None, bones=None, cyls=None, rots=None):
         # TODO: unified the variable names (across all functions)?
-        return {'kp_batch': kps, 'skts': skts, 'bones': bones, 'cyls': cyls}
+        return {'kp_batch': kps, 'skts': skts, 'bones': bones, 'cyls': cyls,
+                'kp_batch_v': kps_v, 'cyls_v': cyls_v,
+                'A_dash': A_dash}
 
     def compute_loss(self, batch, preds,
                      kp_opts=None, popt_detach=False):

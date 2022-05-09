@@ -601,6 +601,7 @@ def train():
                       render_kwargs_train, render_kwargs_test,
                       popt_kwargs, device=device)
 
+    #import ipdb; ipdb.set_trace()
     train_iter = iter(train_loader)
     for i in trange(start, N_iters):
         time0 = time.time()

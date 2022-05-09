@@ -147,7 +147,7 @@ class NeRF(nn.Module):
 
         return outputs
 
-    def raw2outputs(self, raw, z_vals, rays_d, raw_noise_std=0, pytest=False,
+    def raw2outputs(self, raw, z_vals, rays_d, z_vals_v=None, rays_d_v=None, raw_noise_std=0, pytest=False,
                     B=0.01, rgb_act=torch.sigmoid, act_fn=F.relu, rgb_eps=0.001, **kwargs):
         """Transforms model's predictions to semantically meaningful values.
         Args:
@@ -165,12 +165,22 @@ class NeRF(nn.Module):
 
         dists = z_vals[...,1:] - z_vals[...,:-1]
         dists = torch.cat([dists, torch.Tensor([1e10]).expand(dists[...,:1].shape)], -1)  # [N_rays, N_samples]
-
+        
+        if z_vals_v is not None:
+            dists_v = z_vals_v[...,1:] - z_vals_v[...,:-1]
+            dists_v = torch.cat([dists_v, torch.Tensor([1e10]).expand(dists_v[...,:1].shape)], -1)  # [N_rays, N_samples]
+            
         # Multiply each distance by the norm of its corresponding direction ray
         # to convert to real world distance (accounts for non-unit directions).
+        '''final transmission values'''
         dists = dists * torch.norm(rays_d[...,None,:], dim=-1)
 
+        if rays_d_v is not None:
+            dists_v = dists_v * torch.norm(rays_d_v[...,None,:], dim=-1)
+
         rgb = rgb_act(raw[...,:3]) * (1 + 2 * rgb_eps) - rgb_eps # [N_rays, N_samples, 3]
+        import ipdb; ipdb.set_trace()
+        
         noise = 0.
         if raw_noise_std > 0.:
             noise = torch.randn(raw[...,3].shape) * raw_noise_std * B
@@ -181,6 +191,11 @@ class NeRF(nn.Module):
                 noise = np.random.rand(*list(raw[...,3].shape)) * raw_noise_std
                 noise = torch.Tensor(noise)
 
+        '''final alpha values'''
+        if rays_d_v is not None and dists_v is not None:
+            # stack both
+            dists = torch.cat([dists, dists_v], dim=-1)
+        
         alpha = raw2alpha(raw[...,3], dists, noise)  # [N_rays, N_samples]
 
         # weights = alpha * tf.math.cumprod(1.-alpha + 1e-10, -1, exclusive=True)

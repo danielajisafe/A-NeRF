@@ -38,7 +38,7 @@ image_batching = True
 # debugging?
 N_sample_images = 256       #check here
 N_rand = 3072               #check here
-N_samples = 64
+N_samples = 64              #check here
 N_importance = 16
 n_iters = 500000            #check here
 lrate_decay = 500000        #check here

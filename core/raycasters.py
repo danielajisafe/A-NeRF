@@ -361,11 +361,14 @@ class RayCaster(nn.Module):
 
     def render_rays(self,
                     ray_batch,
+                    ray_batch_v,
                     N_samples,
                     kp_batch,
+                    kp_batch_v,
                     skts=None,
                     cyls=None,
                     cyls_v=None,
+                    A_dash=None,
                     bones=None,
                     cams=None,
                     subject_idxs=None,
@@ -414,24 +417,61 @@ class RayCaster(nn.Module):
         # Note: last dimension for ray direction needs to be normalized
         N_rays = ray_batch.shape[0]
 
-        import ipdb; ipdb.set_trace()
+        #import ipdb; ipdb.set_trace()
         rays_o, rays_d = ray_batch[:,0:3], ray_batch[:,3:6] # [N_rays, 3] each
-        rays_o_v, rays_d_v = ray_batch[:,6:9], ray_batch[:,9:12] # [N_rays, 3] each
+        rays_o_v, rays_d_v = ray_batch_v[:,0:3], ray_batch_v[:,3:6] # [N_rays, 3] each
 
         viewdirs = ray_batch[:,-3:] if ray_batch.shape[-1] > 8 else None
         bounds = torch.reshape(ray_batch[...,6:8], [-1,1,2])
         near, far = bounds[...,0], bounds[...,1] # [-1,1]
 
+        viewdirs_v = ray_batch_v[:,-3:] if ray_batch_v.shape[-1] > 8 else None
+        bounds_v = torch.reshape(ray_batch_v[...,6:8], [-1,1,2])
+        near_v, far_v = bounds_v[...,0], bounds_v[...,1] # [-1,1]
+
+        #import ipdb; ipdb.set_trace()
+        
         # Step 2: Sample 'coarse' sample from the ray segment within the bounding cylinder
         near, far =  get_near_far_in_cylinder(rays_o, rays_d, cyls, near=near, far=far)
-        near, far =  get_near_far_in_cylinder(rays_o_v, rays_d_v, cyls_v, near=near_v, far=far_v)
+        near_v, far_v =  get_near_far_in_cylinder(rays_o_v, rays_d_v, cyls_v, near=near_v, far=far_v)
 
-        pts, z_vals = self.sample_pts(rays_o, rays_d, near, far, N_rays, N_samples,
+        pts, z_vals = self.sample_pts(rays_o, rays_d, near, far, N_rays, N_samples//2,
                                       perturb, lindisp, pytest=pytest, ray_noise_std=ray_noise_std)
-        pts, z_vals = self.sample_pts(rays_o_v, rays_d_v, near_v, far_v, N_rays, N_samples,
+        pts_v, z_vals_v = self.sample_pts(rays_o_v, rays_d_v, near_v, far_v, N_rays, N_samples//2,
                                       perturb, lindisp, pytest=pytest, ray_noise_std=ray_noise_std)
 
-        import ipdb; ipdb.set_trace()
+
+        # reflect the virtual points
+        pts_v_homo = torch.cat((pts_v, pts_v.new_ones(1).expand(*pts_v.shape[:-1], 1)), 2)
+        v_reflected_pts = torch.bmm(A_dash, pts_v_homo.permute(0,2,1)).permute(0,2,1)[:,:,:3]#- mirr_loc
+        
+        # update to 32
+        # far = 
+        # 
+        #
+        # rays_o_v = mirror intersection
+        # rays_d_v = reflected ray 
+        # near_v = norm(intersection)
+        # far_v =  
+
+        import sys; sys.path.append("/scratch/dajisafe/smpl/mirror_project_dir")
+        from util_loading import save2pickle
+
+        filename = f"/scratch/dajisafe/smpl/mirror_project_dir/authors_eval_data/temp_dir/raycaster_paramsB.pickle"
+        to_pickle = [("pts",pts), ("z_vals", z_vals), ("pts_v", pts_v), ("z_vals_v", z_vals_v),
+                    ("rays_o", rays_o), ("rays_o_v", rays_o_v), ("rays_d", rays_d), 
+                    ("rays_d_v", rays_d_v), 
+                    ("kp_batch", kp_batch), 
+                    ("kp_batch_v", kp_batch_v), 
+                    ("cyls", cyls), 
+                    ("cyls_v", cyls_v),
+                    ("v_reflected_pts", v_reflected_pts)
+                    ]
+
+        save2pickle(filename, to_pickle)
+        
+
+
         # TODO:
         # repeat
         # stack both
@@ -443,7 +483,7 @@ class RayCaster(nn.Module):
         # prepare local coordinate system
         joint_coords = self.get_subject_joint_coords(subject_idxs, pts.device)
 
-        #import ipdb; ipdb.set_trace()
+        import ipdb; ipdb.set_trace()
         # Step 3: encode
         encoded = self.encode_inputs(pts, [rays_o[:, None, :], rays_d[:, None, :]], kp_batch,
                                      skts, bones, cam_idxs=cams, subject_idxs=subject_idxs,
@@ -456,6 +496,7 @@ class RayCaster(nn.Module):
                                             encoded=encoded, B=preproc_kwargs['density_scale'],
                                             act_fn=preproc_kwargs['density_fn'])
 
+        import ipdb; ipdb.set_trace()
         # Step 6: generate fine outputs
         ret_dict0 = None
         if N_importance > 0:
@@ -523,6 +564,7 @@ class RayCaster(nn.Module):
         if pts.shape[0] > kps.shape[0]:
             # expand kps to match the number of rays
             assert kps.shape[0] == 1
+            import ipdb; ipdb.set_trace()
             kps = kps.expand(pts.shape[0], *kp_batch.shape[1:])
 
         # tranform points/rays to local coordinate (if needed)
