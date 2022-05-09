@@ -1,6 +1,6 @@
 expname = mirror_default
 basedir = ./logs
-datadir = ./data/mirror/3/f8480b9b-b1e2-4bf6-a7cf-a34c19244afd_cam_3/2022-05-03-22
+# datadir = ./data/mirror/3/f8480b9b-b1e2-4bf6-a7cf-a34c19244afd_cam_3/2022-05-03-22
 
 # mirror setup
 dataset_type = mirror
