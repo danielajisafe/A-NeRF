@@ -317,7 +317,7 @@ def load_render_data(args, nerf_args, poseopt_layer=None, opt_framecode=True):
 
 def init_catalog(args, n_bullet=3):
     n_bullet = args.n_bullet
-    #import ipdb; ipdb.set_trace()
+        #import ipdb; ipdb.set_trace()
 
     RenderCatalog = {
         'h36m': None,
