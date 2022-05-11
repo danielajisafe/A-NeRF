@@ -284,7 +284,8 @@ def isample_from_lineseg(z_vals, weights, N_importance,
                            det=det, pytest=pytest)
     z_samples = z_samples.detach()
 
-    # merge both new samples (z_samples) and coarse samples (z_vals)
+    # merge both new samples (z_samples) and coarse samples (z_vals), and sort
+    #import ipdb; ipdb.set_trace()
     z_vals, sorted_idxs = torch.sort(torch.cat([z_vals, z_samples], -1), -1)
     return z_vals, z_samples, sorted_idxs
 

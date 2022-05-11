@@ -441,62 +441,62 @@ class RayCaster(nn.Module):
                                       perturb, lindisp, pytest=pytest, ray_noise_std=ray_noise_std)
 
 
-        # reflect the virtual points
+        # reflect the virtual points to real space
         pts_v_homo = torch.cat((pts_v, pts_v.new_ones(1).expand(*pts_v.shape[:-1], 1)), 2)
-        v_reflected_pts = torch.bmm(A_dash, pts_v_homo.permute(0,2,1)).permute(0,2,1)[:,:,:3]#- mirr_loc
+        ref_pts = torch.bmm(A_dash, pts_v_homo.permute(0,2,1)).permute(0,2,1)[:,:,:3]#- mirr_loc
         
-        # update to 32
-        # far = 
-        # 
-        #
-        # rays_o_v = mirror intersection
-        # rays_d_v = reflected ray 
-        # near_v = norm(intersection)
-        # far_v =  
+        stacked_pts = torch.cat([pts, ref_pts], dim=1)
+
+        '''z_vals gives amt of change/distance'''
+        # calculate reflected z_vals and virtual ray direction in the real space
+        z_vals_ref = torch.norm(ref_pts,dim=-1)
+
+        ref_dir = ref_pts[:, -1] - ref_pts[:, 0] # norm of diff vec
+        ref_dir_norm =  torch.norm(ref_dir,dim=-1, keepdim=True)
+        rays_ref = ref_dir/ref_dir_norm
+
 
         import sys; sys.path.append("/scratch/dajisafe/smpl/mirror_project_dir")
         from util_loading import save2pickle
 
         filename = f"/scratch/dajisafe/smpl/mirror_project_dir/authors_eval_data/temp_dir/raycaster_paramsB.pickle"
         to_pickle = [("pts",pts), ("z_vals", z_vals), ("pts_v", pts_v), ("z_vals_v", z_vals_v),
+                    ("z_vals_ref", z_vals_ref),
                     ("rays_o", rays_o), ("rays_o_v", rays_o_v), ("rays_d", rays_d), 
                     ("rays_d_v", rays_d_v), 
                     ("kp_batch", kp_batch), 
                     ("kp_batch_v", kp_batch_v), 
                     ("cyls", cyls), 
                     ("cyls_v", cyls_v),
-                    ("v_reflected_pts", v_reflected_pts)
+                    ("pts_ref", ref_pts),
+                    ("stacked_pts", stacked_pts), ("rays_ref", rays_ref)
                     ]
 
         save2pickle(filename, to_pickle)
         
-
-
-        # TODO:
-        # repeat
-        # stack both
-        # Nsample//2
-        # Nothing changes after
-        # view dependent effects, rays_d
-        #                      
-
         # prepare local coordinate system
         joint_coords = self.get_subject_joint_coords(subject_idxs, pts.device)
 
-        import ipdb; ipdb.set_trace()
+        #import ipdb; ipdb.set_trace()
         # Step 3: encode
-        encoded = self.encode_inputs(pts, [rays_o[:, None, :], rays_d[:, None, :]], kp_batch,
+        # we map the sample pts q to local space
+        # dan: we maintain and also map the real (view direction) to local space
+        encoded = self.encode_inputs(stacked_pts, [rays_o[:, None, :], rays_d[:, None, :]], kp_batch,
                                      skts, bones, cam_idxs=cams, subject_idxs=subject_idxs,
                                      joint_coords=joint_coords, network=self.network,
                                      **preproc_kwargs)
 
         # Step 4: forwarding in NeRF and get coarse outputs
+        # dan: pass in encoded real information
         raw = self.run_network(encoded, self.network)
-        ret_dict = self.network.raw2outputs(raw, z_vals, rays_d, raw_noise_std, pytest=pytest,
+        #import ipdb; ipdb.set_trace()
+        ret_dict = self.network.raw2outputs(raw, z_vals=z_vals, rays_d=rays_d, 
+                                            z_vals_v=z_vals_ref, rays_d_v=rays_ref, 
+                                            raw_noise_std=raw_noise_std, 
+                                            pytest=pytest,
                                             encoded=encoded, B=preproc_kwargs['density_scale'],
                                             act_fn=preproc_kwargs['density_fn'])
 
-        import ipdb; ipdb.set_trace()
         # Step 6: generate fine outputs
         ret_dict0 = None
         if N_importance > 0:
@@ -504,34 +504,79 @@ class RayCaster(nn.Module):
             ret_dict0 = ret_dict
 
             # get the importance samples (z_samples), as well as sorted_idx
-            pts_is, z_vals, z_samples, sorted_idxs = self.sample_pts_is(rays_o, rays_d, z_vals, ret_dict0['weights'],
-                                                                        N_importance, det=(perturb==0.), pytest=pytest,
+            n_samp_pts = ret_dict0['weights'].shape[1]//2
+            #import ipdb; ipdb.set_trace()
+
+            # TODO: option 2: give more importance to real points
+            pts_is, z_vals, z_samples, sorted_idxs = self.sample_pts_is(rays_o, rays_d, z_vals, ret_dict0['weights'][:,:n_samp_pts],
+                                                                        N_importance//2, det=(perturb==0.), pytest=pytest,
                                                                         is_only=self.single_net, ray_noise_std=ray_noise_std)
 
+            pts_is_v, z_vals_v, z_samples_v, sorted_idxs_v = self.sample_pts_is(rays_o_v, rays_d_v, z_vals_v, ret_dict0['weights'][:,n_samp_pts:],
+                                                                        N_importance//2, det=(perturb==0.), pytest=pytest,
+                                                                        is_only=self.single_net, ray_noise_std=ray_noise_std)
+
+            #import ipdb; ipdb.set_trace()
+            # reflect important sample points
+            pts_is_v_homo = torch.cat((pts_is_v, pts_is_v.new_ones(1).expand(*pts_is_v.shape[:-1], 1)), 2)
+            ref_is_pts = torch.bmm(A_dash, pts_is_v_homo.permute(0,2,1)).permute(0,2,1)[:,:,:3]#- mirr_loc
+            
+            stacked_is_pts = torch.cat([pts_is, ref_is_pts], dim=1)
 
             # only processed the newly sampled pts (to save some computes)
-            encoded_is = self.encode_inputs(pts_is, [rays_o[:, None, :], rays_d[:, None, :]], kp_batch,
+            encoded_is = self.encode_inputs(stacked_is_pts, [rays_o[:, None, :], rays_d[:, None, :]], kp_batch,
                                             skts, bones, cam_idxs=cams, subject_idxs=subject_idxs,
                                             joint_coords=joint_coords, network=self.network_fine,
                                             **preproc_kwargs)
             if not self.single_net:
                 # take the union of both samples:
-                N_total_samples = N_importance + N_samples
-                encoded_is = self._merge_encodings(encoded, encoded_is, sorted_idxs,
-                                                   N_rays, N_total_samples)
+                N_total_samples = N_importance + N_samples # 16+64=80
+                encoded_is = self._merge_encodings(encoded=encoded, encoded_is=encoded_is, sorted_idxs=sorted_idxs,
+                                                   N_rays=N_rays, N_total_samples=N_total_samples,
+                                                   sorted_idxs_v=sorted_idxs_v
+                                                   )
+                #import ipdb; ipdb.set_trace()
                 raw = self.run_network(encoded_is, self.network_fine)
+
             else:
+                import ipdb; ipdb.set_trace()
                 raw_is = self.run_network(encoded_is, self.network_fine)
 
                 N_total_samples = N_importance + N_samples
-                encoded_is = self._merge_encodings(encoded, encoded_is, sorted_idxs,
-                                                   N_rays, N_total_samples)
+                encoded_is = self._merge_encodings(encoded=encoded, encoded_is=encoded_is, sorted_idxs=sorted_idxs,
+                                                   N_rays=N_rays, N_total_samples=N_total_samples)
                 raw  = self._merge_encodings({'raw': raw}, {'raw': raw_is}, sorted_idxs,
                                              N_rays, N_total_samples)['raw']
-            ret_dict = self.network_fine.raw2outputs(raw, z_vals, rays_d, raw_noise_std, pytest=pytest,
+
+            # TODO: option 1: Use virt z_vals  directly
+            z_vals_ref_is = torch.norm(ref_is_pts,dim=-1)
+            z_vals_ref, _idxs = torch.sort(torch.cat([z_vals_ref, z_vals_ref_is], -1), -1)
+            #import ipdb; ipdb.set_trace()
+
+            ret_dict = self.network_fine.raw2outputs(raw, z_vals=z_vals, rays_d=rays_d, 
+                                                    z_vals_v=z_vals_ref, rays_d_v=rays_ref, 
+                                                    raw_noise_std=raw_noise_std, pytest=pytest,
                                                      encoded=encoded_is, B=preproc_kwargs['density_scale'],
                                                      act_fn=preproc_kwargs['density_fn'])
 
+        import sys; sys.path.append("/scratch/dajisafe/smpl/mirror_project_dir")
+        from util_loading import save2pickle
+
+        filename = f"/scratch/dajisafe/smpl/mirror_project_dir/authors_eval_data/temp_dir/raycaster_paramsC.pickle"
+        to_pickle = [("pts_is",pts_is), ("z_vals", z_vals), ("pts_v", pts_v), ("z_vals_v", z_vals_v),
+                    ("z_vals_ref", z_vals_ref),
+                    ("rays_o", rays_o), ("rays_o_v", rays_o_v), ("rays_d", rays_d), 
+                    ("rays_d_v", rays_d_v), 
+                   # ("kp_batch", kp_batch), 
+                    ("kp_batch_v", kp_batch_v), 
+                    ("cyls", cyls), 
+                    ("cyls_v", cyls_v),
+                    ("pts_is_ref", ref_is_pts),
+                    ("stacked_is_pts", stacked_is_pts), ("rays_ref", rays_ref)
+                    ]
+
+        save2pickle(filename, to_pickle)
+        #import ipdb; ipdb.set_trace()
         return self._collect_outputs(ret_dict, ret_dict0)
 
     def encode_inputs(self, pts, rays, kps, skts, bones,
@@ -741,26 +786,46 @@ class RayCaster(nn.Module):
         return pts_is, z_vals, z_samples, sorted_idxs
 
     def _merge_encodings(self, encoded, encoded_is, sorted_idxs,
-                         N_rays, N_total_samples, inplace=True):
+                         N_rays, N_total_samples,
+                        sorted_idxs_v=None, inplace=True):
         """
         merge coarse and fine encodings.
         encoded: dictionary of coarse encodings
         encoded_is: dictionary of fine encodings
         sorted_idxs: define how the [encoded, encoded_is] are sorted
         """
-        gather_idxs = torch.arange(N_rays * (N_total_samples)).view(N_rays, -1)
+
+        #import ipdb; ipdb.set_trace()
+
+        n_sub_samples=N_total_samples//2
+
+        gather_idxs = torch.arange(N_rays * (n_sub_samples)).view(N_rays, -1)
         gather_idxs = torch.gather(gather_idxs, 1, sorted_idxs)
+        gather_idxs_v = torch.gather(gather_idxs, 1, sorted_idxs_v)
+
         if not inplace:
             merged = {}
         else:
             merged = encoded
+
+        #import ipdb; ipdb.set_trace()
         for k in encoded.keys():
             if k != 'pts':
-                merged[k] = merge_samples(encoded[k], encoded_is[k], gather_idxs, N_total_samples)
+                n_sample_pts, n_is_sample_pts = encoded[k].shape[1]//2, encoded_is[k].shape[1]//2
+
+                '''v, r and d (merge for each each half - 1st is real, 2nd is virt)'''
+                k_real = merge_samples(encoded[k][:,:n_sample_pts,:], encoded_is[k][:,:n_is_sample_pts,:], gather_idxs, n_sub_samples)
+                k_virt = merge_samples(encoded[k][:,n_sample_pts:,:], encoded_is[k][:,n_is_sample_pts:,:], gather_idxs_v, n_sub_samples)
+
+                merged[k] = torch.cat([k_real,k_virt],dim=1)
+                #import ipdb; ipdb.set_trace() 
+                #merged[k] = merge_samples(encoded[k], encoded_is[k], gather_idxs, N_total_samples)
 
         # need special treatment here to preserve the computation graph.
         # (otherwise we can just re-encode everything again, but that takes extra computes)
         if 'pts' in encoded and encoded['pts'] is not None:
+            import ipdb; ipdb.set_trace() 
+            
             if not inplace:
                 merged['pts'] = encoded['pts']
 
@@ -769,7 +834,7 @@ class RayCaster(nn.Module):
 
             merged['pts_sorted'] = merge_samples(encoded['pts'], encoded_is['pts'],
                                                  gather_idxs, N_total_samples)
-
+        #import ipdb; ipdb.set_trace()
         return merged
 
     def _collect_outputs(self, ret, ret0=None):

@@ -163,23 +163,26 @@ class NeRF(nn.Module):
         """
         raw2alpha = lambda raw, dists, noise, act_fn=act_fn: 1.-torch.exp(-(act_fn(raw/B + noise))*dists)
 
+        # real
         dists = z_vals[...,1:] - z_vals[...,:-1]
         dists = torch.cat([dists, torch.Tensor([1e10]).expand(dists[...,:1].shape)], -1)  # [N_rays, N_samples]
-        
+
+        # virt
         if z_vals_v is not None:
             dists_v = z_vals_v[...,1:] - z_vals_v[...,:-1]
             dists_v = torch.cat([dists_v, torch.Tensor([1e10]).expand(dists_v[...,:1].shape)], -1)  # [N_rays, N_samples]
             
+        #import ipdb; ipdb.set_trace()
         # Multiply each distance by the norm of its corresponding direction ray
         # to convert to real world distance (accounts for non-unit directions).
-        '''final transmission values'''
-        dists = dists * torch.norm(rays_d[...,None,:], dim=-1)
-
+        '''final transition values'''
+        # real 
+        dists = dists * torch.norm(rays_d[...,None,:], dim=-1) # ray still unit length
+        # virt
         if rays_d_v is not None:
             dists_v = dists_v * torch.norm(rays_d_v[...,None,:], dim=-1)
 
         rgb = rgb_act(raw[...,:3]) * (1 + 2 * rgb_eps) - rgb_eps # [N_rays, N_samples, 3]
-        import ipdb; ipdb.set_trace()
         
         noise = 0.
         if raw_noise_std > 0.:
@@ -192,11 +195,14 @@ class NeRF(nn.Module):
                 noise = torch.Tensor(noise)
 
         '''final alpha values'''
-        if rays_d_v is not None and dists_v is not None:
-            # stack both
+         # stack both
+        if rays_d_v is not None and z_vals_v is not None:
             dists = torch.cat([dists, dists_v], dim=-1)
         
+        
+        #takes in density and stacked transition values
         alpha = raw2alpha(raw[...,3], dists, noise)  # [N_rays, N_samples]
+        #aimport ipdb; ipdb.set_trace()
 
         # weights = alpha * tf.math.cumprod(1.-alpha + 1e-10, -1, exclusive=True)
         # sum_{i=1 to N samples} prob_of_already_hit_particles * alpha_for_i * color_for_i
@@ -207,7 +213,9 @@ class NeRF(nn.Module):
         weights = alpha * torch.cumprod(torch.cat([torch.ones((alpha.shape[0], 1)), 1.-alpha + 1e-10], -1), -1)[:, :-1]
         rgb_map = torch.sum(weights[...,None] * rgb, -2)  # [N_rays, 3]
 
-        depth_map = torch.sum(weights * z_vals, -1)
+        '''Now using the '''
+        stacked_z_vals = torch.cat([z_vals, z_vals_v], dim=-1)
+        depth_map = torch.sum(weights * stacked_z_vals, -1)
         disp_map = 1./torch.max(1e-10 * torch.ones_like(depth_map), depth_map / (torch.sum(weights, -1)  + 1e-10))
 
         invalid_mask = torch.ones_like(disp_map)
