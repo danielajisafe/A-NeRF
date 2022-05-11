@@ -581,23 +581,23 @@ class RayCaster(nn.Module):
                                                         encoded=encoded_is, B=preproc_kwargs['density_scale'],
                                                         act_fn=preproc_kwargs['density_fn'])
 
-            import sys; sys.path.append("/scratch/dajisafe/smpl/mirror_project_dir")
-            from util_loading import save2pickle
+            # import sys; sys.path.append("/scratch/dajisafe/smpl/mirror_project_dir")
+            # from util_loading import save2pickle
 
-            filename = f"/scratch/dajisafe/smpl/mirror_project_dir/authors_eval_data/temp_dir/raycaster_paramsC.pickle"
-            to_pickle = [("pts_is",pts_is), ("z_vals", z_vals), ("pts_v", pts_v), ("z_vals_v", z_vals_v),
-                        ("z_vals_ref", z_vals_ref),
-                        ("rays_o", rays_o), ("rays_o_v", rays_o_v), ("rays_d", rays_d), 
-                        ("rays_d_v", rays_d_v), 
-                        ("kp_batch", kp_batch), 
-                        ("kp_batch_v", kp_batch_v), 
-                        ("cyls", cyls), 
-                        ("cyls_v", cyls_v),
-                        ("pts_is_ref", ref_is_pts),
-                        ("stacked_is_pts", stacked_is_pts), ("rays_ref", rays_ref)
-                        ]
+            # filename = f"/scratch/dajisafe/smpl/mirror_project_dir/authors_eval_data/temp_dir/raycaster_paramsC.pickle"
+            # to_pickle = [("pts_is",pts_is), ("z_vals", z_vals), ("pts_v", pts_v), ("z_vals_v", z_vals_v),
+            #             ("z_vals_ref", z_vals_ref),
+            #             ("rays_o", rays_o), ("rays_o_v", rays_o_v), ("rays_d", rays_d), 
+            #             ("rays_d_v", rays_d_v), 
+            #             ("kp_batch", kp_batch), 
+            #             ("kp_batch_v", kp_batch_v), 
+            #             ("cyls", cyls), 
+            #             ("cyls_v", cyls_v),
+            #             ("pts_is_ref", ref_is_pts),
+            #             ("stacked_is_pts", stacked_is_pts), ("rays_ref", rays_ref)
+            #             ]
 
-            save2pickle(filename, to_pickle)
+            # save2pickle(filename, to_pickle)
         
         
         
