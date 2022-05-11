@@ -148,7 +148,7 @@ class NeRF(nn.Module):
         return outputs
 
     def raw2outputs(self, raw, z_vals, rays_d, z_vals_v=None, rays_d_v=None, raw_noise_std=0, pytest=False,
-                    B=0.01, rgb_act=torch.sigmoid, act_fn=F.relu, rgb_eps=0.001, **kwargs):
+                    B=0.01, rgb_act=torch.sigmoid, act_fn=F.relu, use_mirr=False, rgb_eps=0.001, **kwargs):
         """Transforms model's predictions to semantically meaningful values.
         Args:
             raw: [num_rays, num_samples along ray, 4]. Prediction from model.
@@ -168,7 +168,7 @@ class NeRF(nn.Module):
         dists = torch.cat([dists, torch.Tensor([1e10]).expand(dists[...,:1].shape)], -1)  # [N_rays, N_samples]
 
         # virt
-        if z_vals_v is not None:
+        if z_vals_v is not None and use_mirr:
             dists_v = z_vals_v[...,1:] - z_vals_v[...,:-1]
             dists_v = torch.cat([dists_v, torch.Tensor([1e10]).expand(dists_v[...,:1].shape)], -1)  # [N_rays, N_samples]
             
@@ -179,7 +179,7 @@ class NeRF(nn.Module):
         # real 
         dists = dists * torch.norm(rays_d[...,None,:], dim=-1) # ray still unit length
         # virt
-        if rays_d_v is not None:
+        if rays_d_v is not None and use_mirr:
             dists_v = dists_v * torch.norm(rays_d_v[...,None,:], dim=-1)
 
         rgb = rgb_act(raw[...,:3]) * (1 + 2 * rgb_eps) - rgb_eps # [N_rays, N_samples, 3]
@@ -196,7 +196,7 @@ class NeRF(nn.Module):
 
         '''final alpha values'''
          # stack both
-        if rays_d_v is not None and z_vals_v is not None:
+        if rays_d_v is not None and z_vals_v is not None and use_mirr:
             dists = torch.cat([dists, dists_v], dim=-1)
         
         
@@ -213,9 +213,10 @@ class NeRF(nn.Module):
         weights = alpha * torch.cumprod(torch.cat([torch.ones((alpha.shape[0], 1)), 1.-alpha + 1e-10], -1), -1)[:, :-1]
         rgb_map = torch.sum(weights[...,None] * rgb, -2)  # [N_rays, 3]
 
-        '''Now using the '''
-        stacked_z_vals = torch.cat([z_vals, z_vals_v], dim=-1)
-        depth_map = torch.sum(weights * stacked_z_vals, -1)
+        '''Update'''
+        if use_mirr and z_vals_v is not None:
+            z_vals = torch.cat([z_vals, z_vals_v], dim=-1)
+        depth_map = torch.sum(weights * z_vals, -1)
         disp_map = 1./torch.max(1e-10 * torch.ones_like(depth_map), depth_map / (torch.sum(weights, -1)  + 1e-10))
 
         invalid_mask = torch.ones_like(disp_map)

@@ -90,6 +90,7 @@ def config_parser():
     return parser
 
 def load_nerf(args, nerf_args, skel_type=CMUSkeleton):
+    #import ipdb; ipdb.set_trace()
 
     ckptpath = args.ckptpath
     nerf_args.ft_path = args.ckptpath
@@ -98,6 +99,7 @@ def load_nerf(args, nerf_args, skel_type=CMUSkeleton):
     # dig those out from state_dict directly
     nerf_sdict = torch.load(ckptpath)
 
+    #import ipdb; ipdb.set_trace()
     # get data_attrs used for training the models
     data_attrs = get_dataset(nerf_args).get_meta()
     if 'framecodes.codes.weight' in nerf_sdict['network_fn_state_dict']:
@@ -123,10 +125,12 @@ def load_nerf(args, nerf_args, skel_type=CMUSkeleton):
     return render_kwargs_test, popt_layer
 
 def load_render_data(args, nerf_args, poseopt_layer=None, opt_framecode=True):
+    
     # TODO: note that for models trained on SPIN data, they may not react well
     catalog = init_catalog(args)[args.dataset][args.entry]
     render_data = catalog.get(args.render_type, {})
     data_h5 = catalog['data_h5']
+    #import ipdb; ipdb.set_trace()
 
     # to real cameras (due to the extreme focal length they were trained on..)
     # TODO: add loading with opt pose option
@@ -381,10 +385,18 @@ def init_catalog(args, n_bullet=3):
         'bubble': set_dict(easy_idx, n_step=30),
     }
 
+    # TODO: create validation indices
+    test_val_idx = [0]
     mirror_val = {
         'data_h5': args.data_path + '/mirror_val_h5py.h5',
-        'val': set_dict(load_idxs(args.data_path + '/mirror_val_idxs.npy'), length=1, skip=1),
-        'val2': set_dict(load_idxs(args.data_path + '/mirror_val_idxs.npy')[:300], length=1, skip=1),
+        'val': set_dict(test_val_idx, length=1, skip=1),
+        'val2': set_dict(test_val_idx, length=1, skip=1),
+
+        # dan
+        #'bullet': set_dict(test_val_idx, n_bullet=args.n_bullet),
+
+    #     'val': set_dict(load_idxs(args.data_path + '/mirror_val_idxs.npy'), length=1, skip=1),
+    #     'val2': set_dict(load_idxs(args.data_path + '/mirror_val_idxs.npy')[:300], length=1, skip=1),
     }
     
     hard_idx = [140, 210, 280, 490, 560, 630, 700, 770, 840, 910]
@@ -1067,15 +1079,17 @@ def run_render():
     # update data_path
     if args.dataset== 'mirror':
         GT_PREFIXES[args.dataset] = args.data_path
-    #import ipdb; ipdb.set_trace()
+    
 
     # parse nerf model args
     nerf_args = txt_to_argstring(args.nerf_args)
+    #import ipdb; ipdb.set_trace()
     nerf_args, unknown_args = nerf_config_parser().parse_known_args(nerf_args)
     print(f'UNKNOWN ARGS: {unknown_args}')
 
     # load nerf model
     render_kwargs, poseopt_layer = load_nerf(args, nerf_args)
+    
 
     # prepare the required data
     render_data, gt_dict = load_render_data(args, nerf_args, poseopt_layer, nerf_args.opt_framecode)

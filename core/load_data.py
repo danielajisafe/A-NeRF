@@ -156,6 +156,7 @@ def get_dataset_from_catalog(args, N_samples, dataset_type, subject=None, N_nms=
         DATASET_CATALOG[dataset_type][subject] = args.data_path +'/mirror_train_h5py.h5'
         path = DATASET_CATALOG[dataset_type][subject]
         path_v = args.data_path +'/v_mirror_train_h5py.h5'
+        #import ipdb; ipdb.set_trace()
         
         dataset = MirrorDataset(path, path_v, N_cams=args.N_cams, N_rand_kps=args.rand_train_kps,
                                  **shared_kwargs)

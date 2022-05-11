@@ -61,15 +61,21 @@ def img2psnr(img, target):
     return mse2psnr(img2mse(img, target))
 
 
-def batchify_rays(rays_flat, rays_flat_v, chunk=1024*32, ray_caster=None, **kwargs):
+def batchify_rays(rays_flat, rays_flat_v=None, chunk=1024*32, ray_caster=None, use_mirr=False, **kwargs):
     """Render rays in smaller minibatches to avoid OOM.
     """
     all_ret = {}
 
+    
     for i in range(0, rays_flat.shape[0], chunk):
         batch_kwargs = {k: kwargs[k][i:i+chunk] if torch.is_tensor(kwargs[k]) else kwargs[k]
                         for k in kwargs}
-        ret = ray_caster(rays_flat[i:i+chunk], rays_flat_v[i:i+chunk], **batch_kwargs)
+        if use_mirr:
+            #print("batch_kwargs", batch_kwargs.keys())
+            ret = ray_caster(rays_flat[i:i+chunk], ray_batch_v=rays_flat_v[i:i+chunk], use_mirr=use_mirr, **batch_kwargs)
+        else:
+            #print("batch_kwargs", batch_kwargs.keys())
+            ret = ray_caster(rays_flat[i:i+chunk], use_mirr=use_mirr, **batch_kwargs)
         for k in ret:
             if k not in all_ret:
                 all_ret[k] = []
@@ -106,57 +112,75 @@ def render(H, W, focal, chunk=1024*32, rays=None, c2w=None,
       extras: dict with everything returned by render_rays().
     """
 
-    #import ipdb; ipdb.set_trace()
+    #print(f" ** No of rays o and d: {len(rays)} ** ")
+    mirr_rays = len(rays) > 2
     if (c2w is not None) and (rays is None):
         # special case to render full image
         center = center.ravel() if center is not None else None
         import ipdb; ipdb.set_trace()
-        rays_o, rays_d, rays_o_v, rays_d_v = get_rays(H, W, focal, c2w, center=center)
+        rays_o, rays_d = get_rays(H, W, focal, c2w, center=center)
+        
     else:
         # use provided ray batch
-        #rays_o, rays_d, _, _  = rays
-        rays_o, rays_d, rays_o_v, rays_d_v  = rays
+        if not mirr_rays:
+            rays_o, rays_d  = rays
+        else:
+            rays_o, rays_d, rays_o_v, rays_d_v  = rays
 
     if use_viewdirs:
         # provide ray directions as input
         viewdirs = rays_d
-        viewdirs_v = rays_d_v
+        if mirr_rays: viewdirs_v = rays_d_v
 
         if c2w_staticcam is not None:
             # special case to visualize effect of viewdirs
-            rays_o, rays_d, rays_o_v, rays_d_v = get_rays(H, W, focal, c2w_staticcam)
+            if not mirr_rays:
+                rays_o, rays_d = get_rays(H, W, focal, c2w_staticcam)
+            else:
+                rays_o, rays_d, rays_o_v, rays_d_v = get_rays(H, W, focal, c2w_staticcam)
         
         # normalize ray length
         viewdirs = viewdirs / torch.norm(viewdirs, dim=-1, keepdim=True)
         viewdirs = torch.reshape(viewdirs, [-1,3]).float()
 
-        # normalize ray length (virt)
-        viewdirs_v = viewdirs_v / torch.norm(viewdirs_v, dim=-1, keepdim=True)
-        viewdirs_v = torch.reshape(viewdirs_v, [-1,3]).float()
+        if mirr_rays:
+            # normalize ray length (virt)
+            viewdirs_v = viewdirs_v / torch.norm(viewdirs_v, dim=-1, keepdim=True)
+            viewdirs_v = torch.reshape(viewdirs_v, [-1,3]).float()
 
     # Create ray batch
     sh = rays_d.shape # [..., 3]
     rays_o = torch.reshape(rays_o, [-1,3]).float()
     rays_d = torch.reshape(rays_d, [-1,3]).float()
-    rays_o_v = torch.reshape(rays_o_v, [-1,3]).float()
-    rays_d_v = torch.reshape(rays_d_v, [-1,3]).float()
 
     # 0s and 1s
     near, far = near * torch.ones_like(rays_d[...,:1]), far * torch.ones_like(rays_d[...,:1])
-    near_v, far_v = near_v * torch.ones_like(rays_d_v[...,:1]), far_v * torch.ones_like(rays_d_v[...,:1])
-
     #rays = torch.cat([rays_o, rays_d, near, far], -1)
     rays = torch.cat([rays_o.to(near.device), rays_d.to(near.device), near, far], -1)
-    rays_v = torch.cat([rays_o_v.to(near_v.device), rays_d_v.to(near_v.device), near_v, far_v], -1)
+    
+
+    if mirr_rays:
+        rays_o_v = torch.reshape(rays_o_v, [-1,3]).float()
+        rays_d_v = torch.reshape(rays_d_v, [-1,3]).float()
+
+        near_v, far_v = near_v * torch.ones_like(rays_d_v[...,:1]), far_v * torch.ones_like(rays_d_v[...,:1])
+        rays_v = torch.cat([rays_o_v.to(near_v.device), rays_d_v.to(near_v.device), near_v, far_v], -1)
+    
 
     if use_viewdirs:
         rays = torch.cat([rays, viewdirs], -1)
-        rays_v = torch.cat([rays_v, viewdirs_v], -1)
+        if mirr_rays: rays_v = torch.cat([rays_v, viewdirs_v], -1)
 
-    #import ipdb; ipdb.set_trace()
+    
     # Render and reshape
-    all_ret = batchify_rays(rays, rays_v, chunk, **kwargs)
-    #all_ret_v = batchify_rays(rays_v, chunk, **kwargs)
+    if not mirr_rays:
+        #import ipdb; ipdb.set_trace()
+        use_mirr=False
+        all_ret = batchify_rays(rays_flat=rays, chunk=chunk, use_mirr=use_mirr, **kwargs)
+    else:
+        #import ipdb; ipdb.set_trace()
+        use_mirr=True 
+        all_ret = batchify_rays(rays_flat=rays, rays_flat_v=rays_v, chunk=chunk, use_mirr=use_mirr, **kwargs)
 
     for k in all_ret:
         if all_ret[k].dim() >= 4:
