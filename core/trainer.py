@@ -325,7 +325,7 @@ class Trainer:
 
         # step 2: ray caster forward
         #if i in [4,5]:
-        print(f"{i}: render called in train_batch function")
+        #print(f"{i}: render called in train_batch function")
         #import ipdb; ipdb.set_trace()
         preds = render(H, W, focal, chunk=args.chunk, verbose=i < 10,
                       retraw=False, index=i, **kp_args, **fwd_args, **self.render_kwargs_train)
