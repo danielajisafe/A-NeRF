@@ -14,9 +14,9 @@ import torch.nn.functional as F
 import matplotlib.pyplot as plt
 import pytorch3d.transforms.rotation_conversions as p3dr
 
-# import sys
-# local_dir = "/scratch/dajisafe/smpl/A_temp_folder" if platform.node() == "naye" else "/home/dajisafe/scratch/anerf_mirr"
-# sys.path.append(local_dir)
+import sys
+local_dir = "/scratch/dajisafe/smpl/A_temp_folder" if platform.node() == "naye" else "/home/dajisafe/scratch/anerf_mirr"
+sys.path.append(local_dir)
 
 #import ipdb; ipdb.set_trace()
 from .dan_skeleton_utils import get_parent_idx
