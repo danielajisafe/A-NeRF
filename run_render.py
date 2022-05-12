@@ -1129,8 +1129,8 @@ def run_render():
 
     # make the block size dynamic
     kargs = { 'macro_block_size': None }
-    print("saving video.....")
-    imageio.mimwrite(os.path.join(basedir, "render_rgb_no_skel.mp4"), rgbs, fps=args.fps,**kargs)
+    print("saving only images.....")
+    #imageio.mimwrite(os.path.join(basedir, "render_rgb_no_skel.mp4"), rgbs, fps=args.fps,**kargs)
 
 if __name__ == '__main__':
     torch.set_default_tensor_type('torch.cuda.FloatTensor')
