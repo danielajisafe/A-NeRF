@@ -14,17 +14,22 @@ import torch.nn.functional as F
 import matplotlib.pyplot as plt
 import pytorch3d.transforms.rotation_conversions as p3dr
 
-import sys
-local_dir = "/scratch/dajisafe/smpl" if platform.node() == "naye" else "/home/dajisafe/scratch/anerf_mirr"
-sys.path.append(local_dir)
+# import sys
+# local_dir = "/scratch/dajisafe/smpl/A_temp_folder" if platform.node() == "naye" else "/home/dajisafe/scratch/anerf_mirr"
+# sys.path.append(local_dir)
 
-from skeleton_utils import get_parent_idx
-from kinematic_chain import KinematicChain
+#import ipdb; ipdb.set_trace()
+from .dan_skeleton_utils import get_parent_idx
+from .extras import KinematicChain
 
 #################################
 #         Skeleton Helpers      #
 #################################
 
+
+# def get_parent_idx(joint_names, joint_parents):
+#     # ref: VisualAILab
+#     return np.array([joint_names.index(i) for i in joint_parents])
 
 
 def rotate_x(phi):
