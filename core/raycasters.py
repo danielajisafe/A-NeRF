@@ -422,7 +422,7 @@ class RayCaster(nn.Module):
         # Step 1: prep ray data
         # Note: last dimension for ray direction needs to be normalized
         
-        N_samples=32
+        #N_samples=32
 
 
         rays_o, rays_d = ray_batch[:,0:3], ray_batch[:,3:6] # [N_rays, 3] each            
