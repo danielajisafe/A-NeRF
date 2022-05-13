@@ -12,7 +12,7 @@ from .encoders import *
 from .cutoff_embedder import get_embedder
 from .utils.ray_utils import *
 from .utils.run_nerf_helpers import *
-from .utils.skeleton_utils import SMPLSkeleton, rot6d_to_axisang, axisang_to_rot, bones_to_rot
+from .utils.skeleton_utils import SMPLSkeleton, rot6d_to_axisang, axisang_to_rot, bones_to_rot, line_intersect, create_plane_updated, normalize_batch_normal
 
 def create_raycaster(args, data_attrs, device=None):
     """Instantiate NeRF's MLP model.
@@ -372,6 +372,8 @@ class RayCaster(nn.Module):
                     cyls=None,
                     cyls_v=None,
                     A_dash=None,
+                    m_normal=None,
+                    avg_D=None,
                     bones=None,
                     cams=None,
                     subject_idxs=None,
@@ -420,10 +422,8 @@ class RayCaster(nn.Module):
         # Step 1: prep ray data
         # Note: last dimension for ray direction needs to be normalized
         
-        #try:
-        #    
-        #except:
-        
+        N_samples=32
+
 
         rays_o, rays_d = ray_batch[:,0:3], ray_batch[:,3:6] # [N_rays, 3] each            
         viewdirs = ray_batch[:,-3:] if ray_batch.shape[-1] > 8 else None
@@ -438,7 +438,7 @@ class RayCaster(nn.Module):
             #import ipdb; ipdb.set_trace()
             #print(f" *** ray_batch: {ray_batch.shape} | ray_batch_v: {ray_batch_v.shape} **** ")
 
-            div_factor = 2
+            #div_factor = 2
             rays_o_v, rays_d_v = ray_batch_v[:,0:3], ray_batch_v[:,3:6] # [N_rays, 3] each
 
             viewdirs_v = ray_batch_v[:,-3:] if ray_batch_v.shape[-1] > 8 else None
@@ -446,58 +446,92 @@ class RayCaster(nn.Module):
             near_v, far_v = bounds_v[...,0], bounds_v[...,1] # [-1,1]
 
             # Step 2: Sample 'coarse' sample from the ray segment within the bounding cylinder
-            near, far =  get_near_far_in_cylinder(rays_o, rays_d, cyls, near=near, far=far)
-            pts, z_vals = self.sample_pts(rays_o, rays_d, near, far, N_rays, N_samples//div_factor,
-                                        perturb, lindisp, pytest=pytest, ray_noise_std=ray_noise_std)
+            near, far =  get_near_far_in_cylinder(rays_o=rays_o, rays_d=rays_d, cyl=cyls, near=near, far=far)
+            pts, z_vals = self.sample_pts(rays_o=rays_o, rays_d=rays_d, near=near, far=far, N_rays=N_rays,
+                                         N_samples=N_samples, perturb=perturb, lindisp=lindisp, pytest=pytest, 
+                                         ray_noise_std=ray_noise_std)
 
-            near_v, far_v =  get_near_far_in_cylinder(rays_o_v, rays_d_v, cyls_v, near=near_v, far=far_v)
-            pts_v, z_vals_v = self.sample_pts(rays_o_v, rays_d_v, near_v, far_v, N_rays, N_samples//div_factor,
-                                    perturb, lindisp, pytest=pytest, ray_noise_std=ray_noise_std)
-
-
-            # reflect the virtual points to real space
-            pts_v_homo = torch.cat((pts_v, pts_v.new_ones(1).expand(*pts_v.shape[:-1], 1)), 2)
-            ref_pts = torch.bmm(A_dash, pts_v_homo.permute(0,2,1)).permute(0,2,1)[:,:,:3]#- mirr_loc
+            init_near_v, init_far_v = near_v, far_v
             
-            stacked_pts = torch.cat([pts, ref_pts], dim=1)
+            # Get line of intersection 
+            n_m = normalize_batch_normal(m_normal) # same
+            pt_on_ray_v = near_v*rays_d_v
 
-            '''z_vals gives amt of change/distance'''
-            if not use_z_direct:
-                # calculate reflected z_vals and virtual ray direction in the real space
-                z_vals_ref = torch.norm(ref_pts,dim=-1)
-            else:
-                z_vals_ref=z_vals_v
+            #import ipdb; ipdb.set_trace()
+            intersect_pts=line_intersect(n_m[0].repeat(N_rays).view(N_rays,1,-1), avg_D[0:1].repeat(N_rays,1),\
+                        rays_d_v.view(N_rays,-1,1), pt_on_ray_v.view(N_rays,-1))
+            #intersect_pts = torch.Tensor(intersect_pts)
+        
+            '''reflect the virtual points to real space'''
+            rays_d_v_homo = torch.cat((rays_d_v, rays_d_v.new_ones(1).expand(*rays_d_v.shape[:-1], 1)), 1)
+            rays_ref = (rays_d_v_homo @  A_dash[0])[:,:3]
 
-            ref_dir = ref_pts[:, -1] - ref_pts[:, 0] # norm of diff vec
-            ref_dir_norm =  torch.norm(ref_dir,dim=-1, keepdim=True)
-            rays_ref = ref_dir/ref_dir_norm
+            # get near and far based on reflected points but real cyls 
+            near_ref, far_ref =  get_near_far_in_cylinder(rays_o=intersect_pts, rays_d=rays_ref, cyl=cyls, near=init_near_v,
+                                                far=init_far_v)
 
+            pts_ref, z_vals_ref = self.sample_pts(rays_o=intersect_pts, rays_d=rays_ref, near=near_ref, 
+                                            far=far_ref, N_rays=N_rays, N_samples=N_samples,
+                                            perturb=perturb, lindisp=lindisp, pytest=pytest, ray_noise_std=ray_noise_std)
 
+            #ref_z_vals = sample_from_lineseg(near=near, far=far, N_lines=N_rays, N_samples=64)
+            #mirr2real_z_vals = sample_from_lineseg(near=torch.zeros_like(near), far=far, N_lines=n_rays, N_samples=64)
+
+    
             # import sys; sys.path.append("/scratch/dajisafe/smpl/mirror_project_dir")
             # from util_loading import save2pickle
 
-            # filename = f"/scratch/dajisafe/smpl/mirror_project_dir/authors_eval_data/temp_dir/raycaster_paramsB.pickle"
-            # to_pickle = [("pts",pts), ("z_vals", z_vals), ("pts_v", pts_v), ("z_vals_v", z_vals_v),
-            #             ("z_vals_ref", z_vals_ref),
-            #             ("rays_o", rays_o), ("rays_o_v", rays_o_v), ("rays_d", rays_d), 
+            # filename = f"/scratch/dajisafe/smpl/mirror_project_dir/authors_eval_data/temp_dir/raycaster_paramsB_May12.pickle"
+            # to_pickle = [("pts",pts), ("z_vals", z_vals), 
+            #             ("pts_ref", pts_ref), ("z_vals_ref", z_vals_ref),
+            #             ("intersect_pts", intersect_pts),
+
+            #             ("rays_ref", rays_ref),
+            #             ("rays_o", rays_o), 
+            #             ("rays_o_v", rays_o_v), 
+            #             ("rays_d", rays_d), 
             #             ("rays_d_v", rays_d_v), 
+                        
             #             ("kp_batch", kp_batch), 
             #             ("kp_batch_v", kp_batch_v), 
             #             ("cyls", cyls), 
             #             ("cyls_v", cyls_v),
-            #             ("pts_ref", ref_pts),
-            #             ("stacked_pts", stacked_pts), ("rays_ref", rays_ref)
+            #             ("init_near_v", init_near_v),
+            #             ("init_far_v", init_far_v),
+            #               ("n_m", n_m[0]),
+              #              ("avg_D", avg_D)
             #             ]
+
             # save2pickle(filename, to_pickle)
-            
-            # prepare local coordinate system
-            joint_coords = self.get_subject_joint_coords(subject_idxs, pts.device)
+            # import ipdb; ipdb.set_trace()
+
+            # '''z_vals gives amt of change/distance'''
+            # if not use_z_direct:
+            #     # calculate reflected z_vals and virtual ray direction in the real space
+            #     z_vals_ref = torch.norm(ref_pts,dim=-1)
+            # else:
+            #     z_vals_ref=z_vals_v
+
+            # '''ray direction of reflected points q'''
+            # ref_dir = ref_pts[:, -1] - ref_pts[:, 0] # norm of diff vec
+            # ref_dir_norm =  torch.norm(ref_dir,dim=-1, keepdim=True)
+            # rays_ref = ref_dir/ref_dir_norm   
 
             #import ipdb; ipdb.set_trace()
+            # prepare local coordinate system
+            joint_coords = self.get_subject_joint_coords(subject_idxs, pts.device) # is None
+
+            '''Diff directions but single kp'''
             # Step 3: encode
             # we map the sample pts q to local space
             # dan: we maintain and also map the real (view direction) to local space
-            encoded = self.encode_inputs(stacked_pts, [rays_o[:, None, :], rays_d[:, None, :]], kp_batch,
+            encoded = self.encode_inputs(pts, [rays_o[:, None, :], rays_d[:, None, :]], kp_batch,
+                                        skts, bones, cam_idxs=cams, subject_idxs=subject_idxs,
+                                        joint_coords=joint_coords, network=self.network,
+                                        **preproc_kwargs)
+
+            # though rays_o_ref not used
+            encoded_ref = self.encode_inputs(pts_ref, [intersect_pts[:, None, :], rays_ref[:, None, :]], kp_batch,
                                         skts, bones, cam_idxs=cams, subject_idxs=subject_idxs,
                                         joint_coords=joint_coords, network=self.network,
                                         **preproc_kwargs)
@@ -505,101 +539,119 @@ class RayCaster(nn.Module):
             # Step 4: forwarding in NeRF and get coarse outputs
             # dan: pass in encoded real information
             raw = self.run_network(encoded, self.network)
+            raw_ref = self.run_network(encoded_ref, self.network)
             #import ipdb; ipdb.set_trace()
-            ret_dict = self.network.raw2outputs(raw, z_vals=z_vals, rays_d=rays_d, 
-                                                z_vals_v=z_vals_ref, rays_d_v=rays_ref, 
-                                                raw_noise_std=raw_noise_std, 
-                                                pytest=pytest, use_mirr=use_mirr,
-                                                encoded=encoded, B=preproc_kwargs['density_scale'],
-                                                act_fn=preproc_kwargs['density_fn'])
+            
+            '''check density scale - 1.0, raw (1536, 4)'''
+            ret_dict = self.network.raw2outputs(raw, z_vals, rays_d, raw_noise_std, pytest=pytest,
+                                            encoded=encoded, B=preproc_kwargs['density_scale'],
+                                            act_fn=preproc_kwargs['density_fn'])
+
+            ret_dict_ref = self.network.raw2outputs(raw_ref, z_vals_ref, rays_ref, raw_noise_std, pytest=pytest,
+                                            encoded=encoded_ref, B=preproc_kwargs['density_scale'],
+                                            act_fn=preproc_kwargs['density_fn'])
 
             # Step 6: generate fine outputs
             ret_dict0 = None
+            ret_dict0_ref =  None
+
             if N_importance > 0:
                 # preserve coarse output
                 ret_dict0 = ret_dict
+                ret_dict0_ref = ret_dict_ref
 
                 # get the importance samples (z_samples), as well as sorted_idx
-                n_samp_pts = ret_dict0['weights'].shape[1]//2
-                #import ipdb; ipdb.set_trace()
-
-                # TODO: option 2: give more importance to real points
-                pts_is, z_vals, z_samples, sorted_idxs = self.sample_pts_is(rays_o, rays_d, z_vals, ret_dict0['weights'][:,:n_samp_pts],
-                                                                            N_importance//2, det=(perturb==0.), pytest=pytest,
+                pts_is, z_vals, z_samples, sorted_idxs = self.sample_pts_is(rays_o, rays_d, z_vals, ret_dict0['weights'],
+                                                                            N_importance, det=(perturb==0.), pytest=pytest,
                                                                             is_only=self.single_net, ray_noise_std=ray_noise_std)
-
-                pts_is_v, z_vals_v, z_samples_v, sorted_idxs_v = self.sample_pts_is(rays_o_v, rays_d_v, z_vals_v, ret_dict0['weights'][:,n_samp_pts:],
-                                                                            N_importance//2, det=(perturb==0.), pytest=pytest,
-                                                                            is_only=self.single_net, ray_noise_std=ray_noise_std)
-
-                #import ipdb; ipdb.set_trace()
-                # reflect important sample points
-                pts_is_v_homo = torch.cat((pts_is_v, pts_is_v.new_ones(1).expand(*pts_is_v.shape[:-1], 1)), 2)
-                ref_is_pts = torch.bmm(A_dash, pts_is_v_homo.permute(0,2,1)).permute(0,2,1)[:,:,:3]#- mirr_loc
                 
-                stacked_is_pts = torch.cat([pts_is, ref_is_pts], dim=1)
+                # get the importance samples (z_samples), as well as sorted_idx
+                pts_is_ref, z_vals_ref, z_samples_ref, sorted_idxs_ref = self.sample_pts_is(intersect_pts, rays_ref, z_vals_ref, ret_dict0_ref['weights'],
+                                                                            N_importance, det=(perturb==0.), pytest=pytest,
+                                                                            is_only=self.single_net, ray_noise_std=ray_noise_std)
+
+                #import ipdb; ipdb.set_trace()
 
                 # only processed the newly sampled pts (to save some computes)
-                encoded_is = self.encode_inputs(stacked_is_pts, [rays_o[:, None, :], rays_d[:, None, :]], kp_batch,
+                encoded_is = self.encode_inputs(pts_is, [rays_o[:, None, :], rays_d[:, None, :]], kp_batch,
                                                 skts, bones, cam_idxs=cams, subject_idxs=subject_idxs,
                                                 joint_coords=joint_coords, network=self.network_fine,
                                                 **preproc_kwargs)
+
+                encoded_is_ref = self.encode_inputs(pts_is_ref, [intersect_pts[:, None, :], rays_ref[:, None, :]], kp_batch,
+                                                skts, bones, cam_idxs=cams, subject_idxs=subject_idxs,
+                                                joint_coords=joint_coords, network=self.network_fine,
+                                                **preproc_kwargs)
+
                 if not self.single_net:
                     # take the union of both samples:
-                    N_total_samples = N_importance + N_samples # 16+64=80
-                    encoded_is = self._merge_encodings(encoded=encoded, encoded_is=encoded_is, sorted_idxs=sorted_idxs,
-                                                    N_rays=N_rays, N_total_samples=N_total_samples, use_mirr=use_mirr,
-                                                    sorted_idxs_v=sorted_idxs_v
-                                                    )
-                    #import ipdb; ipdb.set_trace()
+                    N_total_samples = N_importance + N_samples
+                    # for real pts
+                    encoded_is = self._merge_encodings(encoded, encoded_is, sorted_idxs,
+                                                    N_rays, N_total_samples)
                     raw = self.run_network(encoded_is, self.network_fine)
 
-                else:
+                    # for reflected pts
+                    encoded_is_ref = self._merge_encodings(encoded_ref, encoded_is_ref, sorted_idxs_ref,
+                                                    N_rays, N_total_samples)
+                    raw_ref = self.run_network(encoded_is_ref, self.network_fine)
+                
+                else: # used?
                     import ipdb; ipdb.set_trace()
                     raw_is = self.run_network(encoded_is, self.network_fine)
+                    raw_is_ref = self.run_network(encoded_is_ref, self.network_fine)
 
                     N_total_samples = N_importance + N_samples
-                    encoded_is = self._merge_encodings(encoded=encoded, encoded_is=encoded_is, sorted_idxs=sorted_idxs,
-                                                    N_rays=N_rays, N_total_samples=N_total_samples, use_mirr=use_mirr)
-                    raw  = self._merge_encodings({'raw': raw}, {'raw': raw_is}, sorted_idxs=sorted_idxs,
-                                                N_rays=N_rays, N_total_samples=N_total_samples, use_mirr=use_mirr)['raw']
+                    encoded_is = self._merge_encodings(encoded, encoded_is, sorted_idxs,
+                                                    N_rays, N_total_samples)
+                    encoded_is_ref = self._merge_encodings(encoded_ref, encoded_is_ref, sorted_idxs_ref,
+                                                    N_rays, N_total_samples)
 
-                # Use virt z_vals  directly 
-                if not use_z_direct:
-                    # calculate reflected z_vals and virtual ray direction in the real space
-                    z_vals_ref_is = torch.norm(ref_is_pts,dim=-1)
-                    z_vals_ref, _idxs = torch.sort(torch.cat([z_vals_ref, z_vals_ref_is], -1), -1)
-                else:
-                    z_vals_ref=z_vals_v
+                    raw  = self._merge_encodings({'raw': raw}, {'raw': raw_is}, sorted_idxs,
+                                                N_rays, N_total_samples)['raw']
+                    raw_ref  = self._merge_encodings({'raw': raw_ref}, {'raw': raw_is_ref}, sorted_idxs_ref,
+                                                N_rays, N_total_samples)['raw']
 
+                    
                 
-                #import ipdb; ipdb.set_trace()
-
-                ret_dict = self.network_fine.raw2outputs(raw, z_vals=z_vals, rays_d=rays_d, 
-                                                        z_vals_v=z_vals_ref, rays_d_v=rays_ref, 
-                                                        raw_noise_std=raw_noise_std, pytest=pytest, use_mirr=use_mirr,
+                ret_dict = self.network_fine.raw2outputs(raw, z_vals, rays_d, raw_noise_std, pytest=pytest,
                                                         encoded=encoded_is, B=preproc_kwargs['density_scale'],
                                                         act_fn=preproc_kwargs['density_fn'])
+                
+                ret_dict_ref = self.network_fine.raw2outputs(raw_ref, z_vals_ref, rays_ref, raw_noise_std, pytest=pytest,
+                                                        encoded=encoded_is_ref, B=preproc_kwargs['density_scale'],
+                                                        act_fn=preproc_kwargs['density_fn'])
+                                                        
 
             # import sys; sys.path.append("/scratch/dajisafe/smpl/mirror_project_dir")
             # from util_loading import save2pickle
 
             # filename = f"/scratch/dajisafe/smpl/mirror_project_dir/authors_eval_data/temp_dir/raycaster_paramsC.pickle"
-            # to_pickle = [("pts_is",pts_is), ("z_vals", z_vals), ("pts_v", pts_v), ("z_vals_v", z_vals_v),
-            #             ("z_vals_ref", z_vals_ref),
-            #             ("rays_o", rays_o), ("rays_o_v", rays_o_v), ("rays_d", rays_d), 
-            #             ("rays_d_v", rays_d_v), 
-            #             ("kp_batch", kp_batch), 
-            #             ("kp_batch_v", kp_batch_v), 
-            #             ("cyls", cyls), 
-            #             ("cyls_v", cyls_v),
-            #             ("pts_is_ref", ref_is_pts),
-            #             ("stacked_is_pts", stacked_is_pts), ("rays_ref", rays_ref)
-            #             ]
+            # to_pickle = [("pts_is",pts_is), ("z_vals", z_vals), 
+            # ("pts_is_ref", pts_is_ref), ("z_vals_ref", z_vals_ref),
+            
+            # ("intersect_pts", intersect_pts),
+            # ("rays_ref", rays_ref),
+
+            # ("rays_o", rays_o), 
+            # ("rays_o_v", rays_o_v), 
+            # ("rays_d", rays_d), 
+            # ("rays_d_v", rays_d_v), 
+            
+            # ("kp_batch", kp_batch), 
+            # ("kp_batch_v", kp_batch_v), 
+            # ("cyls", cyls), 
+            # ("cyls_v", cyls_v),
+            # ("cyls_v", cyls_v),
+            # ("n_m", n_m[0]),
+            #  ("avg_D", avg_D),
+            # ]
 
             # save2pickle(filename, to_pickle)
+            # import ipdb; ipdb.set_trace()
         
-        
+            #import ipdb; ipdb.set_trace()
+            return self._collect_outputs(ret_dict, ret_dict0, ret_dict_ref, ret_dict0_ref)
         
         else:
             '''Rendering Time Without Mirrors'''
@@ -668,8 +720,8 @@ class RayCaster(nn.Module):
                                                         encoded=encoded_is, B=preproc_kwargs['density_scale'],
                                                         act_fn=preproc_kwargs['density_fn'])
 
-        #import ipdb; ipdb.set_trace()
-        return self._collect_outputs(ret_dict, ret_dict0)
+            #import ipdb; ipdb.set_trace()
+            return self._collect_outputs(ret_dict, ret_dict0)
 
     def encode_inputs(self, pts, rays, kps, skts, bones,
                       cam_idxs=None, subject_idxs=None,
@@ -937,18 +989,32 @@ class RayCaster(nn.Module):
         #import ipdb; ipdb.set_trace()
         return merged
 
-    def _collect_outputs(self, ret, ret0=None):
+    def _collect_outputs(self, ret=None, ret0=None, ret_ref=None, ret0_ref=None):
         ''' collect outputs into a dictionary for loss computation/rendering
         ret: outputs from fine networki (or coarse network if we don't have a fine one).
         ret0: outputs from coarse network.
         '''
+
         collected = {'rgb_map': ret['rgb_map'], 'disp_map': ret['disp_map'],
-                     'acc_map': ret['acc_map'], 'alpha': ret['alpha']}
+                    'acc_map': ret['acc_map'], 'alpha': ret['alpha']}
         if ret0 is not None:
             collected['rgb0'] = ret0['rgb_map']
             collected['disp0'] = ret0['disp_map']
             collected['acc0'] = ret0['acc_map']
             collected['alpha0'] = ret0['alpha']
+
+        if ret_ref is not None:
+            # use mirror
+            collected['rgb_map_ref'] = ret_ref['rgb_map']
+            collected['disp_map_ref'] = ret_ref['disp_map']
+            collected['acc_map_ref'] = ret_ref['acc_map']
+            collected['alpha_ref'] = ret_ref['alpha']
+            
+            if ret0_ref is not None:
+                collected['rgb0_ref'] = ret0_ref['rgb_map']
+                collected['disp0_ref'] = ret0_ref['disp_map']
+                collected['acc0_ref'] = ret0_ref['acc_map']
+                collected['alpha0_ref'] = ret0_ref['alpha']
 
         return collected
 

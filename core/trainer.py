@@ -378,7 +378,8 @@ class Trainer:
                                              bones=batch['bones'], cyls=batch['cyls'],
                                              #use virt pose + real pose
                                             kps_v=batch['kp3d_v'], cyls_v=batch['cyls_v'],
-                                            A_dash=batch['A_dash']), extras
+                                            A_dash=batch['A_dash'], m_normal=batch['m_normal'],
+                                            avg_D=batch['avg_D']), extras
 
         kp_idx = batch['kp_idx']
         if torch.is_tensor(kp_idx):
@@ -392,7 +393,8 @@ class Trainer:
                                             bones=bones, cyls=batch['cyls'], 
                                             #use virt pose + optimized real pose
                                             kps_v=batch['kp3d_v'], cyls_v=batch['cyls_v'],
-                                            A_dash=batch['A_dash'])
+                                            A_dash=batch['A_dash'], m_normal=batch['m_normal'],
+                                            avg_D=batch['avg_D'])
 
         #import ipdb; ipdb.set_trace()
 
@@ -410,11 +412,12 @@ class Trainer:
         return kp_args, extras
 
 
-    def _create_kp_args_dict(self, kps, skts=None, kps_v=None, cyls_v=None, A_dash=None, bones=None, cyls=None, rots=None):
+    def _create_kp_args_dict(self, kps, skts=None, kps_v=None, cyls_v=None, A_dash=None, 
+                            m_normal=None, avg_D=None, bones=None, cyls=None, rots=None):
         # TODO: unified the variable names (across all functions)?
         return {'kp_batch': kps, 'skts': skts, 'bones': bones, 'cyls': cyls,
                 'kp_batch_v': kps_v, 'cyls_v': cyls_v,
-                'A_dash': A_dash}
+                'A_dash': A_dash, 'm_normal': m_normal, 'avg_D': avg_D}
 
     def compute_loss(self, batch, preds,
                      kp_opts=None, popt_detach=False):
@@ -428,11 +431,23 @@ class Trainer:
         total_loss = 0.
         results = []
 
+        #import ipdb; ipdb.set_trace()
+        if preds['rgb_map_ref'] is not None:
+            use_mirr=True
         # rgb loss of nerf
-        results.append(self._compute_nerf_loss(batch, preds['rgb_map'], preds['acc_map']))
+        results.append(self._compute_nerf_loss(batch, rgb_pred=preds['rgb_map'], acc_pred=preds['acc_map'],
+                                                rgb_pred_ref=preds['rgb_map_ref'], acc_pred_ref=preds['acc_map_ref'],
+                                                use_mirr=use_mirr))
+        # if 'rgb_map_ref' in preds and 'acc_map_ref' in preds:
+        #     results.append(self._compute_nerf_loss(batch, preds['rgb_map_ref'], preds['acc_map_ref'], use_mirr=True))
+        
         if 'rgb0' in preds:
-            results.append(self._compute_nerf_loss(batch, preds['rgb0'], preds['acc0'], coarse=True))
-
+            results.append(self._compute_nerf_loss(batch, rgb_pred=preds['rgb0'], acc_pred=preds['acc0'], 
+                                                rgb_pred_ref=preds['rgb0_ref'], acc_pred_ref=preds['acc0_ref']
+                                                , coarse=True, use_mirr=use_mirr))
+            # if 'rgb0_ref' in preds and 'acc0_ref' in preds:
+            #     results.append(self._compute_nerf_loss(batch, preds['rgb0_ref'], preds['acc0_ref'], coarse=True, use_mirr=True))
+         
         # need to update human poses, computes it.
         if not popt_detach:
             results.append(self._compute_kp_loss(batch, kp_opts))
@@ -450,8 +465,8 @@ class Trainer:
 
         return loss_dict, stats
 
-    def _compute_nerf_loss(self, batch, rgb_pred, acc_pred, base_bg=1.0,
-                           coarse=False):
+    def _compute_nerf_loss(self, batch, rgb_pred, acc_pred, rgb_pred_ref=None, acc_pred_ref=None, base_bg=1.0,
+                           coarse=False, use_mirr=False):
         '''compute loss
         TODO: base_bg from argparse?
         '''
@@ -459,13 +474,29 @@ class Trainer:
         loss_fn = get_loss_fn(args.loss_fn, args.loss_beta)
         reg_fn = get_reg_fn(args.reg_fn)
 
+        #import ipdb; ipdb.set_trace()
         bgs = batch['bgs'] if 'bgs' in batch else base_bg
+        bgs_v = batch['bgs_v'] if 'bgs_v' in batch else base_bg
+
         if args.use_background:
             rgb_pred = rgb_pred + (1. - acc_pred)[..., None] * bgs
+            if rgb_pred_ref is not None and acc_pred_ref is not None:
+                rgb_pred_ref = rgb_pred_ref + (1. - acc_pred_ref)[..., None] * bgs_v
+
+
+        # mask loss
         rgb_loss = loss_fn(rgb_pred, batch['target_s'], reduction='mean')
+        if rgb_pred_ref is not None:
+            rgb_loss_v = loss_fn(rgb_pred_ref, batch['target_s_v'], reduction='mean')
+            rgb_loss = (rgb_loss+rgb_loss_v)/2
+
         if coarse:
             rgb_loss = rgb_loss * args.coarse_weight
+
         psnr = img2psnr(rgb_pred.detach(), batch['target_s'])
+        if rgb_pred_ref is not None:
+            psnr_v = img2psnr(rgb_pred_ref.detach(), batch['target_s_v'])
+            psnr = (psnr+psnr_v)/2
 
         loss_tag = set_tag_name(f'rgb_loss', coarse)
         stat_tag = set_tag_name(f'psnr', coarse)
@@ -474,6 +505,10 @@ class Trainer:
 
         if reg_fn is not None:
             reg_loss = reg_fn(acc_pred, batch['fgs'][..., 0], reduction='off') * args.reg_coef
+            if acc_pred_ref is not None:
+                reg_loss_v = reg_fn(acc_pred_ref , batch['fgs_v'][..., 0], reduction='off') * args.reg_coef
+                reg_loss = (reg_loss+reg_loss_v)/2
+            
             reg_tag = set_tag_name('reg_loss', coarse)
             loss_dict[reg_tag] = reg_loss
 
@@ -503,10 +538,12 @@ class Trainer:
         kp_loss = kp_loss.mean() * args.opt_pose_coef
 
         loss_dict = {'kp_loss': kp_loss}
+
         # TODO: add temporal loss
         if args.use_temp_loss:
+            import ipdb; ipdb.set_trace()
             popt_layer = self.popt_kwargs['popt_layer']
-            # obtain indidces of previous/next pose
+            # obtain indices of previous/next pose
             kp_idx_prev = batch['kp_idx'] - 1
             kp_idx_next = (batch['kp_idx'] + 1) % len(popt_layer.bones)
             if torch.is_tensor(kp_idx_prev):
@@ -521,7 +558,7 @@ class Trainer:
                 prev_bones = prev_rots[..., :3, :2].flatten(start_dim=-2)
                 next_bones = next_rots[..., :3, :2].flatten(start_dim=-2)
 
-            # detach the regualizer
+            # detach the reguralizer
             prev_kps, prev_bones = prev_kps.detach(), prev_bones.detach()
             next_kps, next_bones = next_kps.detach(), next_bones.detach()
             temp_valid = batch['temp_val']

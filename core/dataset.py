@@ -90,7 +90,8 @@ class BaseH5Dataset(Dataset):
 
         # get kp index and kp, skt, bone, cyl
         kp_idxs, kps, bones, skts, cyls = self.get_pose_data(idx, q_idx, self.N_samples)
-        kp_idxs_v, kps_v, cyls_v, A_dash = self.get_pose_data_v(idx, q_idx, self.N_samples)
+        kp_idxs_v, kps_v, cyls_v, A_dash, m_normal, avg_D = self.get_pose_data_v(idx, q_idx, self.N_samples)
+        #import ipdb; ipdb.set_trace()
 
         # sample pixels
         pixel_idxs = self.sample_pixels(idx, q_idx)
@@ -103,7 +104,7 @@ class BaseH5Dataset(Dataset):
         # load the image, foreground and background,
         # and get values from sampled pixels
         rays_rgb, fg, bg = self.get_img_data(idx, pixel_idxs)
-        rays_rgb_v, fg_v, _ = self.get_img_data_v(idx, pixel_idxs_v)
+        rays_rgb_v, fg_v, bg_v = self.get_img_data_v(idx, pixel_idxs_v)
 
         return_dict = {'rays_o': rays_o,
                        'rays_d': rays_d,
@@ -127,8 +128,12 @@ class BaseH5Dataset(Dataset):
                        'fgs': fg,
                        'fgs_v': fg_v,
 
-                       'bgs': bg, # unique per camera/video
-                       'A_dash':A_dash
+                       'bgs': bg, 
+                       'bgs_v': bg_v,
+                       
+                       'A_dash':A_dash,
+                       "m_normal": m_normal,
+                        "avg_D": avg_D,
                        }
 
         return return_dict
@@ -233,7 +238,10 @@ class BaseH5Dataset(Dataset):
         self.kp_map_v, self.kp_uidxs_v = None, None # only not None when self.multiview = True
         self.kp3d_v, self.cyls_v = self._load_pose_data_v(dataset_v)
         self.A_dash = dataset_v['A_dash'][:]
+        self.m_normal = dataset_v['m_normal'][:]
+        self.avg_D = dataset_v['avg_D'][:]
 
+        #import ipdb; ipdb.set_trace()
         #self.focals, self.c2ws = self._load_camera_data(dataset)
         self.temp_validity_v = self.init_temporal_validity()
 
@@ -610,6 +618,8 @@ class BaseH5Dataset(Dataset):
         kp = self.kp3d_v[real_idx:real_idx+1].astype(np.float32)
         cyl = self.cyls_v[real_idx:real_idx+1].astype(np.float32)
         A_dash = self.A_dash[real_idx:real_idx+1].astype(np.float32)
+        m_normal = self.m_normal[real_idx:real_idx+1].astype(np.float32)
+        avg_D = self.avg_D #[real_idx:real_idx+1].astype(np.float32)
 
         # TODO: think this part through
         temp_val = None
@@ -620,8 +630,10 @@ class BaseH5Dataset(Dataset):
         kp = kp.repeat(N_samples, 0)
         cyl = cyl.repeat(N_samples, 0)
         A_dash = A_dash.repeat(N_samples, 0)
+        m_normal = m_normal.repeat(N_samples, 0)
+        avg_D = avg_D.repeat(N_samples, 0)
 
-        return kp_idx, kp, cyl, A_dash
+        return kp_idx, kp, cyl, A_dash, m_normal, avg_D
 
 
     def get_kp_idx(self, idx, q_idx):
@@ -727,6 +739,9 @@ class BaseH5Dataset(Dataset):
         data_attrs['gt_kp3d_v'] = self.gt_kp3d_v[k_idxs] if self.gt_kp3d_v is not None else None,
         data_attrs['kp3d_v'] = self.kp3d_v[k_idxs]
         data_attrs['A_dash'] = self.A_dash[k_idxs]
+        data_attrs['m_normal'] = self.m_normal[k_idxs]
+        data_attrs['avg_D'] = self.avg_D[:]
+        #import ipdb; ipdb.set_trace()
         #data_attrs['kp_map'] = self.kp_map, # important for multiview setting
         #data_attrs['kp_uidxs'] = self.kp_uidxs, # important for multiview setting
 

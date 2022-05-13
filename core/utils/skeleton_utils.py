@@ -31,6 +31,68 @@ from .extras import KinematicChain
 #     # ref: VisualAILab
 #     return np.array([joint_names.index(i) for i in joint_parents])
 
+def normalize_batch_normal(n):
+    assert len(n.shape)==2, "shape is not 2-dim or size 2"
+    eps=1e-36
+    n_norm =  torch.norm(n, dim=1, keepdim=True) + eps ;
+    n_m = torch.div(n, n_norm);
+    #import ipdb; ipdb.set_trace()
+    return n_m
+
+
+def line_intersect(planeNormal,planePoint,rayDirection,rayPoint):
+    #Based on http://geomalgorithms.com/a05-_intersect-1.html
+
+
+    epsilon=1e-6
+    N_rays = planeNormal.shape[0]
+
+    #ndotu = planeNormal.dot(rayDirection) 
+    ndotu = torch.bmm(planeNormal, rayDirection).view(N_rays, -1)
+    
+    if all(abs(ndotu) < epsilon):
+        print ("No/Some intersection or some line is not within plane")
+
+    #import ipdb; ipdb.set_trace()
+    w = rayPoint - planePoint
+    si = torch.bmm(-planeNormal, w.view(N_rays,-1,1)).view(N_rays, -1)
+    si /= ndotu
+    #si = -planeNormal.dot(w) / ndotu
+    Psi = w.view(N_rays, -1) + si * rayDirection.view(N_rays, -1) + planePoint
+    #import ipdb; ipdb.set_trace()
+
+    #print ("intersection at", Psi)
+    return Psi
+
+def create_plane_updated(x=None, y=None, z=None, normal=None, any_point=None, plane_d=None, length_x=10, length_y=5,
+                 length_z=10, n_sample=50, scale=1.0):
+
+    if plane_d is None:
+        plane_d = -any_point.dot(normal)
+        
+    x_r = length_x / 2.
+    y_r = length_y / 2.
+    z_r = length_z / 2.
+    if z is not None:
+        plane ='xy'
+        x, y = np.meshgrid(np.linspace(-x_r, x_r, n_sample), np.linspace(-y_r, y_r, n_sample))
+        z = (-normal[0].item()*x  -normal[1].item()*y  - plane_d.item()) * (scale/(normal[2].item() + eps))
+        plane = np.stack([x, y, z], axis=-1)
+    elif y is not None:
+        plane = 'xz'
+        x, z = np.meshgrid(np.linspace(-x_r, x_r, n_sample), np.linspace(-z_r, z_r, n_sample))
+        y = (-normal[0].item()*x  -normal[1].item()*z  - plane_d.item()) * (scale/(normal[2].item() + eps))
+        plane = np.stack([x+any_point[0], y+any_point[1], z+any_point[2]], axis=-1)
+    else:
+        plane = 'yz' 
+        #y, z = np.meshgrid(range(1.5), range(10))
+        y, z = np.meshgrid(np.linspace(-y_r, y_r, n_sample), np.linspace(-z_r, z_r, n_sample))
+        x = (-normal[0].item()*y  -normal[1].item()*z  - plane_d.item()) * (scale/(normal[2].item() + eps))
+        plane = np.stack([x, y, z], axis=-1)
+        #plane = np.stack([np.ones_like(y) * x, y, z], axis=-1)
+    
+    #import ipdb; ipdb.set_trace()
+    return plane.astype(np.float32), plane_d
 
 def rotate_x(phi):
     cos = np.cos(phi)

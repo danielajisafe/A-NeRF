@@ -236,6 +236,9 @@ def config_parser():
 
     import configargparse
     parser = configargparse.ArgumentParser()
+
+    '''Store true in args is true only when its called (not default)'''
+
     parser.add_argument('--config', is_config_file=True,
                         help='config file path')
     parser.add_argument("--expname", type=str,
