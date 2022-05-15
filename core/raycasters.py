@@ -462,9 +462,11 @@ class RayCaster(nn.Module):
                         rays_d_v.view(N_rays,-1,1), pt_on_ray_v.view(N_rays,-1))
             #intersect_pts = torch.Tensor(intersect_pts)
         
-            '''reflect the virtual points to real space'''
-            rays_d_v_homo = torch.cat((rays_d_v, rays_d_v.new_ones(1).expand(*rays_d_v.shape[:-1], 1)), 1)
-            rays_ref = (rays_d_v_homo @  A_dash[0])[:,:3]
+            '''reflect the virtual points to real space - drop trans part in A matrix'''
+            rays_ref = (A_dash[0][:3,:3] @ rays_d_v.permute(1,0)).permute(1,0)
+
+            # rays_d_v_homo = torch.cat((rays_d_v, rays_d_v.new_ones(1).expand(*rays_d_v.shape[:-1], 1)), 1)
+            # rays_ref = (rays_d_v_homo @  A_dash[0])[:,:3]
 
             # get near and far based on reflected points but real cyls 
             near_ref, far_ref =  get_near_far_in_cylinder(rays_o=intersect_pts, rays_d=rays_ref, cyl=cyls, near=init_near_v,
@@ -478,32 +480,33 @@ class RayCaster(nn.Module):
             #mirr2real_z_vals = sample_from_lineseg(near=torch.zeros_like(near), far=far, N_lines=n_rays, N_samples=64)
 
     
-            # import sys; sys.path.append("/scratch/dajisafe/smpl/mirror_project_dir")
-            # from util_loading import save2pickle
+            import sys; sys.path.append("/scratch/dajisafe/smpl/mirror_project_dir")
+            from util_loading import save2pickle
 
-            # filename = f"/scratch/dajisafe/smpl/mirror_project_dir/authors_eval_data/temp_dir/raycaster_paramsB_May12.pickle"
-            # to_pickle = [("pts",pts), ("z_vals", z_vals), 
-            #             ("pts_ref", pts_ref), ("z_vals_ref", z_vals_ref),
-            #             ("intersect_pts", intersect_pts),
+            filename = f"/scratch/dajisafe/smpl/mirror_project_dir/authors_eval_data/temp_dir/raycaster_paramsB_May12.pickle"
+            to_pickle = [("pts",pts), ("z_vals", z_vals), 
+                        #("pts_v",pts_v), ("z_vals_v", z_vals_v), 
+                        ("pts_ref", pts_ref), ("z_vals_ref", z_vals_ref),
+                        ("intersect_pts", intersect_pts),
 
-            #             ("rays_ref", rays_ref),
-            #             ("rays_o", rays_o), 
-            #             ("rays_o_v", rays_o_v), 
-            #             ("rays_d", rays_d), 
-            #             ("rays_d_v", rays_d_v), 
+                        ("rays_ref", rays_ref),
+                        ("rays_o", rays_o), 
+                        ("rays_o_v", rays_o_v), 
+                        ("rays_d", rays_d), 
+                        ("rays_d_v", rays_d_v), 
                         
-            #             ("kp_batch", kp_batch), 
-            #             ("kp_batch_v", kp_batch_v), 
-            #             ("cyls", cyls), 
-            #             ("cyls_v", cyls_v),
-            #             ("init_near_v", init_near_v),
-            #             ("init_far_v", init_far_v),
-            #               ("n_m", n_m[0]),
-              #              ("avg_D", avg_D)
-            #             ]
+                        ("kp_batch", kp_batch), 
+                        ("kp_batch_v", kp_batch_v), 
+                        ("cyls", cyls), 
+                        ("cyls_v", cyls_v),
+                        ("init_near_v", init_near_v),
+                        ("init_far_v", init_far_v),
+                          ("n_m", n_m[0]),
+                           ("avg_D", avg_D)
+                        ]
 
-            # save2pickle(filename, to_pickle)
-            # import ipdb; ipdb.set_trace()
+            save2pickle(filename, to_pickle)
+            import ipdb; ipdb.set_trace()
 
             # '''z_vals gives amt of change/distance'''
             # if not use_z_direct:
@@ -845,7 +848,7 @@ class RayCaster(nn.Module):
                                               render_kwargs, subject_idxs, netchunk,
                                               v=v)[..., :1]
 
-        return raw_density.reshape(*sh[:-1])
+        return raw_density.reshape(*sh[:-1]).transpose(1, 0)
 
     def render_pts_density(self, pts, kps, skts, bones, render_kwargs=None,
                            subject_idxs=None, netchunk=1024*64, network=None,

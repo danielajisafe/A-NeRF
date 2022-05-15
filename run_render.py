@@ -401,8 +401,8 @@ def init_catalog(args, n_bullet=3):
     
     hard_idx = [140, 210, 280, 490, 560, 630, 700, 770, 840, 910]
     mirror_hard = {
-        'data_h5': args.data_path + '/mirror_train_h5py.h5',
-        'data_h5_v': args.data_path + '/v_mirror_train_h5py.h5',
+        'data_h5': args.data_path + '/mirror_train_h5py.h5', #1620
+        'data_h5_v': args.data_path + '/v_mirror_train_h5py.h5', #1620
         'retarget': set_dict(hard_idx, length=60, skip=5, center_kps=True),
         #'bullet': set_dict([190,  210,  230,  490,  510,  530,  790,  810,  830,  910,  930, 950, 1090, 1110, 1130],
         #                   n_bullet=n_bullet, center_kps=True, center_cam=False),
@@ -414,7 +414,7 @@ def init_catalog(args, n_bullet=3):
     # SURREAL
     easy_idx = [10, 70, 350, 420, 490, 910, 980, 1050]
     surreal_val = {
-        'data_h5': 'data/surreal/surreal_val_h5py.h5',
+        'data_h5': 'data/surreal/surreal_val_h5py.h5', 
         'val': set_dict(load_idxs('data/surreal/surreal_val_idxs.npy'), length=1, skip=1),
         'val2': set_dict(load_idxs('data/surreal/surreal_val_idxs.npy')[:300], length=1, skip=1),
     }

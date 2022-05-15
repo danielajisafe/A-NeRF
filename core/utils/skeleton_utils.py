@@ -1454,13 +1454,13 @@ def plot_joint_axis(kp, l2ws=None, fig=None, scale=0.1):
         flz += [k[2], f[2], None]
 
     up_lines = go.Scatter3d(x=ulx, y=uly, z=ulz, mode="lines",
-                            line=dict(color="magenta", width=2),
+                            line=dict(color="green", width=4),
                             hoverinfo="none")
     right_lines = go.Scatter3d(x=rlx, y=rly, z=rlz, mode="lines",
-                               line=dict(color="green", width=2),
+                               line=dict(color="red", width=4),
                                hoverinfo="none")
     forward_lines = go.Scatter3d(x=flx, y=fly, z=flz, mode="lines",
-                                 line=dict(color="orange", width=2),
+                                 line=dict(color="blue", width=4),
                                  hoverinfo="none")
     data = [up_lines, right_lines, forward_lines]
     if fig is not None:

@@ -94,7 +94,10 @@ class BaseH5Dataset(Dataset):
         #import ipdb; ipdb.set_trace()
 
         # sample pixels
-        pixel_idxs = self.sample_pixels(idx, q_idx)
+        try:
+            pixel_idxs = self.sample_pixels(idx, q_idx)
+        except:
+            import ipdb; ipdb.set_trace()
         pixel_idxs_v = self.sample_pixels_v(idx, q_idx)
 
         # maybe get a version that computes only sampled points?
