@@ -604,7 +604,7 @@ class RayCaster(nn.Module):
                                               render_kwargs, subject_idxs, netchunk,
                                               v=v)[..., :1]
 
-        return raw_density.reshape(*sh[:-1])
+        return raw_density.reshape(*sh[:-1]).transpose(1, 0)
 
     def render_pts_density(self, pts, kps, skts, bones, render_kwargs=None,
                            subject_idxs=None, netchunk=1024*64, network=None,
