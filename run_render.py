@@ -383,6 +383,7 @@ def init_catalog(args, n_bullet=3):
         'retarget': set_dict(easy_idx, length=25, skip=2, center_kps=True),
         'bullet': set_dict(easy_idx, n_bullet=args.n_bullet),
         'bubble': set_dict(easy_idx, n_step=30),
+        'mesh': set_dict([0], length=1, skip=1),
     }
 
     # TODO: create validation indices
@@ -408,7 +409,7 @@ def init_catalog(args, n_bullet=3):
         #                   n_bullet=n_bullet, center_kps=True, center_cam=False),
         'bubble': set_dict(hard_idx, n_step=30),
         #'val': set_dict(np.array([1200 * i + np.arange(420, 700)[::5] for i in range(0, 9, 2)]).reshape(-1), length=1, skip=1),
-        #'mesh': set_dict([930], length=1, skip=1),
+        'mesh': set_dict([0], length=1, skip=1),
     }
 
     # SURREAL

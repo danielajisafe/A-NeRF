@@ -430,9 +430,10 @@ class RayCaster(nn.Module):
         bounds = torch.reshape(ray_batch[...,6:8], [-1,1,2])
         near, far = bounds[...,0], bounds[...,1] # [-1,1]
 
+        #import ipdb; ipdb.set_trace()
         # Use virt z_vals  directly 
         if use_mirr:
-            use_z_direct = True 
+            #use_z_direct = True 
 
             N_rays = ray_batch.shape[0]
             #import ipdb; ipdb.set_trace()
@@ -480,33 +481,33 @@ class RayCaster(nn.Module):
             #mirr2real_z_vals = sample_from_lineseg(near=torch.zeros_like(near), far=far, N_lines=n_rays, N_samples=64)
 
     
-            import sys; sys.path.append("/scratch/dajisafe/smpl/mirror_project_dir")
-            from util_loading import save2pickle
+            # import sys; sys.path.append("/scratch/dajisafe/smpl/mirror_project_dir")
+            # from util_loading import save2pickle
 
-            filename = f"/scratch/dajisafe/smpl/mirror_project_dir/authors_eval_data/temp_dir/raycaster_paramsB_May12.pickle"
-            to_pickle = [("pts",pts), ("z_vals", z_vals), 
-                        #("pts_v",pts_v), ("z_vals_v", z_vals_v), 
-                        ("pts_ref", pts_ref), ("z_vals_ref", z_vals_ref),
-                        ("intersect_pts", intersect_pts),
+            # filename = f"/scratch/dajisafe/smpl/mirror_project_dir/authors_eval_data/temp_dir/raycaster_paramsB_May12.pickle"
+            # to_pickle = [("pts",pts), ("z_vals", z_vals), 
+            #             #("pts_v",pts_v), ("z_vals_v", z_vals_v), 
+            #             ("pts_ref", pts_ref), ("z_vals_ref", z_vals_ref),
+            #             ("intersect_pts", intersect_pts),
 
-                        ("rays_ref", rays_ref),
-                        ("rays_o", rays_o), 
-                        ("rays_o_v", rays_o_v), 
-                        ("rays_d", rays_d), 
-                        ("rays_d_v", rays_d_v), 
+            #             ("rays_ref", rays_ref),
+            #             ("rays_o", rays_o), 
+            #             ("rays_o_v", rays_o_v), 
+            #             ("rays_d", rays_d), 
+            #             ("rays_d_v", rays_d_v), 
                         
-                        ("kp_batch", kp_batch), 
-                        ("kp_batch_v", kp_batch_v), 
-                        ("cyls", cyls), 
-                        ("cyls_v", cyls_v),
-                        ("init_near_v", init_near_v),
-                        ("init_far_v", init_far_v),
-                          ("n_m", n_m[0]),
-                           ("avg_D", avg_D)
-                        ]
+            #             ("kp_batch", kp_batch), 
+            #             ("kp_batch_v", kp_batch_v), 
+            #             ("cyls", cyls), 
+            #             ("cyls_v", cyls_v),
+            #             ("init_near_v", init_near_v),
+            #             ("init_far_v", init_far_v),
+            #               ("n_m", n_m[0]),
+            #                ("avg_D", avg_D)
+            #             ]
 
-            save2pickle(filename, to_pickle)
-            import ipdb; ipdb.set_trace()
+            # save2pickle(filename, to_pickle)
+            # import ipdb; ipdb.set_trace()
 
             # '''z_vals gives amt of change/distance'''
             # if not use_z_direct:
@@ -654,7 +655,7 @@ class RayCaster(nn.Module):
             # import ipdb; ipdb.set_trace()
         
             #import ipdb; ipdb.set_trace()
-            return self._collect_outputs(ret_dict, ret_dict0, ret_dict_ref, ret_dict0_ref)
+            return self._collect_outputs(ret_dict, ret_dict0, ret_dict_ref, ret_dict0_ref, use_mirr=use_mirr)
         
         else:
             '''Rendering Time Without Mirrors'''
@@ -992,33 +993,36 @@ class RayCaster(nn.Module):
         #import ipdb; ipdb.set_trace()
         return merged
 
-    def _collect_outputs(self, ret=None, ret0=None, ret_ref=None, ret0_ref=None):
+    def _collect_outputs(self, ret=None, ret0=None, ret_ref=None, ret0_ref=None, use_mirr=False):
         ''' collect outputs into a dictionary for loss computation/rendering
         ret: outputs from fine networki (or coarse network if we don't have a fine one).
         ret0: outputs from coarse network.
         '''
 
+        # base
         collected = {'rgb_map': ret['rgb_map'], 'disp_map': ret['disp_map'],
                     'acc_map': ret['acc_map'], 'alpha': ret['alpha']}
+
         if ret0 is not None:
             collected['rgb0'] = ret0['rgb_map']
             collected['disp0'] = ret0['disp_map']
             collected['acc0'] = ret0['acc_map']
             collected['alpha0'] = ret0['alpha']
 
-        if ret_ref is not None:
+        if ret_ref is not None and use_mirr:
             # use mirror
             collected['rgb_map_ref'] = ret_ref['rgb_map']
             collected['disp_map_ref'] = ret_ref['disp_map']
             collected['acc_map_ref'] = ret_ref['acc_map']
             collected['alpha_ref'] = ret_ref['alpha']
             
-            if ret0_ref is not None:
+            if ret0_ref is not None and use_mirr:
                 collected['rgb0_ref'] = ret0_ref['rgb_map']
                 collected['disp0_ref'] = ret0_ref['disp_map']
                 collected['acc0_ref'] = ret0_ref['acc_map']
                 collected['alpha0_ref'] = ret0_ref['alpha']
 
+        #import ipdb; ipdb.set_trace()
         return collected
 
     def get_subject_joint_coords(self, subject_idxs=None, device=None):

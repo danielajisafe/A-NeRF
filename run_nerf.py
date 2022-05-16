@@ -125,7 +125,7 @@ def render_path(render_poses, hwf, chunk, render_kwargs,
 
         #import ipdb; ipdb.set_trace()
         if len(ray_input[0]) > 0:
-            #print(f"{index}: render called in render_path function")
+            print(f"{index}: render called in render_path function")
             ret_dict = render(h, w, focal, rays=ray_input, chunk=chunk, c2w=c2w[:3,:4],
                               kp_batch=kp_input, skts=skt_input, cyls=cyl_input, cams=cam_input,
                               subject_idxs=subject_input,
@@ -239,6 +239,9 @@ def config_parser():
 
     '''Store true in args is true only when its called (not default)'''
 
+    parser.add_argument("--use_mirr", action='store_true',
+                        help='use both masks')
+
     parser.add_argument('--config', is_config_file=True,
                         help='config file path')
     parser.add_argument("--expname", type=str,
@@ -278,6 +281,13 @@ def config_parser():
                         help='use a single network for coarse and fine network')
     parser.add_argument("--coarse_weight", type=float, default=1.0,
                         help='loss weight for coarse samples.')
+
+    parser.add_argument("--r_weight", type=float, default=0.8,
+                        help='loss weight for real points. (optional)')
+    parser.add_argument("--v_weight", type=float, default=0.5,
+                        help='loss weight for virtual points. (optional)')
+
+                        
 
     parser.add_argument("--use_temp_loss", action='store_true',
                         help='use temporal smoothness loss')

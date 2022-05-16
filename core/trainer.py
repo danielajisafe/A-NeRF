@@ -87,7 +87,7 @@ def batchify_rays(rays_flat, rays_flat_v=None, chunk=1024*32, ray_caster=None, u
 
 def render(H, W, focal, chunk=1024*32, rays=None, c2w=None,
            near=0., far=1., near_v=0., far_v=1., center=None,
-           use_viewdirs=False, c2w_staticcam=None,
+           use_viewdirs=False, c2w_staticcam=None, use_mirr=False,
            index=None,
             **kwargs):
     """Render rays
@@ -113,37 +113,47 @@ def render(H, W, focal, chunk=1024*32, rays=None, c2w=None,
     """
 
     #print(f" ** No of rays o and d: {len(rays)} ** ")
-    mirr_rays = len(rays) > 2
+    print(f"using mirror: {use_mirr}")
+
     if (c2w is not None) and (rays is None):
         # special case to render full image
         center = center.ravel() if center is not None else None
         import ipdb; ipdb.set_trace()
+    
         rays_o, rays_d = get_rays(H, W, focal, c2w, center=center)
         
     else:
         # use provided ray batch
-        if not mirr_rays:
+
+        # rendering time
+        if len(rays) == 2:
             rays_o, rays_d  = rays
-        else:
+        
+        # train time (then 4)
+        elif not use_mirr:
+            rays_o, rays_d, _, _ = rays
+        else:   
             rays_o, rays_d, rays_o_v, rays_d_v  = rays
 
+    #import ipdb; ipdb.set_trace()
     if use_viewdirs:
         # provide ray directions as input
         viewdirs = rays_d
-        if mirr_rays: viewdirs_v = rays_d_v
+        if use_mirr: viewdirs_v = rays_d_v
 
         if c2w_staticcam is not None:
             # special case to visualize effect of viewdirs
-            if not mirr_rays:
-                rays_o, rays_d = get_rays(H, W, focal, c2w_staticcam)
-            else:
-                rays_o, rays_d, rays_o_v, rays_d_v = get_rays(H, W, focal, c2w_staticcam)
+            import ipdb; ipdb.set_trace()
+            # if not use_mirr:
+            #     rays_o, rays_d = get_rays(H, W, focal, c2w_staticcam)
+            # else:
+            rays_o, rays_d, rays_o_v, rays_d_v = get_rays(H, W, focal, c2w_staticcam)
         
         # normalize ray length
         viewdirs = viewdirs / torch.norm(viewdirs, dim=-1, keepdim=True)
         viewdirs = torch.reshape(viewdirs, [-1,3]).float()
 
-        if mirr_rays:
+        if use_mirr:
             # normalize ray length (virt)
             viewdirs_v = viewdirs_v / torch.norm(viewdirs_v, dim=-1, keepdim=True)
             viewdirs_v = torch.reshape(viewdirs_v, [-1,3]).float()
@@ -159,7 +169,7 @@ def render(H, W, focal, chunk=1024*32, rays=None, c2w=None,
     rays = torch.cat([rays_o.to(near.device), rays_d.to(near.device), near, far], -1)
     
 
-    if mirr_rays:
+    if use_mirr:
         rays_o_v = torch.reshape(rays_o_v, [-1,3]).float()
         rays_d_v = torch.reshape(rays_d_v, [-1,3]).float()
 
@@ -169,17 +179,17 @@ def render(H, W, focal, chunk=1024*32, rays=None, c2w=None,
 
     if use_viewdirs:
         rays = torch.cat([rays, viewdirs], -1)
-        if mirr_rays: rays_v = torch.cat([rays_v, viewdirs_v], -1)
+        if use_mirr: rays_v = torch.cat([rays_v, viewdirs_v], -1)
 
     
     # Render and reshape
-    if not mirr_rays:
+    if not use_mirr:
         #import ipdb; ipdb.set_trace()
-        use_mirr=False
+        #use_mirr=False
         all_ret = batchify_rays(rays_flat=rays, chunk=chunk, use_mirr=use_mirr, **kwargs)
     else:
         #import ipdb; ipdb.set_trace()
-        use_mirr=True 
+        #use_mirr=True 
         all_ret = batchify_rays(rays_flat=rays, rays_flat_v=rays_v, chunk=chunk, use_mirr=use_mirr, **kwargs)
 
     for k in all_ret:
@@ -188,40 +198,40 @@ def render(H, W, focal, chunk=1024*32, rays=None, c2w=None,
         k_sh = list(sh[:-1]) + list(all_ret[k].shape[1:])
         all_ret[k] = torch.reshape(all_ret[k], k_sh)
 
-    #import ipdb; ipdb.set_trace()
-    def anony(name,index):
-        import sys; sys.path.append("/scratch/dajisafe/smpl/mirror_project_dir")
-        from util_loading import save2pickle
+        #import ipdb; ipdb.set_trace()
+        #def anony(name,index):
+            #import sys; sys.path.append("/scratch/dajisafe/smpl/mirror_project_dir")
+            #from util_loading import save2pickle
 
-        # filename = f"/scratch/dajisafe/smpl/mirror_project_dir/authors_eval_data/temp_dir/entrance_params_{name}_{index}.pickle"
-        # to_pickle = [("center",center), ("near", near), ("far", far), ("rays", rays), ("rays_o", rays_o),
-        # ("rays_d", rays_d), ("viewdirs", viewdirs),("c2w_staticcam", c2w_staticcam), 
-        # ("all_ret", all_ret), ("c2w", c2w), ("chunk", chunk), ("H", H), ("W", W),
-        # ("focal", focal),
-        # ("kp_batch", kwargs['kp_batch']), ("skts", kwargs['skts']), ("bones", kwargs['bones']), 
-        # ("cyls", kwargs['cyls']), ("cams", kwargs['cams']), ("perturb", kwargs['perturb']), 
-        # ("N_importance", kwargs['N_importance']), ("N_samples", kwargs['N_samples']), 
-        # ("raw_noise_std", kwargs['raw_noise_std']), ("lindisp", kwargs['lindisp']), 
-        # ("nerf_type", kwargs['nerf_type']), 
-        # ]
-        #save2pickle(filename, to_pickle)
+            # filename = f"/scratch/dajisafe/smpl/mirror_project_dir/authors_eval_data/temp_dir/entrance_params_{name}_{index}.pickle"
+            # to_pickle = [("center",center), ("near", near), ("far", far), ("rays", rays), ("rays_o", rays_o),
+            # ("rays_d", rays_d), ("viewdirs", viewdirs),("c2w_staticcam", c2w_staticcam), 
+            # ("all_ret", all_ret), ("c2w", c2w), ("chunk", chunk), ("H", H), ("W", W),
+            # ("focal", focal),
+            # ("kp_batch", kwargs['kp_batch']), ("skts", kwargs['skts']), ("bones", kwargs['bones']), 
+            # ("cyls", kwargs['cyls']), ("cams", kwargs['cams']), ("perturb", kwargs['perturb']), 
+            # ("N_importance", kwargs['N_importance']), ("N_samples", kwargs['N_samples']), 
+            # ("raw_noise_std", kwargs['raw_noise_std']), ("lindisp", kwargs['lindisp']), 
+            # ("nerf_type", kwargs['nerf_type']), 
+            # ]
+            #save2pickle(filename, to_pickle)
 
-    # import ipdb; ipdb.set_trace()
-    if index==None:
-        name = "post"
-        #print(f"using {name}")
-        #anony(name,index)
-    elif index%25==0:
-        name = "train_time"
-        #print(f"using {name}")
-        #anony(name,index)
-    else:
-        name = "off_time"
-        #print(f"using {name}")
-        #anony(name,index)
+        # import ipdb; ipdb.set_trace()
+        # if index==None:
+        #     name = "post"
+        #     #print(f"using {name}")
+        #     #anony(name,index)
+        # elif index%25==0:
+        #     name = "train_time"
+        #     #print(f"using {name}")
+        #     #anony(name,index)
+        # else:
+        #     name = "off_time"
+        #     #print(f"using {name}")
+        #     #anony(name,index)
 
-    #print("render_kwargs", render_kwargs)
-    #import ipdb; ipdb.set_trace()
+        #print("render_kwargs", render_kwargs)
+        #import ipdb; ipdb.set_trace()
     return all_ret
 
 def get_loss_fn(loss_name, beta):
@@ -325,14 +335,16 @@ class Trainer:
 
         # step 2: ray caster forward
         #if i in [4,5]:
-        #print(f"{i}: render called in train_batch function")
+        print(f"{i}: render called in train_batch function")
         #import ipdb; ipdb.set_trace()
         preds = render(H, W, focal, chunk=args.chunk, verbose=i < 10,
-                      retraw=False, index=i, **kp_args, **fwd_args, **self.render_kwargs_train)
+                      retraw=False, index=i, **kp_args, **fwd_args, **self.render_kwargs_train,
+                      use_mirr=args.use_mirr)
 
+        #import ipdb; ipdb.set_trace()
         # step 3: loss computation and updates
         loss_dict, stats = self.compute_loss(batch, preds, kp_opts={**kp_args, **extra_args},
-                                             popt_detach=popt_detach or not args.opt_pose)
+                                             popt_detach=popt_detach or not args.opt_pose, use_mirr=args.use_mirr)
 
         optim_stats = self.optimize(loss_dict['total_loss'], i, popt_detach or not args.opt_pose)
 
@@ -420,7 +432,7 @@ class Trainer:
                 'A_dash': A_dash, 'm_normal': m_normal, 'avg_D': avg_D}
 
     def compute_loss(self, batch, preds,
-                     kp_opts=None, popt_detach=False):
+                     kp_opts=None, popt_detach=False, use_mirr=False):
         '''
         popt_detach: False if we need kp_loss
 
@@ -432,18 +444,33 @@ class Trainer:
         results = []
 
         #import ipdb; ipdb.set_trace()
-        if preds['rgb_map_ref'] is not None:
-            use_mirr=True
+        if use_mirr and 'rgb_map_ref' not in preds:
+            print("there is an issue. where are mirrored/reflected rays?")
+            import ipdb; ipdb.set_trace()
+
+        rgb_pred_ref, acc_pred_ref = None, None
+        if use_mirr:
+            rgb_pred_ref=preds['rgb_map_ref']
+            acc_pred_ref=preds['acc_map_ref']
+
+
         # rgb loss of nerf
         results.append(self._compute_nerf_loss(batch, rgb_pred=preds['rgb_map'], acc_pred=preds['acc_map'],
-                                                rgb_pred_ref=preds['rgb_map_ref'], acc_pred_ref=preds['acc_map_ref'],
+                                                rgb_pred_ref=rgb_pred_ref, acc_pred_ref=acc_pred_ref,
                                                 use_mirr=use_mirr))
         # if 'rgb_map_ref' in preds and 'acc_map_ref' in preds:
         #     results.append(self._compute_nerf_loss(batch, preds['rgb_map_ref'], preds['acc_map_ref'], use_mirr=True))
         
         if 'rgb0' in preds:
+
+            rgb0_ref, acc0_ref = None, None
+            if use_mirr:
+                rgb0_ref=preds['rgb0_ref']
+                acc0_ref=preds['acc0_ref']
+
+            #import ipdb; ipdb.set_trace()
             results.append(self._compute_nerf_loss(batch, rgb_pred=preds['rgb0'], acc_pred=preds['acc0'], 
-                                                rgb_pred_ref=preds['rgb0_ref'], acc_pred_ref=preds['acc0_ref']
+                                                rgb_pred_ref=rgb0_ref, acc_pred_ref=acc0_ref
                                                 , coarse=True, use_mirr=use_mirr))
             # if 'rgb0_ref' in preds and 'acc0_ref' in preds:
             #     results.append(self._compute_nerf_loss(batch, preds['rgb0_ref'], preds['acc0_ref'], coarse=True, use_mirr=True))
@@ -463,6 +490,7 @@ class Trainer:
 
         loss_dict['total_loss'] = total_loss
 
+        #import ipdb; ipdb.set_trace()
         return loss_dict, stats
 
     def _compute_nerf_loss(self, batch, rgb_pred, acc_pred, rgb_pred_ref=None, acc_pred_ref=None, base_bg=1.0,
@@ -470,6 +498,7 @@ class Trainer:
         '''compute loss
         TODO: base_bg from argparse?
         '''
+
         args = self.args
         loss_fn = get_loss_fn(args.loss_fn, args.loss_beta)
         reg_fn = get_reg_fn(args.reg_fn)
@@ -480,23 +509,24 @@ class Trainer:
 
         if args.use_background:
             rgb_pred = rgb_pred + (1. - acc_pred)[..., None] * bgs
-            if rgb_pred_ref is not None and acc_pred_ref is not None:
+            if use_mirr:
                 rgb_pred_ref = rgb_pred_ref + (1. - acc_pred_ref)[..., None] * bgs_v
 
 
         # mask loss
         rgb_loss = loss_fn(rgb_pred, batch['target_s'], reduction='mean')
-        if rgb_pred_ref is not None:
+        if use_mirr:
             rgb_loss_v = loss_fn(rgb_pred_ref, batch['target_s_v'], reduction='mean')
-            rgb_loss = (rgb_loss+rgb_loss_v)/2
+            #rgb_loss = (rgb_loss+rgb_loss_v)/2
+            rgb_loss = rgb_loss*args.r_weight +rgb_loss_v*args.v_weight
 
         if coarse:
             rgb_loss = rgb_loss * args.coarse_weight
 
         psnr = img2psnr(rgb_pred.detach(), batch['target_s'])
-        if rgb_pred_ref is not None:
+        if use_mirr:
             psnr_v = img2psnr(rgb_pred_ref.detach(), batch['target_s_v'])
-            psnr = (psnr+psnr_v)/2
+            psnr = psnr*args.r_weight + psnr_v*args.v_weight
 
         loss_tag = set_tag_name(f'rgb_loss', coarse)
         stat_tag = set_tag_name(f'psnr', coarse)
@@ -505,9 +535,9 @@ class Trainer:
 
         if reg_fn is not None:
             reg_loss = reg_fn(acc_pred, batch['fgs'][..., 0], reduction='off') * args.reg_coef
-            if acc_pred_ref is not None:
+            if use_mirr:
                 reg_loss_v = reg_fn(acc_pred_ref , batch['fgs_v'][..., 0], reduction='off') * args.reg_coef
-                reg_loss = (reg_loss+reg_loss_v)/2
+                reg_loss = reg_loss.r_weight + reg_loss_v*args.v_weight
             
             reg_tag = set_tag_name('reg_loss', coarse)
             loss_dict[reg_tag] = reg_loss
