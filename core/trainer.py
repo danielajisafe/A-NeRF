@@ -325,6 +325,7 @@ class Trainer:
         args = self.args
         H, W, focal = self.hwf
         batch = dict_to_device(batch, self.device)
+        #import ipdb; ipdb.set_trace()
 
         # step 1a: get keypoint/human poses data
         popt_detach = not (args.opt_pose_stop is None or i < args.opt_pose_stop)
@@ -335,7 +336,7 @@ class Trainer:
 
         # step 2: ray caster forward
         #if i in [4,5]:
-        print(f"{i}: render called in train_batch function")
+        #print(f"{i}: render called in train_batch function")
         #import ipdb; ipdb.set_trace()
         preds = render(H, W, focal, chunk=args.chunk, verbose=i < 10,
                       retraw=False, index=i, **kp_args, **fwd_args, **self.render_kwargs_train,
@@ -389,7 +390,7 @@ class Trainer:
             return self._create_kp_args_dict(kps=batch['kp3d'], skts=batch['skts'],
                                              bones=batch['bones'], cyls=batch['cyls'],
                                              #use virt pose + real pose
-                                            kps_v=batch['kp3d_v'], cyls_v=batch['cyls_v'],
+                                            #kps_v=batch['kp3d_v'], cyls_v=batch['cyls_v'],
                                             A_dash=batch['A_dash'], m_normal=batch['m_normal'],
                                             avg_D=batch['avg_D']), extras
 
@@ -404,7 +405,7 @@ class Trainer:
         kp_args = self._create_kp_args_dict(kps=kps, skts=skts,
                                             bones=bones, cyls=batch['cyls'], 
                                             #use virt pose + optimized real pose
-                                            kps_v=batch['kp3d_v'], cyls_v=batch['cyls_v'],
+                                            #kps_v=batch['kp3d_v'], cyls_v=batch['cyls_v'],
                                             A_dash=batch['A_dash'], m_normal=batch['m_normal'],
                                             avg_D=batch['avg_D'])
 

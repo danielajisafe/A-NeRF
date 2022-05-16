@@ -376,7 +376,7 @@ def init_catalog(args, n_bullet=3):
     }
 
     # MIRROR
-    easy_idx = [0] #[10, 70, 350, 420, 490, 910, 980, 1050]
+    easy_idx = np.arange(0,1800) #[10, 70, 350, 420, 490, 910, 980, 1050]
     mirror_easy = {
         'data_h5': args.data_path + '/mirror_train_h5py.h5',
         'data_h5_v': args.data_path + '/v_mirror_train_h5py.h5',
@@ -786,6 +786,9 @@ def load_interpolate(pose_h5, c2ws, focals, rest_pose, pose_keys,
     cam_idxs = selected_idxs[:1].repeat(len(kps), 0)
     return kps, skts, c2ws, cam_idxs, focals
 
+
+
+
 def load_bullettime(pose_h5, c2ws, focals, rest_pose, pose_keys,
                     selected_idxs, refined=None, n_bullet=30, 
                     #centers=None,
@@ -815,6 +818,24 @@ def load_bullettime(pose_h5, c2ws, focals, rest_pose, pose_keys,
         bones = bones[selected_idxs]
     cam_idxs = selected_idxs[:, None].repeat(n_bullet, 1).reshape(-1)
     
+
+    import sys
+    sys.path.append("/scratch/dajisafe/smpl/")
+    from compute_eval import eval_opt_kp
+
+
+    comb="c28e8104-b416-474c-914c-c911baa8540b_cam_5"
+    rec_eval_pts = [0, 100, 200, 288, 388, 488, 588, 688, 788, 888, 988, 1088]
+    gt_eval_pts = [0, 100, 200, 500, 600, 700, 800, 900, 1000, 1100, 1200, 1300]
+
+
+    eval_opt_kp(comb, rec_eval_pts, gt_eval_pts)
+    name = "pose_opt_eval_may16"
+    #np.save(f"/scratch/dajisafe/smpl/mirror_project_dir/authors_eval_data/temp_dir/cam_trajectory_{name}.npy", np.array(c2ws))
+    np.save(f"/scratch/dajisafe/smpl/mirror_project_dir/authors_eval_data/temp_dir/kps_{name}.npy", np.array(kps))
+
+    import ipdb; ipdb.set_trace()
+
     #import ipdb; ipdb.set_trace()
     if center_kps:
         root = kps[..., :1, :].copy() # assume to be CMUSkeleton
@@ -845,16 +866,14 @@ def load_bullettime(pose_h5, c2ws, focals, rest_pose, pose_keys,
     kps = l2ws[..., :3, -1]
     skts = np.linalg.inv(l2ws)
 
+    
     # expand shape for repeat
     kps = kps[:, None].repeat(n_bullet, 1).reshape(len(selected_idxs) * n_bullet, -1, 3)
     skts = skts[:, None].repeat(n_bullet, 1).reshape(len(selected_idxs) * n_bullet, -1, 4, 4)
     #centers = centers[:, None].repeat(n_bullet, 1).reshape(len(selected_idxs) * n_bullet, 2)
     #import ipdb; ipdb.set_trace()
 
-    # name = "pose_opt_may3"
-    # np.save(f"/scratch/dajisafe/smpl/mirror_project_dir/authors_eval_data/temp_dir/cam_trajectory_{name}.npy", np.array(c2ws))
-    # np.save(f"/scratch/dajisafe/smpl/mirror_project_dir/authors_eval_data/temp_dir/kps_{name}.npy", np.array(kps))
-
+   
     return kps, skts, c2ws, cam_idxs, focals, bones#, centers
 
 def load_selected(pose_h5, c2ws, focals, rest_pose, pose_keys,
@@ -1146,8 +1165,8 @@ def run_render():
 
     # make the block size dynamic
     kargs = { 'macro_block_size': None }
-    print("saving video.....")
-    imageio.mimwrite(os.path.join(basedir, "render_rgb_no_skel.mp4"), rgbs, fps=args.fps,**kargs)
+    print("saving images only.....")
+    #imageio.mimwrite(os.path.join(basedir, "render_rgb_no_skel.mp4"), rgbs, fps=args.fps,**kargs)
 
 if __name__ == '__main__':
     torch.set_default_tensor_type('torch.cuda.FloatTensor')

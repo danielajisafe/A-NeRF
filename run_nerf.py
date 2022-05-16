@@ -125,7 +125,7 @@ def render_path(render_poses, hwf, chunk, render_kwargs,
 
         #import ipdb; ipdb.set_trace()
         if len(ray_input[0]) > 0:
-            print(f"{index}: render called in render_path function")
+            #print(f"{index}: render called in render_path function")
             ret_dict = render(h, w, focal, rays=ray_input, chunk=chunk, c2w=c2w[:3,:4],
                               kp_batch=kp_input, skts=skt_input, cyls=cyl_input, cams=cam_input,
                               subject_idxs=subject_input,

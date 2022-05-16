@@ -94,50 +94,55 @@ class BaseH5Dataset(Dataset):
         #import ipdb; ipdb.set_trace()
 
         # sample pixels
-        try:
-            pixel_idxs = self.sample_pixels(idx, q_idx)
-        except:
-            import ipdb; ipdb.set_trace()
-        pixel_idxs_v = self.sample_pixels_v(idx, q_idx)
+
+        pixel_idxs = self.sample_pixels(idx, q_idx)
+        #import ipdb; ipdb.set_trace()
+
+        v_empty=False
+        # in case mask is empty
+        pixel_idxs_v, v_empty = self.sample_pixels_v(idx, q_idx)
 
         # maybe get a version that computes only sampled points?
         rays_o, rays_d = self.get_rays(c2w, focal, pixel_idxs, center)
-        rays_o_v, rays_d_v = self.get_rays_v(c2w, focal, pixel_idxs_v, center)
+        # if not v_empty:
+        #     rays_o_v, rays_d_v = self.get_rays_v(c2w, focal, pixel_idxs_v, center)
 
         # load the image, foreground and background,
         # and get values from sampled pixels
         rays_rgb, fg, bg = self.get_img_data(idx, pixel_idxs)
-        rays_rgb_v, fg_v, bg_v = self.get_img_data_v(idx, pixel_idxs_v)
+        # if not v_empty:
+        #     rays_rgb_v, fg_v, bg_v = self.get_img_data_v(idx, pixel_idxs_v)
 
         return_dict = {'rays_o': rays_o,
                        'rays_d': rays_d,
-                       'rays_o_v': rays_o_v,
-                       'rays_d_v': rays_d_v,
-
+                       
                        'target_s': rays_rgb,
-                       'target_s_v': rays_rgb_v,
-
                        'kp_idx': kp_idxs,
-                       'kp_idx_v': kp_idxs_v, # though should be same
                        'kp3d': kps,
-                       'kp3d_v': kps_v,
-
+                       
                        'bones': bones,
                        'skts': skts,
-
                        'cyls': cyls,
-                       'cyls_v': cyls_v,
+
                        'cam_idxs': cam_idxs,
                        'fgs': fg,
-                       'fgs_v': fg_v,
-
                        'bgs': bg, 
-                       'bgs_v': bg_v,
                        
                        'A_dash':A_dash,
                        "m_normal": m_normal,
                         "avg_D": avg_D,
+                        #"v_empty": v_empty
                        }
+
+        # if not v_empty:
+        #     return_dict['rays_o_v'] = rays_o_v
+        #     return_dict['rays_d_v'] = rays_d_v
+        #     return_dict['target_s_v'] = rays_rgb_v
+        #     return_dict['kp_idx_v'] = kp_idxs_v # though should be same
+        #     return_dict['kp3d_v'] = kps_v
+        #     return_dict['cyls_v'] = cyls_v
+        #     return_dict['bgs_v'] = bg_v
+        #     return_dict['fgs_v'] = fg_v
 
         return return_dict
 
@@ -420,6 +425,8 @@ class BaseH5Dataset(Dataset):
         sampled_idxs = np.random.choice(valid_idxs,
                                         N_rand,
                                         replace=False)
+
+        #import ipdb; ipdb.set_trace()
         if self.patch_size > 1:
             H, W = self.HW
             hs, ws = sampled_idxs // W, sampled_idxs % W
@@ -465,6 +472,11 @@ class BaseH5Dataset(Dataset):
         sampling_mask_v = self.dataset_v['sampling_masks'][idx].reshape(-1)
 
         valid_idxs_v, = np.where(sampling_mask_v>0)
+
+        if len(valid_idxs_v)<1:
+            #import ipdb; ipdb.set_trace()
+            return True, True
+
         sampled_idxs_v = np.random.choice(valid_idxs_v,
                                         N_rand,
                                         replace=False)
@@ -501,7 +513,7 @@ class BaseH5Dataset(Dataset):
             sampled_idxs_v[np.random.choice(len(sampled_idxs_v), size=(N_nms,), replace=False)] = nms_idxs
 
         sampled_idxs_v = np.sort(sampled_idxs_v)
-        return sampled_idxs_v
+        return sampled_idxs_v, False
 
     def _sample_in_box2d(self, idx, q_idx, fg, N_samples):
 
@@ -1068,9 +1080,11 @@ def ray_collate_fn(batch):
     batch = default_collate(batch)
     # default collate results in shape (N_images, N_rays_per_images, ...)
     # flatten the first two dimensions.
+
+    #import ipdb; ipdb.set_trace()
     batch = {k: batch[k].flatten(end_dim=1) for k in batch}
-    #batch['rays'] = torch.stack([batch['rays_o'], batch['rays_d']], dim=0)
-    batch['rays'] = torch.stack([batch['rays_o'], batch['rays_d'], 
-                                batch['rays_o_v'], batch['rays_d_v']], dim=0)
+    batch['rays'] = torch.stack([batch['rays_o'], batch['rays_d']], dim=0)
+    # batch['rays'] = torch.stack([batch['rays_o'], batch['rays_d'], 
+    #                             batch['rays_o_v'], batch['rays_d_v']], dim=0)
     return batch
 
