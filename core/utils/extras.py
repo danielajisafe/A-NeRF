@@ -27,6 +27,68 @@ from .dan_skeleton_utils import get_parent_idx, verify_get_parent_idx
 #from transforms import rotate_initial_pose
 
 
+def calc_bone_length(poses, root_id, joint_trees):
+    '''manually calculate 
+    - bone length, mean bone length, and std deviation 
+      across a sequence of poses
+    - assumes hip-first ordering format
+    If I am 1.5m tall, arm bone length should around 0.3m
+    '''
+
+    children_trans = torch.cat([poses[:, :root_id], poses[:, root_id+1:]], dim=1)[..., None]
+    parent_ids = np.concatenate([joint_trees[:root_id], joint_trees[root_id+1:]], axis=0)
+    parent_trans = poses[:, parent_ids, :, None]
+    bv = children_trans - parent_trans 
+
+    bl = torch.norm(bv, dim=2).squeeze(2)
+    mean_bl = bl.mean(0)
+    std_bl = bl.std(0)
+    #import ipdb; ipdb.set_trace()
+    return bl, mean_bl, std_bl, bv
+
+def alpha_to_hip_1st(h_pose):
+    '''Re-order alphapose so "hip starts first" based on Kinematic chain'''
+    # re-order so hip starts first (similar to h36m structure)
+    ordering = torch.tensor([19,12,14,16,25,21,23,11,13,15,24,20,22,
+                                18,0,2,4,1,3,17,5,7,9,6,8,10])  
+    N_J = len(ordering)
+    if h_pose.shape[0]==N_J: 
+        new_pose = torch.index_select(h_pose, 0, ordering)
+    elif h_pose.shape[1]== N_J:
+        new_pose = torch.index_select(h_pose, 1, ordering)
+    #import ipdb; ipdb.set_trace()
+    return new_pose
+
+def hip_1st_to_alpha(h_pose, **k_pipe_kwargs):
+    '''Re-order "hip-first 26 skeleton" to standard alphapose ordering'''
+    ordering = torch.tensor([14,17,15,18,16,20,23,21,24,22,25,
+                            7,1,8,2,9,3,19,13,0,11,5,12,6,10,4])#.to(k_pipe_kwargs["device"])
+    N_J = len(ordering)
+    if h_pose.shape[0]==N_J: 
+        new_pose = torch.index_select(h_pose, 0, ordering)
+    elif h_pose.shape[1]== N_J:
+        new_pose = torch.index_select(h_pose, 1, ordering)
+    return new_pose
+
+
+def load_pickle(filename):
+    '''
+    args:
+        filename: saved filename to load pickle from
+    '''
+    with open(f'{filename}', 'rb') as handle:
+        from_pickle = pickle.load(handle)
+    return from_pickle
+
+def save2pickle(filename, tuples):
+    '''
+    args:
+        filename: Name to save the resulting pickle to
+        tuples: list of tuples to save to pickle file
+    '''
+    to_pickle = dict(tuples)
+    with open(f'{filename}', 'wb') as handle:
+        pickle.dump(to_pickle, handle, protocol=pickle.HIGHEST_PROTOCOL)
 
 def rot6d_to_rotmat(x):
     """Convert 6D rotation representation to 3x3 rotation matrix.
