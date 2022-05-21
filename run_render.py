@@ -69,10 +69,13 @@ def config_parser():
                         help='which subject to render (for MINeRF)')
 
     # frame-related
+    parser.add_argument('--train_len', type=int, default=0,
+                        help='length of trainset')
     parser.add_argument('--selected_idxs', nargs='+', type=int, default=None,
                         help='hand-picked idxs for rendering')
     parser.add_argument('--selected_framecode', type=int, default=None,
                         help='hand-picked framecode for rendering')
+    
 
     # saving
     parser.add_argument('--outputdir', type=str, default='render_output/',
@@ -157,6 +160,7 @@ def load_render_data(args, nerf_args, poseopt_layer=None, opt_framecode=True):
                 bones = poseopt_layer.get_bones().cpu().numpy()
                 kps = poseopt_layer(np.arange(len(bones)))[0].cpu().numpy()
 
+        #import ipdb; ipdb.set_trace()
         
         if render_data is not None:
             render_data['refined'] = [kps, bones]
@@ -376,7 +380,20 @@ def init_catalog(args, n_bullet=3):
     }
 
     # MIRROR
-    easy_idx = np.arange(0,1800) #[10, 70, 350, 420, 490, 910, 980, 1050]
+    #import ipdb; ipdb.set_trace()
+    comb = args.data_path.split("/")[-2]
+    view = int(comb.split("_cam_")[1])
+
+    if view ==3:
+        easy_idx = [0, 473, 467, 1467]
+    elif view ==2:
+        easy_idx = [30, 400, 700, 1100]
+    elif view ==5:
+        easy_idx = [50, 200, 1000, 1200]
+    else:
+        import ipdb; ipdb.set_trace()
+
+    #easy_idx = [0, 465, 473, 467, 1467] # [10, 70, 350, 420, 490, 910, 980, 1050] #np.arange(0, args.train_len)
     mirror_easy = {
         'data_h5': args.data_path + '/mirror_train_h5py.h5',
         'data_h5_v': args.data_path + '/v_mirror_train_h5py.h5',
@@ -797,9 +814,10 @@ def load_bullettime(pose_h5, c2ws, focals, rest_pose, pose_keys,
 
     undo_rot=False; center_cam=True; center_kps=True
     #import ipdb; ipdb.set_trace()
+
     # prepare camera
     c2ws = c2ws[selected_idxs]
-    #centers = centers[selected_idxs]
+    # centers = centers[selected_idxs]
 
     if center_cam:
         shift_x = c2ws[..., 0, -1].copy()
@@ -819,29 +837,79 @@ def load_bullettime(pose_h5, c2ws, focals, rest_pose, pose_keys,
     cam_idxs = selected_idxs[:, None].repeat(n_bullet, 1).reshape(-1)
     
 
-    import sys
-    sys.path.append("/scratch/dajisafe/smpl/")
-    from compute_eval import eval_opt_kp
+    #import ipdb; ipdb.set_trace()
+    #from dan_compute_eval import eval_opt_kp
 
 
-    comb="c28e8104-b416-474c-914c-c911baa8540b_cam_5"
-    rec_eval_pts = [0, 100, 200, 288, 388, 488, 588, 688, 788, 888, 988, 1088]
-    gt_eval_pts = [0, 100, 200, 500, 600, 700, 800, 900, 1000, 1100, 1200, 1300]
+    # 3
+    # python run_render.py --nerf_args logs/mirror/pose_opt_model/-2022-05-16-02-01-28/args.txt --ckptpath logs/mirror/pose_opt_model/-2022-05-16-02-01-28/107000.tar --dataset mirror --entry easy --render_type bullet --runname mirror_bullet --selected_framecode 0 --white_bkgd --selected_idxs 0 --render_refined --data_path ./data/mirror/3/23df3bb4-272d-4fba-b7a6-514119ca8d21_cam_3/2022-05-14-13 --n_bullet 10
+    # python run_render.py --nerf_args logs/mirror/pose_opt_model/-2022-05-16-02-01-28/args.txt --ckptpath logs/mirror/pose_opt_model/-2022-05-16-02-01-28/107000.tar --dataset mirror --entry easy --render_type bullet --runname mirror_bullet --selected_framecode 0 --white_bkgd --selected_idxs 0 --render_refined --data_path ./data/mirror/3/23df3bb4-272d-4fba-b7a6-514119ca8d21_cam_3/2022-05-14-13 --n_bullet 1 --train_len 1620
+    # comb="23df3bb4-272d-4fba-b7a6-514119ca8d21_cam_3" # 2022-05-16-02-01-28
+    # rec_eval_pts = [0, 100, 200, 300, 400, 500, 600, 700, 800, 900, 1000, 1100, 1200, 1300, 1400, 1500, 1600, 1700]
+    # gt_eval_pts = [0, 100, 200, 300, 400, 500, 600, 700, 800, 900, 1000, 1100, 1200, 1300, 1400, 1500, 1600, 1700]
+    # # 'mpjpe_in_mm': 105.09, 'n_mpjpe_in_mm': 60.33, 'pmpjpe_in_mm': 41.74
+    # short
+    # {'mpjpe_in_mm': 105.09, 'n_mpjpe_in_mm': 60.16, 'pmpjpe_in_mm': 41.67, 'No_of_evaluations': '11/18', 'rec_eval_pts': array([   0,  100,  200,  300,  400,  500,  600,  700,  800,  900, 1000]), 'gt_eval_pts': array([   0,  100,  200,  300,  400,  500,  600,  700,  800,  900, 1000])}
+
+    # # 6
+    # python run_render.py --nerf_args logs/mirror/pose_opt_model/-2022-05-16-02-23-39/args.txt --ckptpath logs/mirror/pose_opt_model/-2022-05-16-02-23-39/102000.tar --dataset mirror --entry easy --render_type bullet --runname mirror_bullet --selected_framecode 0 --white_bkgd --selected_idxs 0 --render_refined --data_path ./data/mirror/6/ea8ddac0-6837-4434-b03a-09316277a4aa_cam_6/2022-05-14-13 --n_bullet 4
+    # # python run_render.py --nerf_args logs/mirror/pose_opt_model/-2022-05-16-02-23-39/args.txt --ckptpath logs/mirror/pose_opt_model/-2022-05-16-02-23-39/102000.tar --dataset mirror --entry easy --render_type bullet --runname mirror_bullet --selected_framecode 0 --white_bkgd --selected_idxs 0 --render_refined --data_path ./data/mirror/6/ea8ddac0-6837-4434-b03a-09316277a4aa_cam_6/2022-05-14-13 --n_bullet 1 --train_len 1620
+    # comb="ea8ddac0-6837-4434-b03a-09316277a4aa_cam_6" # 2022-05-16-02-23-39
+    # rec_eval_pts = [0, 100, 200, 300, 400, 500, 599, 699, 799, 899, 999, 1099, 1199, 1299, 1399, 1499, 1599, 1699]
+    # gt_eval_pts = [0, 100, 200, 300, 400, 500, 600, 700, 800, 900, 1000, 1100, 1200, 1300, 1400, 1500, 1600, 1700]
+    # # 'mpjpe_in_mm': 70.0, 'n_mpjpe_in_mm': 56.43, 'pmpjpe_in_mm': 40.18
+    # # short
+    # # {'mpjpe_in_mm': 70.25, 'n_mpjpe_in_mm': 56.58, 'pmpjpe_in_mm': 40.21, 'No_of_evaluations': '11/18', 'rec_eval_pts': array([  0, 100, 200, 300, 400, 500, 599, 699, 799, 899, 999]), 'gt_eval_pts': array([   0,  100,  200,  300,  400,  500,  600,  700,  800,  900, 1000])}
+
+    
+
+    
+    # # 2
+    # python run_render.py --nerf_args logs/mirror/pose_opt_model/-2022-05-16-02-10-36/args.txt --ckptpath logs/mirror/pose_opt_model/-2022-05-16-02-10-36/133000.tar --dataset mirror --entry easy --render_type bullet --runname mirror_bullet --selected_framecode 0 --white_bkgd --selected_idxs 0 --render_refined --data_path ./data/mirror/2/fc4f46b9-1f80-4498-8949-ca1b52864d0c_cam_2/2022-05-14-13 --n_bullet 10
+    # # python run_render.py --nerf_args logs/mirror/pose_opt_model/-2022-05-16-02-10-36/args.txt --ckptpath logs/mirror/pose_opt_model/-2022-05-16-02-10-36/133000.tar --dataset mirror --entry easy --render_type bullet --runname mirror_bullet --selected_framecode 0 --white_bkgd --selected_idxs 0 --render_refined --data_path ./data/mirror/2/fc4f46b9-1f80-4498-8949-ca1b52864d0c_cam_2/2022-05-14-13 --n_bullet 1 --train_len 1414
+    # comb="fc4f46b9-1f80-4498-8949-ca1b52864d0c_cam_2" # 2022-05-16-02-10-36
+    # rec_eval_pts = [0, 100, 200, 300, 400, 493, 593, 693, 793, 893, 993, 1093, 1193, 1293, 1393]
+    # gt_eval_pts =  [0, 100, 200, 300, 400, 500, 600, 700, 800, 900, 1000, 1100, 1200, 1300, 1400]
+    # # 'mpjpe_in_mm': 125.36, 'n_mpjpe_in_mm': 110.19, 'pmpjpe_in_mm': 78.72
+    # # # short
+    # # {'mpjpe_in_mm': 125.36, 'n_mpjpe_in_mm': 110.19, 'pmpjpe_in_mm': 78.72, 'No_of_evaluations': '11/18', 'rec_eval_pts': array([  0, 100, 200, 300, 400, 493, 593, 693, 793, 893, 993]), 'gt_eval_pts': array([   0,  100,  200,  300,  400,  500,  600,  700,  800,  900, 1000])}
 
 
-    eval_opt_kp(comb, rec_eval_pts, gt_eval_pts)
-    name = "pose_opt_eval_may16"
+    # # 5
+    # python run_render.py --nerf_args logs/mirror/pose_opt_model/-2022-05-16-14-42-42/args.txt --ckptpath logs/mirror/pose_opt_model/-2022-05-16-14-42-42/115000.tar --dataset mirror --entry easy --render_type bullet --runname mirror_bullet --selected_framecode 0 --white_bkgd --selected_idxs 0 --render_refined --data_path ./data/mirror/5/c28e8104-b416-474c-914c-c911baa8540b_cam_5/2022-05-14-13 --n_bullet 10
+    # # python run_render.py --nerf_args logs/mirror/pose_opt_model/-2022-05-16-14-42-42/args.txt --ckptpath logs/mirror/pose_opt_model/-2022-05-16-14-42-42/115000.tar --dataset mirror --entry easy --render_type bullet --runname mirror_bullet --selected_framecode 0 --white_bkgd --selected_idxs 0 --render_refined --data_path ./data/mirror/5/c28e8104-b416-474c-914c-c911baa8540b_cam_5/2022-05-14-13 --n_bullet 1 --train_len 1240
+    # comb="c28e8104-b416-474c-914c-c911baa8540b_cam_5" # 2022-05-16-14-42-42
+    # rec_eval_pts = [0, 100, 200, 288, 388, 488, 588, 688, 788, 888, 988, 1088]
+    # gt_eval_pts = [0, 100, 200, 500, 600, 700, 800, 900, 1000, 1100, 1200, 1300]
+    # # 'mpjpe_in_mm': 117.82, 'n_mpjpe_in_mm': 93.67, 'pmpjpe_in_mm': 72.49
+    # # short
+    # # {'mpjpe_in_mm': 118.05, 'n_mpjpe_in_mm': 93.97, 'pmpjpe_in_mm': 72.56, 'No_of_evaluations': '11/18', 'rec_eval_pts': array([  0, 100, 200, 288, 388, 488, 588, 688, 788, 888, 988]), 'gt_eval_pts': array([   0,  100,  200,  500,  600,  700,  800,  900, 1000, 1100, 1200])}
+    
+
+    
+    # ## 7
+    # ## python run_render.py --nerf_args logs/mirror/pose_opt_model/-2022-05-16-14-12-18/args.txt --ckptpath logs/mirror/pose_opt_model/-2022-05-16-14-12-18/092000.tar --dataset mirror --entry easy --render_type bullet --runname mirror_bullet --selected_framecode 0 --white_bkgd --selected_idxs 0 --render_refined --data_path ./data/mirror/7/261970f0-e705-4546-a957-b719526cbc4a_cam_7/2022-05-14-13 --n_bullet 1 --train_len 1563
+    # comb="261970f0-e705-4546-a957-b719526cbc4a_cam_7" # 2022-05-16-14-12-18
+    # rec_eval_pts = [0, 100, 200, 300, 400, 500, 600, 700, 800, 900, 1000, 1100, 1200, 1300, 1400, 1500, 1636]
+    # gt_eval_pts = [0, 100, 200, 300, 400, 500, 600, 700, 800, 900, 1000, 1100, 1200, 1300, 1400, 1500, 1700]
+    # # 'mpjpe_in_mm': 112.61, 'n_mpjpe_in_mm': 78.08, 'pmpjpe_in_mm': 55.36
+    # # short
+    # # {'mpjpe_in_mm': 112.81, 'n_mpjpe_in_mm': 78.13, 'pmpjpe_in_mm': 55.48, 'No_of_evaluations': '11/18', 'rec_eval_pts': array([   0,  100,  200,  300,  400,  500,  600,  700,  800,  900, 1000]), 'gt_eval_pts': array([   0,  100,  200,  300,  400,  500,  600,  700,  800,  900, 1000])}
+
+
+    #eval_opt_kp(kps, comb, rec_eval_pts, gt_eval_pts)
+    #name = "pose_opt_eval_may16"
     #np.save(f"/scratch/dajisafe/smpl/mirror_project_dir/authors_eval_data/temp_dir/cam_trajectory_{name}.npy", np.array(c2ws))
-    np.save(f"/scratch/dajisafe/smpl/mirror_project_dir/authors_eval_data/temp_dir/kps_{name}.npy", np.array(kps))
+    #np.save(f"/scratch/dajisafe/smpl/mirror_project_dir/authors_eval_data/temp_dir/kps_{name}.npy", np.array(kps))
 
-    import ipdb; ipdb.set_trace()
+    #import ipdb; ipdb.set_trace()
 
     #import ipdb; ipdb.set_trace()
     if center_kps:
         root = kps[..., :1, :].copy() # assume to be CMUSkeleton
         # move kps to 0 and cam to -root
         kps[..., :, :] -= root
-        c2ws[..., :3, -1] -= root.reshape(1,3)
+        c2ws[..., :3, -1] -= root.reshape(-1,3)
 
     elif center_cam:
         kps[..., :, 0] -= shift_x[:, None]
@@ -854,7 +922,7 @@ def load_bullettime(pose_h5, c2ws, focals, rest_pose, pose_keys,
         focals = np.array([focals] * len(selected_idxs))
     else:
         focals = focals[selected_idxs]
-    focals = focals[:, None].repeat(n_bullet, 1).reshape(n_bullet,-1)
+    focals = focals[:, None].repeat(n_bullet, 1).reshape(-1,2)
 
 
     if undo_rot:
@@ -1096,6 +1164,13 @@ def render_mesh(basedir, render_kwargs, tensor_data, chunk=1024, radius=1.80,
 def run_render():
     args = config_parser().parse_args()
 
+    # check
+    #import ipdb; ipdb.set_trace()
+    comb = args.data_path.split("/")[-2]
+    view = comb.split("_cam_")[1]
+    print(f"camera: {view} comb: {comb}")
+
+    
     # update data_path
     if args.dataset== 'mirror':
         GT_PREFIXES[args.dataset] = args.data_path
@@ -1149,15 +1224,16 @@ def run_render():
                                   render_data['render_poses'],
                                   *render_data['hwf'])
 
-    os.makedirs(os.path.join(basedir, 'image'), exist_ok=True)
-    os.makedirs(os.path.join(basedir, 'skel'), exist_ok=True)
-    os.makedirs(os.path.join(basedir, 'acc'), exist_ok=True)
+
+    os.makedirs(os.path.join(basedir, f'image_{view}'), exist_ok=True)
+    os.makedirs(os.path.join(basedir, f'skel_{view}'), exist_ok=True)
+    os.makedirs(os.path.join(basedir, f'acc_{view}'), exist_ok=True)
 
     for i, (rgb, acc, skel) in enumerate(zip(rgbs, accs, skeletons)):
         #print(f"i {i}")
-        imageio.imwrite(os.path.join(basedir, 'image', f'{i:05d}.png'), rgb)
-        imageio.imwrite(os.path.join(basedir, 'acc', f'{i:05d}.png'), acc)
-        imageio.imwrite(os.path.join(basedir, 'skel', f'{i:05d}.png'), skel)
+        imageio.imwrite(os.path.join(basedir, f'image_{view}', f'{i:05d}.png'), rgb)
+        imageio.imwrite(os.path.join(basedir, f'acc_{view}', f'{i:05d}.png'), acc)
+        imageio.imwrite(os.path.join(basedir, f'skel_{view}', f'{i:05d}.png'), skel)
     
     #import ipdb; ipdb.set_trace()
     np.save(os.path.join(basedir, 'bboxes.npy'), bboxes, allow_pickle=True)

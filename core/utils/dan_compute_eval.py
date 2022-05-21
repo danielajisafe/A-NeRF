@@ -17,50 +17,68 @@ import matplotlib.pyplot as plt
 #from IPython import display
 #---------------------------------------
 
+import sys
+local_dir = "/home/dajisafe/scratch/anerf_mirr/A-NeRF/core/utils"
+sys.path.append(local_dir)
 
 # custom imports
-import .dan_util_skel as skel
-from .dan_pmpjpe import pmpjpe, procrustes
-from .dan_evaluation import MPJPE, NMPJPE
-from .extras import load_pickle, save2pickle
+import dan_util_skel as skel
+from dan_pmpjpe import pmpjpe, procrustes
+from dan_evaluation import MPJPE, NMPJPE
+from extras import load_pickle, save2pickle
 #from util_loading import load_pickle, save2pickle, sort_B_via_A
-from .extras import alpha_to_hip_1st, hip_1st_to_alpha, calc_bone_length
-from .dan_skeleton_utils import get_bone_names, get_parent_idx, verify_get_parent_idx
+from extras import alpha_to_hip_1st, hip_1st_to_alpha, calc_bone_length
+from dan_skeleton_utils import get_bone_names, get_parent_idx, verify_get_parent_idx
 #from transforms import h36m_to_DCPose, baseline_to_h36m_uniform_2D, baseline_to_h36m_uniform_3D
 #from plotting import plotPoseOnImage, plot_multiple_views, plot15j_2d, plot15j_3d, plot15j_2d_no_image, add_bbox_in_image, plot15j_2d_uniform, plot_2d_grouped, plot2d_halpe26, plot2d_halpe26_mirror_common_3D
 
 
 
-def eval_opt_kp(comb, rec_eval_pts, gt_eval_pts):
+def eval_opt_kp(kps,comb, rec_eval_pts, gt_eval_pts):
 
+    
     #cam
     #comb = "fc4f46b9-1f80-4498-8949-ca1b52864d0c_cam_2" 
-    idt = comb.split("_cam_")[0]
+    #idt = comb.split("_cam_")[0]
+
     view = comb.split("_cam_")[1]
+    print(f"camera: {view} comb: {comb}")
 
     rec_eval_pts = np.array(rec_eval_pts)
     gt_eval_pts = np.array(gt_eval_pts)
+
+    # 
+    test_idxs = np.where((rec_eval_pts/1005) >1)[0]
+    stp_idx = test_idxs[0]
+    rec_eval_pts = rec_eval_pts[:stp_idx]
+    gt_eval_pts = gt_eval_pts[:stp_idx]
+
+    print(f"no of excluded test idxs: {len(test_idxs)}")
+    print(f"rec_eval_pts: {rec_eval_pts}")
+    print(f"gt_eval_pts: {gt_eval_pts}")
     
-    project_dir = "."
+    project_dir = "/home/dajisafe/scratch/anerf_mirr"
     skel_type = "alpha"
 
+    #import ipdb; ipdb.set_trace()
+
     #calib_filename = project_dir + f"/authors_eval_data/calib_data_alphapose/calib{view}_20000iter.pickle"
-    sorted_recon = sorted(glob(project_dir + f"/authors_eval_data/new_recon_results_no_gt2d/{view}/*{idt}.pickle"))       
-    calib_filename = project_dir + f"/authors_eval_data/calib_data_alphapose_GTfocal/calib{view}_20000iter_May_11.pickle"
+    #sorted_recon = sorted(glob(project_dir + f"/authors_eval_data/new_recon_results_no_gt2d/{view}/*{idt}.pickle"))       
+    #calib_filename = project_dir + f"/authors_eval_data/calib_data_alphapose_GTfocal/calib{view}_20000iter_May_11.pickle"
     
     
     #import ipdb; ipdb.set_trace()
     "remember we have droplast option, hence reference only whats passed in here"
     #proj2d_real, proj2d_virt, img_recon = [], [], []
     #est_2d_real, est_2d_virt, batch_values = [], [], []
-    img_recon, kp3d = [], []
+    #img_recon, kp3d = [], []
 
-    #kp3d = hip_1st_to_alpha(kps)
-    for filename in sorted_recon:
-        from_pickle = load_pickle(filename)
+    
+    # for filename in sorted_recon:
+    #     from_pickle = load_pickle(filename)
         
-        kp3d.extend(from_pickle["kp3d"]) 
-        img_recon.extend(from_pickle["img_urls"])    
+    #     kp3d.extend(from_pickle["kp3d"]) 
+    #     img_recon.extend(from_pickle["img_urls"])    
         #batch_size, batch_no = from_pickle["batch_size"], from_pickle["batch_no"]
         #batch_values.extend(list(range((batch_no*batch_size), (batch_no+1)*batch_size)))
     
@@ -71,8 +89,12 @@ def eval_opt_kp(comb, rec_eval_pts, gt_eval_pts):
     #batch_values = list(map(lambda x:x[1], sorted(zip(img_recon, batch_values))))
     # now sort images
     #img_recon = sorted(img_recon)
+    
     # stack together
-    kp3d = torch.stack(kp3d)
+    kps = torch.Tensor(kps)
+    kp3d = hip_1st_to_alpha(kps)
+    
+    #kp3d = torch.stack(kp3d)
     #import ipdb; ipdb.set_trace()
 
     #from_pickle = load_pickle(calib_filename)
@@ -82,7 +104,7 @@ def eval_opt_kp(comb, rec_eval_pts, gt_eval_pts):
     '''read GT 3D data'''
     sequence_length = 1800
     #read extri file
-    extri_file = project_dir + '/authors_eval_data/extri.yml'
+    extri_file = project_dir + '/A-NeRF/extri.yml'
     gt3d_real_all = []
     #gt3d_virt_all = []
     #imgs_gt = []
@@ -90,19 +112,30 @@ def eval_opt_kp(comb, rec_eval_pts, gt_eval_pts):
     #rec_eval_pts, gt_eval_pts = [], []
     #img_recon_names = [img.split("/")[-1] for img in img_recon]
 
-    for index in trange(sequence_length):
-        img_id_6 = f"{index:06d}" # 6 leading zeros
-        #img_id_8 = f"{index:08d}"
-        jsonfile = "/home/dajisafe/scratch/anerf_mirr/A-NeRF/data/mirror/keypoints3d/{img_id_6}.json"
-        with open(jsonfile, 'r') as f:
-            keypoints3d = json.load(f)
-        gt3d_real_all.append(torch.Tensor(keypoints3d[0]['keypoints3d']))
-        #gt3d_virt_all.append(torch.Tensor(keypoints3d[1]['keypoints3d']))
-
     #import ipdb; ipdb.set_trace()
-    '''We would evaluate at the camera-coords level using the given REAL 3D pose. why only real? :)'''
-    gt3d_real_all = torch.stack(gt3d_real_all, dim=0).detach().cpu()
+    # for index in trange(sequence_length):
+    #     img_id_6 = f"{index:06d}" # 6 leading zeros
+    #     #img_id_8 = f"{index:08d}"
+    #     jsonfile = project_dir + f"/A-NeRF/data/mirror/keypoints3d/{img_id_6}.json"
+    #     with open(jsonfile, 'r') as f:
+    #         keypoints3d = json.load(f)
+    #     gt3d_real_all.append(torch.Tensor(keypoints3d[0]['keypoints3d']))
+    #     #gt3d_virt_all.append(torch.Tensor(keypoints3d[1]['keypoints3d']))
+        
 
+    # #import ipdb; ipdb.set_trace()
+    # '''We would evaluate at the camera-coords level using the given REAL 3D pose. why only real? :)'''
+    # gt3d_real_all = torch.stack(gt3d_real_all, dim=0).detach().cpu()
+
+
+    filename = project_dir + f"/mirror_GT3D.pickle"
+    from_pickle = load_pickle(filename)
+    gt3d_real_all = from_pickle["gt3d_real_all"]
+
+    # to_pickle = [("gt3d_real_all", gt3d_real_all)]
+    # save2pickle(filename, to_pickle)
+
+    
 
     #import ipdb; ipdb.set_trace()
     gt3d_chosen = gt3d_real_all[gt_eval_pts]

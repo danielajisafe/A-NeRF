@@ -113,7 +113,7 @@ def render(H, W, focal, chunk=1024*32, rays=None, c2w=None,
     """
 
     #print(f" ** No of rays o and d: {len(rays)} ** ")
-    print(f"using mirror: {use_mirr}")
+    #print(f"using mirror: {use_mirr}")
 
     if (c2w is not None) and (rays is None):
         # special case to render full image
