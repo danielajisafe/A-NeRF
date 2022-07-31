@@ -1,29 +1,44 @@
+import os
+import sys
 import h5py
+import ipdb
 import torch
 import numpy as np
 import pickle as pkl
 from scipy.spatial.transform import Rotation
 from collections.abc import Iterable
 
+
 from .utils.skeleton_utils import smpl_rest_pose, calculate_bone_length, get_smpl_l2ws,\
                                    get_kp_bounding_cylinder, swap_mat, SMPLSkeleton
+
+
+# old submission code
+sys.path.append("/scratch/dajisafe/smpl/mirror_project_dir")
+
+from util_loading import load_pickle, save2pickle, sort_B_via_A, get_joint_trees, \
+calc_bone_length, detect_flip
 
 # mapper to map joints
 SMPL_JOINT_MAPPER = lambda joints: joints[:, [0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23]]
 
-def read_spin_data(data_path, ext_scale=0.001, img_res=1000, bbox_res=224):
+def read_spin_data(data_path, ext_scale=0.001, img_res=1000, bbox_res=224, new_focal=None):
     import deepdish as dd
 
     if data_path.endswith(".pkl"):
+        #ipdb.set_trace()
         spin_data = pkl.load(open(data_path, "rb"))
     else:
         spin_data = dd.io.load(data_path)
 
     img_paths = spin_data['img_path']
     betas = torch.tensor(spin_data['pred_betas']).cpu()
+    #ipdb.set_trace()
     joints = torch.cat([spin_data['pred_output'][i].joints for i in range(len(img_paths))]).cpu()
     rot_mats = torch.tensor(spin_data['pred_rot_mat']).cpu()
     bboxes = torch.tensor(spin_data['bbox_params']).cpu()
+    #ipdb.set_trace()
+
     try:
         cameras = torch.tensor(spin_data['pred_camera']).cpu()
     except:
@@ -31,7 +46,8 @@ def read_spin_data(data_path, ext_scale=0.001, img_res=1000, bbox_res=224):
 
     processed_ret = process_spin_data(betas, cameras, joints, rot_mats,
                                       bboxes, res=img_res, resized_res=bbox_res,
-                                      ext_scale=ext_scale, scale_rest_pose=True)
+                                      ext_scale=ext_scale, scale_rest_pose=True,
+                                      new_focal=new_focal)
 
     processed_ret['img_path'] = img_paths
     if 'pose_3d' in spin_data:
@@ -66,12 +82,23 @@ def convert_crop_cam_to_orig_img_and_focal(cam, bbox, img_width, img_height,
     # Note: we assume the bounding box to be a squared one here
     # Note: we only need to translate x and y in this case, as the camera is not moved along z-axis
     # calculate the z location as in SPIN and VIBE
-    cz = 2 * focal / (resized_width * cam[:, 0])
+
+    # if not isinstance(new_focal, float):
+    #     cz = 2 * focal[0] / (resized_width * cam[:, 0]) 
+    # else:
+    cz = 2 * focal / (resized_width * cam[:, 0])        
+    
+    #ipdb.set_trace()
     cx, cy, h = bbox[:, 0], bbox[:, 1], bbox[:, 2]
     hw, hh = img_width / 2., img_height / 2.
 
-    # first, we can know the actual focal length by scaling the cropped focal length
-    f = h / resized_width * focal
+    # first, we can know the actual focal length by scaling the cropped focal length (this is called scaling by aspect ratio)
+    # ipdb.set_trace()
+    # f = h / resized_width * focal
+
+    # account for x and y 
+    fx = h / resized_width * focal
+    w=h ; fy = w / resized_height * focal
 
     # similarly, undo the bounding box scaling here
     # Note: cam[:, 0] = 2 * focal / (resized_width * cz)
@@ -81,18 +108,35 @@ def convert_crop_cam_to_orig_img_and_focal(cam, bbox, img_width, img_height,
     sx = cam[:, 0] * (1. / (img_width / h))
     sy = cam[:, 0] * (1. / (img_height / h))
 
+    #ipdb.set_trace()
     # now, apply the scale to move the camera
     tx = ((cx - hw) / hw / sx) + cam[:, 1]
     ty = ((cy - hh) / hh / sy) + cam[:, 2]
 
     if new_focal is not None:
         print(f"old cz {cz}, focal {f}")
-        cz = cz * new_focal / f
-        f[:] = new_focal
+        # Todo: accounf for x and y
+        if not isinstance(new_focal, float):
+            ratio = new_focal[0] / f
+            cz = cz * ratio
+            f = new_focal
+        else:
+            ratio = new_focal / f
+            cz = cz * ratio
+            f[:] = new_focal
+
+        # tx = tx * ratio
+        # ty = ty * ratio
         print(f"new cz {cz}, focal {f}")
 
+    #ipdb.set_trace()
+    #return f.numpy(), np.stack([tx, ty, cz], axis=-1)
+    #return [f, tx, ty, cz]
 
-    return np.stack([f, tx, ty, cz], axis=-1)
+    f  = np.stack([fx.numpy(), fy.numpy()]).T.reshape(-1,2)
+    #ipdb.set_trace()
+
+    return f , np.stack([tx, ty, cz], axis=-1)
 
 def get_keypoints_from_betas(betas, joints, rot_mats,
                              ext_scale=1.0, align_joint_idx=8,
@@ -110,10 +154,13 @@ def get_keypoints_from_betas(betas, joints, rot_mats,
     from torchgeometry import rotation_matrix_to_angle_axis
 
     with torch.no_grad():
-        dummy = torch.eye(3).view(1, 1, 3, 3).expand(len(betas), 24, 3, 3)
-        smpl = SMPL(f"smpl/SMPL_{gender}.pkl",
+        dummy = torch.eye(3).reshape(1, 1, 3, 3).expand(len(betas), 24, 3, 3)
+        #ipdb.set_trace()
+        smpl = SMPL(f"/scratch/dajisafe/smpl/Rebuttal/smpl/SMPL_{gender}.pkl",
                      joint_mapper=mapper
                     )
+
+        # ipdb.set_trace()
         smpl_outputs = smpl(betas=betas,
                             body_pose=dummy[:, 1:],
                             global_orient=dummy[:, :1],
@@ -143,7 +190,9 @@ def get_keypoints_from_betas(betas, joints, rot_mats,
     pelvis = pelvis[..., None] * pose_scale
 
     zeros = torch.FloatTensor(rot_mats.shape[0], 24, 3, 1).zero_()
+    #ipdb.set_trace()
     rot_mats = torch.cat([rot_mats, zeros], dim=-1)
+    #ipdb.set_trace()
     bones = rotation_matrix_to_angle_axis(rot_mats.view(-1, 3, 4)).view(rot_mats.shape[0], 24, 3).numpy()
     l2ws = np.array([get_smpl_l2ws(bone, rest_pose=rest_pose) for bone in bones])
 
@@ -160,17 +209,22 @@ def pred_cams_to_orig_cam_params(cameras, bboxes,
                                  focal=5000., ext_scale=1.0,
                                  new_focal=None):
 
-    orig_cams = convert_crop_cam_to_orig_img_and_focal(cameras, bboxes,
+    focals, trans  = convert_crop_cam_to_orig_img_and_focal(cameras, bboxes,
                                                        img_width=img_width,
                                                        img_height=img_height,
                                                        resized_width=resized_width,
                                                        resized_height=resized_height,
                                                        focal=focal,
                                                        new_focal=new_focal)
-    focals = orig_cams[:, 0]
-    cam_translations = orig_cams[:, 1:] * ext_scale
+
+    #ipdb.set_trace()
+    cam_translations = trans * ext_scale
+    
+    # focals = orig_cams[:, 0]
+    # cam_translations = orig_cams[:, 1:] * ext_scale
     c2ws = np.eye(4, dtype=np.float32)
-    c2ws = c2ws[None].repeat(len(orig_cams), 0)
+    c2ws = c2ws[None].repeat(len(trans), 0)
+    # c2ws = c2ws[None].repeat(len(orig_cams), 0)
     c2ws[:, :3, -1] = -cam_translations
 
     # turn this to NeRF format
@@ -194,6 +248,7 @@ def process_spin_data(betas, cameras, joints, rot_mats, bboxes,
     else:
         res_H, res_W = res
 
+    #ipdb.set_trace()
     ext_scale = ext_scale * dataset_ext_scale
 
     kp3d, bones, skts, rest_pose, pose_scale = get_keypoints_from_betas(
@@ -256,6 +311,7 @@ def write_to_h5py(filename, data, img_chunk_size=64,
     ds[:] = np.array([*imgs.shape])
 
     for k in data.keys():
+        print(f"*** {k}")
         if not isinstance(data[k], Iterable):
             print(f'{k}: non-iterable')
             ds = h5_file.create_dataset(k, (), type(data[k]))
@@ -275,7 +331,7 @@ def write_to_h5py(filename, data, img_chunk_size=64,
             for idx in range(N):
                 ds[idx] = data[k][idx].reshape(*flatten_shape[1:])
             #ds[:] = data[k].reshape(*flatten_shape)
-        elif k == 'img_paths':
+        elif k == 'img_path':
             img_paths = data[k].astype('S')
             ds = h5_file.create_dataset(k, (len(img_paths),), img_paths.dtype)
             ds[:] = img_paths
@@ -287,6 +343,8 @@ def write_to_h5py(filename, data, img_chunk_size=64,
             else:
                 raise NotImplementedError('Unknown datatype for key {k}: {data[k].dtype}')
 
+            # if "img_shape" in h5_file.keys():
+            #     del h5_file['img_shape'] 
             ds = h5_file.create_dataset(k, data[k].shape, dtype,
                                         compression=compression)
             ds[:] = data[k][:]

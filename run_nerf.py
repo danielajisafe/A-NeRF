@@ -11,6 +11,10 @@ from tqdm import tqdm, trange
 # our own codes
 from core.trainer import *
 from core.utils.ray_utils import *
+
+#logging
+from core.utils.log_utils import *
+
 from core.utils.run_nerf_helpers import *
 from core.utils.evaluation_helpers import evaluate_metric, evaluate_pampjpe_from_smpl_params
 from core.utils.skeleton_utils import draw_skeletons_3d
@@ -192,6 +196,8 @@ def config_parser():
     parser.add_argument("--basedir", type=str, default='./logs/',
                         help='where to store ckpts and logs')
     parser.add_argument("--datadir", type=str, default='./data/llff/fern',
+                        help='input data directory')
+    parser.add_argument("--data_path", type=str, default='./data/llff/fern',
                         help='input data directory')
 
     # training options
@@ -502,6 +508,15 @@ def train():
     # Create log dir and copy the config file
     basedir = args.basedir
     expname = args.expname
+
+    if args.no_reload:
+        #update with new timestmap
+        expname = args_to_str(args)
+    else:
+        # use timestamp added from terminal
+        pass
+    print(f"Current timestamp: {expname.split('/')[-1]}")
+
     os.makedirs(os.path.join(basedir, expname), exist_ok=True)
     f = os.path.join(basedir, expname, 'args.txt')
     with open(f, 'w') as file:

@@ -1,5 +1,6 @@
 import io
 import cv2
+import ipdb
 import torch
 import numpy as np
 import plotly.graph_objects as go
@@ -346,6 +347,7 @@ def get_smpl_l2ws(pose, rest_pose=None, scale=1., skel_type=SMPLSkeleton, coord=
 
     # apply scale
     rest_kp = rest_pose * scale
+    #ipdb.set_trace()
     mrots = [Rotation.from_rotvec(p).as_matrix()  for p in pose]
     mrots = np.array(mrots)
 
@@ -476,6 +478,7 @@ def skeleton3d_to_2d(kps, c2ws, H, W, focals, centers=None):
 
     exts = np.array([nerf_c2w_to_extrinsic(c2w) for c2w in c2ws])
 
+    #ipdb.set_trace()
     kp2ds = []
     for i, (kp, ext) in enumerate(zip(kps, exts)):
         f = focals[i] if not isinstance(focals, float) else focals
@@ -934,13 +937,13 @@ def plot_points3d(pts, fig=None, label=False, marker_size=3, color="orange"):
             fig.add_trace(d)
     return fig
 
-def plot_cameras(extrinsics=None, viewmats=None, fig=None):
+def plot_cameras(extrinsics=None, viewmats=None, fig=None, axis_scale=0.5):
     if extrinsics is not None:
         viewmats = np.array([np.linalg.inv(ext) for ext in extrinsics])
     cam_pos = viewmats[:, :3, 3]
-    rights = viewmats[:, :3, 0] * 0.5
-    ups = viewmats[:, :3, 1] * 0.5
-    fwds = viewmats[:, :3, 2] * 0.5
+    rights = viewmats[:, :3, 0] * axis_scale
+    ups = viewmats[:, :3, 1] * axis_scale
+    fwds = viewmats[:, :3, 2] * axis_scale
 
     rlx, rly, rlz = [], [], []
     ulx, uly, ulz = [], [], []
@@ -1330,6 +1333,7 @@ def focal_to_intrinsic_np(focal):
 
 def world_to_cam(pts, extrinsic, H, W, focal, center=None):
 
+    #ipdb.set_trace()
     if center is None:
         offset_x = W * .5
         offset_y = H * .5
@@ -1341,6 +1345,7 @@ def world_to_cam(pts, extrinsic, H, W, focal, center=None):
 
     intrinsic = focal_to_intrinsic_np(focal)
 
+    #ipdb.set_trace()
     cam_pts = pts @ extrinsic.T @ intrinsic.T
     cam_pts = cam_pts[..., :2] / cam_pts[..., 2:3]
     cam_pts[cam_pts == np.inf] = 0.

@@ -1,20 +1,26 @@
 import bisect
 import h5py, math
+import ipdb
 import torch
 import random
 import numpy as np
+import matplotlib.pyplot as plt
 from torch.utils.data import Dataset, DataLoader, Sampler, ConcatDataset
 from torch.utils.data._utils.collate import default_collate
 
 from .pose_opt import pose_ckpt_to_pose_data
-from .utils.skeleton_utils import SMPLSkeleton, get_per_joint_coords, cylinder_to_box_2d, nerf_c2w_to_extrinsic
+#from .utils.skeleton_utils import SMPLSkeleton, get_per_joint_coords, cylinder_to_box_2d, nerf_c2w_to_extrinsic
 from .utils.ray_utils import get_rays_np
+
+from .utils.skeleton_utils import SMPLSkeleton, get_per_joint_coords, cylinder_to_box_2d, nerf_c2w_to_extrinsic,\
+    skeleton3d_to_2d, plot_skeleton2d
 
 dataset_catalog = {
     'h36m': {},
     'perfcap': {},
     'mixamo': {},
     'surreal': {},
+    'vanilla': {},
 }
 
 class BaseH5Dataset(Dataset):
@@ -89,6 +95,23 @@ class BaseH5Dataset(Dataset):
         # and get values from sampled pixels
         rays_rgb, fg, bg = self.get_img_data(idx, pixel_idxs)
 
+
+        #-------------------------------------------
+        first = 0
+        chk_img = self.dataset['imgs'][first].reshape(1080,1920,3)
+        c2ws_expanded = c2w[None, ...]
+
+        #ipdb.set_trace()
+
+        # # debugging
+        # _= input("debugging?")
+        # focal = np.array([1.2803090021884900e+03, 1.3033885156746885e+03]).reshape(-1,2)
+
+        # kp2d = skeleton3d_to_2d(kps, c2ws_expanded, int(self.HW[0]), int(self.HW[1]), float(focal), center[None, ...])
+        # plot_skeleton2d(kp2d[first], img=chk_img)
+        # plt.savefig(f"/scratch/dajisafe/smpl/Rebuttal/A-NeRF/checkers/imgs/kp_3d_to_2d.jpg", dpi=150, bbox_inches='tight', pad_inches = 0)
+
+        #ipdb.set_trace()
         return_dict = {'rays_o': rays_o,
                        'rays_d': rays_d,
                        'target_s': rays_rgb,

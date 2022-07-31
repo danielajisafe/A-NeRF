@@ -9,6 +9,8 @@ from .load_h36m import H36MDataset
 from .load_mixamo import MixamoDataset
 from .load_perfcap import MonoPerfCapDataset
 from .load_zju import ZJUMocapDataset
+from .load_vanilla import VanillaDataset 
+
 from .utils.skeleton_utils import rotate_y, rotate_x, rotate_z
 from .utils.skeleton_utils import SMPLSkeleton, Mpi3dhpSkeleton, CanonicalSkeleton
 
@@ -17,7 +19,8 @@ DATASET_SKELETON_MAP = {"3dhp": SMPLSkeleton,
                         "h36m": SMPLSkeleton,
                         "zju": SMPLSkeleton,
                         "mixamo": SMPLSkeleton,
-                        "perfcap": SMPLSkeleton,}
+                        "perfcap": SMPLSkeleton,
+                        "vanilla": SMPLSkeleton,}
 
 DATASET_CATALOG = {
     'h36m': {
@@ -40,6 +43,11 @@ DATASET_CATALOG = {
     'zju': {k: f'data/zju_mocap/{k}_train_h5py.h5' for k in ['315', '377', '386', '387', '390', '392', '393',
                                                              '394']
     },
+
+    'vanilla': {
+        'subset': '',
+    }
+
 }
 
 def generate_bullet_time(c2w, n_views=20, axis='y'):
@@ -136,6 +144,18 @@ def get_dataset_from_catalog(args, N_samples, dataset_type, subject=None, N_nms=
         shared_kwargs['split'] = 'train'
         dataset = SurrealDataset(path, N_cams=args.N_cams, N_rand_kps=args.rand_train_kps,
                                  **shared_kwargs)
+    elif dataset_type == 'vanilla':
+        # shared_kwargs['split'] = 'train'
+
+        # update path
+        DATASET_CATALOG[dataset_type][subject] = args.data_path +'/vanilla_train_h5py.h5'
+        path = DATASET_CATALOG[dataset_type][subject]
+        path_v = args.data_path +'/vanilla_train_h5py.h5'
+        #import ipdb; ipdb.set_trace()
+
+        dataset = VanillaDataset(path, N_cams=args.N_cams, N_rand_kps=args.rand_train_kps,
+                                 **shared_kwargs)
+
     elif dataset_type == 'zju':
         dataset = ZJUMocapDataset(path, **shared_kwargs)
     else:
