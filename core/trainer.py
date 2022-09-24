@@ -120,7 +120,7 @@ def render(H, W, focal, chunk=1024*32, rays=None, c2w=None,
         center = center.ravel() if center is not None else None
         import ipdb; ipdb.set_trace()
     
-        rays_o, rays_d = get_rays(H, W, focal, c2w, center=center)
+        rays_o, rays_d, _ = get_rays(H, W, focal, c2w, center=center)
         
     else:
         # use provided ray batch
@@ -392,7 +392,10 @@ class Trainer:
                                              #use virt pose + real pose
                                             #kps_v=batch['kp3d_v'], cyls_v=batch['cyls_v'],
                                             A_dash=batch['A_dash'], m_normal=batch['m_normal'],
-                                            avg_D=batch['avg_D']), extras
+                                            avg_D=batch['avg_D'], idx_repeat=batch['idx_repeat'], 
+                                            pixel_loc_repeat=batch['pixel_loc_repeat'], 
+                                            pixel_loc_v_repeat=batch['pixel_loc_v_repeat']
+                                            ), extras
 
         kp_idx = batch['kp_idx']
         if torch.is_tensor(kp_idx):
@@ -407,7 +410,10 @@ class Trainer:
                                             #use virt pose + optimized real pose
                                             #kps_v=batch['kp3d_v'], cyls_v=batch['cyls_v'],
                                             A_dash=batch['A_dash'], m_normal=batch['m_normal'],
-                                            avg_D=batch['avg_D'])
+                                            avg_D=batch['avg_D'], idx_repeat=batch['idx_repeat'], 
+                                            pixel_loc_repeat=batch['pixel_loc_repeat'], 
+                                            pixel_loc_v_repeat=batch['pixel_loc_v_repeat']
+                                            )
 
         #import ipdb; ipdb.set_trace()
 
@@ -426,11 +432,14 @@ class Trainer:
 
 
     def _create_kp_args_dict(self, kps, skts=None, kps_v=None, cyls_v=None, A_dash=None, 
-                            m_normal=None, avg_D=None, bones=None, cyls=None, rots=None):
+                            m_normal=None, avg_D=None, bones=None, cyls=None, rots=None,
+                            idx_repeat=None, pixel_loc_repeat=None, pixel_loc_v_repeat=None):
         # TODO: unified the variable names (across all functions)?
         return {'kp_batch': kps, 'skts': skts, 'bones': bones, 'cyls': cyls,
                 'kp_batch_v': kps_v, 'cyls_v': cyls_v,
-                'A_dash': A_dash, 'm_normal': m_normal, 'avg_D': avg_D}
+                'A_dash': A_dash, 'm_normal': m_normal, 'avg_D': avg_D, 
+                'idx_repeat':idx_repeat, 'pixel_loc_repeat':pixel_loc_repeat,
+                'pixel_loc_v_repeat':pixel_loc_v_repeat}
 
     def compute_loss(self, batch, preds,
                      kp_opts=None, popt_detach=False, use_mirr=False):
@@ -513,6 +522,14 @@ class Trainer:
             if use_mirr:
                 rgb_pred_ref = rgb_pred_ref + (1. - acc_pred_ref)[..., None] * bgs_v
 
+
+        # TODOS:
+        # 1. comfirm visually reflected rays in the 3D makes sense (No for inference, ? at train time)
+        # 2. confirm visually that the right real and virtual mask is being used in loss computation. Plot a large dot
+        # on both masks and visually confirm they are aligned with the rays in 3D space?
+        # 3. confirm that there is no place where the reprojection of virtual pose is not required and the real pose is sufficient.
+        # 4. basically, test that each part of the code is working properly.
+        # 5. run code, and monitor early issues, image quality, loss or improvements.
 
         # mask loss
         rgb_loss = loss_fn(rgb_pred, batch['target_s'], reduction='mean')

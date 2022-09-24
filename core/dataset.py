@@ -1,14 +1,21 @@
+import ipdb
+import imageio
 import bisect
-import h5py, math
 import torch
 import random
+import h5py, math
 import numpy as np
+from tqdm import tqdm, trange
+import matplotlib.pyplot as plt
 from torch.utils.data import Dataset, DataLoader, Sampler, ConcatDataset
 from torch.utils.data._utils.collate import default_collate
 
 from .pose_opt import pose_ckpt_to_pose_data
 from .utils.skeleton_utils import SMPLSkeleton, get_per_joint_coords, cylinder_to_box_2d, nerf_c2w_to_extrinsic
 from .utils.ray_utils import get_rays_np
+
+from .utils.skeleton_utils import SMPLSkeleton, get_per_joint_coords, cylinder_to_box_2d, nerf_c2w_to_extrinsic,\
+    skeleton3d_to_2d, plot_skeleton2d, draw_skeleton2d
 
 dataset_catalog = {
     'h36m': {},
@@ -96,22 +103,58 @@ class BaseH5Dataset(Dataset):
         # sample pixels
 
         pixel_idxs = self.sample_pixels(idx, q_idx)
-        #import ipdb; ipdb.set_trace()
+        # import ipdb; ipdb.set_trace()
 
         v_empty=False
         # in case mask is empty
         pixel_idxs_v, v_empty = self.sample_pixels_v(idx, q_idx)
 
         # maybe get a version that computes only sampled points?
-        rays_o, rays_d = self.get_rays(c2w, focal, pixel_idxs, center)
-        # if not v_empty:
-        #     rays_o_v, rays_d_v = self.get_rays_v(c2w, focal, pixel_idxs_v, center)
+        rays_o, rays_d, pic_loc2d = self.get_rays(c2w, focal, pixel_idxs, center)
+        if not v_empty:
+            rays_o_v, rays_d_v, _ = self.get_rays_v(c2w, focal, pixel_idxs_v, center)
 
         # load the image, foreground and background,
         # and get values from sampled pixels
         rays_rgb, fg, bg = self.get_img_data(idx, pixel_idxs)
-        # if not v_empty:
-        #     rays_rgb_v, fg_v, bg_v = self.get_img_data_v(idx, pixel_idxs_v)
+        if not v_empty:
+            rays_rgb_v, fg_v, bg_v = self.get_img_data_v(idx, pixel_idxs_v)
+
+        # #-------------------------------------------
+        # '''Choice selection, not current training step'''
+        # for first in trange(1178):
+        #     first = 1000 #1177
+        #     chk_img = self.dataset['imgs'][first].reshape(1080,1920,3)
+        #     c2ws_expanded = self.dataset['c2ws'][first:first+1]
+        #     #c2ws_expanded = c2w[None, ...]
+        #     #ipdb.set_trace()
+
+        #     # # debugging
+        #     # _= input("debugging?")
+        #     # focal = np.array([1.2803090021884900e+03, 1.3033885156746885e+03]).reshape(-1,2)
+
+        #     kp2d = skeleton3d_to_2d(self.dataset['kp3d'][first:first+1], c2ws_expanded, int(self.HW[0]), int(self.HW[1]), self.dataset['focals'][first], self.dataset['centers'][first:first+1])
+        #     # kp2d = skeleton3d_to_2d(kps, c2ws_expanded, int(self.HW[0]), int(self.HW[1]), focal, center[None, ...])
+
+        #     #plot_skeleton2d(kp2d[first], img=chk_img)
+        #     #plt.savefig(f"/scratch/dajisafe/smpl/A_temp_folder/A-NeRF/checkers/imgs/kp_3d_to_2d.jpg", dpi=150, bbox_inches='tight', pad_inches = 0)
+
+        #     skel_img = draw_skeleton2d(img=chk_img, skel=kp2d[0], skel_type=None, width=3, flip=False) #(chk_img, kp2d, skel_type, 3, flip=False)
+        #     imageio.imwrite(f'/scratch/dajisafe/smpl/A_temp_folder/A-NeRF/checkers/initial_overlay/initial_3d_overlay_{first}.jpg', skel_img)
+            
+        # ipdb.set_trace()
+        # -----------------------------
+        pre_select = 0
+        # self.plot_current_pixel(idx, pixel_idxs, pre_select, type="real")
+        # self.plot_current_pixel(idx, pixel_idxs_v, pre_select, type="virt")
+        #plt.savefig(f"/scratch/dajisafe/smpl/A_temp_folder/A-NeRF/checkers/imgs/pixel_loc.jpg", dpi=300, bbox_inches='tight', pad_inches = 0)
+
+        idx_repeat = np.array([idx]).repeat(self.N_samples, 0)
+        pixel_loc_repeat = self._2d_pixel_loc[pixel_idxs[pre_select:pre_select+1]].repeat(self.N_samples, 0)
+        pixel_loc_v_repeat = self._2d_pixel_loc[pixel_idxs_v[pre_select:pre_select+1]].repeat(self.N_samples, 0)
+        #------------------------------
+        # print("idx", idx)
+        #ipdb.set_trace()
 
         return_dict = {'rays_o': rays_o,
                        'rays_d': rays_d,
@@ -131,18 +174,22 @@ class BaseH5Dataset(Dataset):
                        'A_dash':A_dash,
                        "m_normal": m_normal,
                         "avg_D": avg_D,
-                        #"v_empty": v_empty
+                        "idx_repeat": idx_repeat,
+                        "pixel_loc_repeat": pixel_loc_repeat,
+                        "pixel_loc_v_repeat": pixel_loc_v_repeat
+
+                       #'pic_loc2d':pic_loc2d,
                        }
 
-        # if not v_empty:
-        #     return_dict['rays_o_v'] = rays_o_v
-        #     return_dict['rays_d_v'] = rays_d_v
-        #     return_dict['target_s_v'] = rays_rgb_v
-        #     return_dict['kp_idx_v'] = kp_idxs_v # though should be same
-        #     return_dict['kp3d_v'] = kps_v
-        #     return_dict['cyls_v'] = cyls_v
-        #     return_dict['bgs_v'] = bg_v
-        #     return_dict['fgs_v'] = fg_v
+        if not v_empty:
+            return_dict['rays_o_v'] = rays_o_v
+            return_dict['rays_d_v'] = rays_d_v
+            return_dict['target_s_v'] = rays_rgb_v
+            return_dict['kp_idx_v'] = kp_idxs_v # though should be same
+            return_dict['kp3d_v'] = kps_v
+            return_dict['cyls_v'] = cyls_v
+            return_dict['bgs_v'] = bg_v
+            return_dict['fgs_v'] = fg_v
 
         return return_dict
 
@@ -198,15 +245,19 @@ class BaseH5Dataset(Dataset):
             # have per-image center. apply those during runtime
             offset_y = offset_x = 0.
 
+        self._2d_pixel_loc = np.stack([i, j], axis=-1)
+
         # pre-computed direction, the first two cols
         # need to be divided by focal
         self._dirs = np.stack([ (i-offset_x),
                               -(j-offset_y),
                               -np.ones_like(i)], axis=-1)
 
-        # pre-computed pixel indices
+        # pre-computed pixel indices from image resolution (0 to n, from first cell to last cell)
         self._pixel_idxs = np.arange(np.prod(self.HW)).reshape(*self.HW)
 
+
+        #ipdb.set_trace()
         # store pose and camera data directly in memory (they are small)
         self.gt_kp3d = dataset['gt_kp3d'][:] if 'gt_kp3d' in self.dataset_keys else None
         self.kp_map, self.kp_uidxs = None, None # only not None when self.multiview = True
@@ -370,7 +421,7 @@ class BaseH5Dataset(Dataset):
 
         return c2w, focal, center, cam_idx
 
-
+    
     def get_img_data(self, idx, pixel_idxs):
         '''
         get image data (in np.uint8)
@@ -378,6 +429,12 @@ class BaseH5Dataset(Dataset):
 
         fg = self.dataset['masks'][idx, pixel_idxs].astype(np.float32)
         img = self.dataset['imgs'][idx, pixel_idxs].astype(np.float32) / 255.
+
+        # raw_img = self.dataset['imgs'][idx].reshape(*self.HW,3).astype(np.float32) / 255.
+        # plt.imshow(raw_img); plt.axis("off")
+        # plt.plot(*self._2d_pixel_loc[pixel_idxs[0]], "og", markersize=5)
+        # plt.savefig(f"/scratch/dajisafe/smpl/A_temp_folder/A-NeRF/checkers/imgs/pixel_loc_real.jpg", dpi=300, bbox_inches='tight', pad_inches = 0)
+        # ipdb.set_trace()
 
         bg = None
         if self.has_bg:
@@ -559,9 +616,12 @@ class BaseH5Dataset(Dataset):
 
         return selected_idxs_v
 
+    # TODO: any difference between get_rays and get_rays_v functions? Not really for now
     def get_rays(self, c2w, focal, pixel_idxs, center=None):
 
         dirs = self._dirs[pixel_idxs].copy()
+        pic_loc2d = self._2d_pixel_loc[pixel_idxs].copy()
+
         if center is not None:
             center = center.copy()
             center[1] *= -1
@@ -577,11 +637,13 @@ class BaseH5Dataset(Dataset):
             rays_d = np.sum(dirs[..., np.newaxis, :] * c2w[:3,:3], -1)  # dot product, equals to: [c2w.dot(dir) for dir in dirs]
 
         rays_o = np.broadcast_to(c2w[:3, -1], rays_d.shape)
-        return rays_o.copy(), rays_d.copy()
+        return rays_o.copy(), rays_d.copy(), pic_loc2d.copy()
 
     def get_rays_v(self, c2w, focal, pixel_idxs, center=None):
 
         dirs = self._dirs_v[pixel_idxs].copy()
+        pic_loc2d = self._2d_pixel_loc[pixel_idxs].copy()
+
         if center is not None:
             center = center.copy()
             center[1] *= -1
@@ -598,7 +660,7 @@ class BaseH5Dataset(Dataset):
             rays_d = np.sum(dirs[..., np.newaxis, :] * c2w[:3,:3], -1)  # dot product, equals to: [c2w.dot(dir) for dir in dirs]
 
         rays_o = np.broadcast_to(c2w[:3, -1], rays_d.shape)
-        return rays_o.copy(), rays_d.copy()
+        return rays_o.copy(), rays_d.copy(), pic_loc2d.copy()
 
     def get_pose_data(self, idx, q_idx, N_samples):
 
@@ -1082,9 +1144,10 @@ def ray_collate_fn(batch):
     # flatten the first two dimensions.
 
     #import ipdb; ipdb.set_trace()
+    
     batch = {k: batch[k].flatten(end_dim=1) for k in batch}
-    batch['rays'] = torch.stack([batch['rays_o'], batch['rays_d']], dim=0)
-    # batch['rays'] = torch.stack([batch['rays_o'], batch['rays_d'], 
-    #                             batch['rays_o_v'], batch['rays_d_v']], dim=0)
+    batch['rays'] = torch.stack([batch['rays_o'], batch['rays_d'], 
+                                batch['rays_o_v'], batch['rays_d_v']], dim=0)
+    #batch['rays'] = torch.stack([batch['rays_o'], batch['rays_d']], dim=0)
     return batch
 

@@ -1,6 +1,9 @@
 import time
+import ipdb
+import h5py
 import torch
 import torch.nn as nn
+import matplotlib.pyplot as plt
 import torch.nn.functional as F
 from torch.autograd import grad
 
@@ -13,6 +16,10 @@ from .cutoff_embedder import get_embedder
 from .utils.ray_utils import *
 from .utils.run_nerf_helpers import *
 from .utils.skeleton_utils import SMPLSkeleton, rot6d_to_axisang, axisang_to_rot, bones_to_rot, line_intersect, create_plane_updated, normalize_batch_normal
+
+
+import sys; sys.path.append("/scratch/dajisafe/smpl/mirror_project_dir")
+from .utils.extras import save2pickle, load_pickle
 
 def create_raycaster(args, data_attrs, device=None):
     """Instantiate NeRF's MLP model.
@@ -365,6 +372,9 @@ class RayCaster(nn.Module):
     def render_rays(self,
                     ray_batch=None,
                     ray_batch_v=None,
+                    idx_repeat=None,
+                    pixel_loc_repeat=None,
+                    pixel_loc_v_repeat=None,
                     N_samples=None,
                     kp_batch=None,
                     kp_batch_v=None,
@@ -441,9 +451,10 @@ class RayCaster(nn.Module):
 
             #div_factor = 2
             rays_o_v, rays_d_v = ray_batch_v[:,0:3], ray_batch_v[:,3:6] # [N_rays, 3] each
-
             viewdirs_v = ray_batch_v[:,-3:] if ray_batch_v.shape[-1] > 8 else None
             bounds_v = torch.reshape(ray_batch_v[...,6:8], [-1,1,2])
+
+            '''rough initialization: virt looking at real and real looking at virt should have similar near and far'''
             near_v, far_v = bounds_v[...,0], bounds_v[...,1] # [-1,1]
 
             # Step 2: Sample 'coarse' sample from the ray segment within the bounding cylinder
@@ -452,62 +463,99 @@ class RayCaster(nn.Module):
                                          N_samples=N_samples, perturb=perturb, lindisp=lindisp, pytest=pytest, 
                                          ray_noise_std=ray_noise_std)
 
+            init_near, init_far = near, far
             init_near_v, init_far_v = near_v, far_v
             
             # Get line of intersection 
             n_m = normalize_batch_normal(m_normal) # same
             pt_on_ray_v = near_v*rays_d_v
 
-            #import ipdb; ipdb.set_trace()
+            
             intersect_pts=line_intersect(n_m[0].repeat(N_rays).view(N_rays,1,-1), avg_D[0:1].repeat(N_rays,1),\
                         rays_d_v.view(N_rays,-1,1), pt_on_ray_v.view(N_rays,-1))
             #intersect_pts = torch.Tensor(intersect_pts)
         
-            '''reflect the virtual points to real space - drop trans part in A matrix'''
+            '''reflect the virtual points to real space - drop trans part in A matrix 
+            (aligns with shiyang comment on transforming the mirr matrix coodinate system provided it contains the trans part)'''
             rays_ref = (A_dash[0][:3,:3] @ rays_d_v.permute(1,0)).permute(1,0)
 
             # rays_d_v_homo = torch.cat((rays_d_v, rays_d_v.new_ones(1).expand(*rays_d_v.shape[:-1], 1)), 1)
             # rays_ref = (rays_d_v_homo @  A_dash[0])[:,:3]
 
+            A_mirr = A_dash
+            v_cam_pos = A_mirr[:,:3,3:4].reshape(-1,3) # no negative addition (already inhibit)
+
+            #import ipdb; ipdb.set_trace()
             # get near and far based on reflected points but real cyls 
-            near_ref, far_ref =  get_near_far_in_cylinder(rays_o=intersect_pts, rays_d=rays_ref, cyl=cyls, near=init_near_v,
+            near_ref, far_ref =  get_near_far_in_cylinder(rays_o=v_cam_pos, rays_d=rays_ref, cyl=cyls, near=init_near_v,
                                                 far=init_far_v)
 
-            pts_ref, z_vals_ref = self.sample_pts(rays_o=intersect_pts, rays_d=rays_ref, near=near_ref, 
+            pts_ref, z_vals_ref = self.sample_pts(rays_o=v_cam_pos, rays_d=rays_ref, near=near_ref, 
                                             far=far_ref, N_rays=N_rays, N_samples=N_samples,
                                             perturb=perturb, lindisp=lindisp, pytest=pytest, ray_noise_std=ray_noise_std)
 
             #ref_z_vals = sample_from_lineseg(near=near, far=far, N_lines=N_rays, N_samples=64)
             #mirr2real_z_vals = sample_from_lineseg(near=torch.zeros_like(near), far=far, N_lines=n_rays, N_samples=64)
 
-    
-            # import sys; sys.path.append("/scratch/dajisafe/smpl/mirror_project_dir")
-            # from util_loading import save2pickle
+            h5_path = './data/mirror/3/23df3bb4-272d-4fba-b7a6-514119ca8d21_cam_3/2022-05-14-13/mirror_train_h5py.h5'
+            dataset = h5py.File(h5_path, 'r')
+            #dataset_v = h5py.File(h5_path_v, 'r')
+            # TODO:
+            # check others parts of the code
+            # run training and debug early.
 
-            # filename = f"/scratch/dajisafe/smpl/mirror_project_dir/authors_eval_data/temp_dir/raycaster_paramsB_May12.pickle"
-            # to_pickle = [("pts",pts), ("z_vals", z_vals), 
-            #             #("pts_v",pts_v), ("z_vals_v", z_vals_v), 
-            #             ("pts_ref", pts_ref), ("z_vals_ref", z_vals_ref),
-            #             ("intersect_pts", intersect_pts),
+            def plot_current_pixel(dataset, image_idx, pixel_loc, type="real"):
+                '''
+                get current pixel data (in np.uint8)
+                '''
 
-            #             ("rays_ref", rays_ref),
-            #             ("rays_o", rays_o), 
-            #             ("rays_o_v", rays_o_v), 
-            #             ("rays_d", rays_d), 
-            #             ("rays_d_v", rays_d_v), 
+                img_shape = dataset['img_shape'][:]
+                HW = img_shape[1:3]
+
+                color = "og" if type == "real" else "or"
+                raw_img = dataset['imgs'][image_idx].reshape(*HW,3).astype(np.float32) / 255.
+                plt.imshow(raw_img); plt.axis("off")
+                plt.plot(*pixel_loc, color, markersize=2)
+                #return plt
+                plt.savefig(f"/scratch/dajisafe/smpl/A_temp_folder/A-NeRF/checkers/imgs/pixel_loc.jpg", dpi=300, bbox_inches='tight', pad_inches = 0)
+
+            '''we have pre-seleced 0 from the random pixels, see dataset.py'''
+            #plot_current_pixel(dataset, idx_repeat[0].detach().cpu(), pixel_loc_repeat[0].detach().cpu(), type="real")
+            #plot_current_pixel(dataset, idx_repeat[0].detach().cpu(), pixel_loc_v_repeat[0].detach().cpu(), type="virt")
+  
+            del_folder = "/scratch/dajisafe/smpl/mirror_project_dir/authors_eval_data/temp_dir/to_be_deleted_pickles"
+            filename = f"{del_folder}/raycaster_use_mirr_Sep22_2022.pickle"
+            to_pickle = [("pts",pts), ("z_vals", z_vals), 
+                        # ("pts_v",pts_v), ("z_vals_v", z_vals_v), 
+                        ("pts_ref", pts_ref), 
+                        ("z_vals_ref", z_vals_ref),
+                        ("intersect_pts", intersect_pts),
+
+                        ("rays_ref", rays_ref),
+                        ("rays_o", rays_o), 
+                        ("rays_o_v", rays_o_v), 
+                        ("rays_d", rays_d), 
+                        ("rays_d_v", rays_d_v), 
+                        ("skts", skts),
                         
-            #             ("kp_batch", kp_batch), 
-            #             ("kp_batch_v", kp_batch_v), 
-            #             ("cyls", cyls), 
-            #             ("cyls_v", cyls_v),
-            #             ("init_near_v", init_near_v),
-            #             ("init_far_v", init_far_v),
-            #               ("n_m", n_m[0]),
-            #                ("avg_D", avg_D)
-            #             ]
+                        ("kp_batch", kp_batch), 
+                        #("kp_batch_v", kp_batch_v), 
+                        ("cyls", cyls), 
+                        ("cyls_v", cyls_v),
+                        ("init_near", init_near),
+                        ("init_far", init_far),
 
-            # save2pickle(filename, to_pickle)
-            # import ipdb; ipdb.set_trace()
+                        ("init_near_v", init_near_v),
+                        ("init_far_v", init_far_v),
+                        ("n_m", n_m[0]),
+                        ("avg_D", avg_D),
+                        ("A_dash", A_dash),
+                        ("cyls", cyls), 
+                        ("cyls_v", cyls_v),
+                        ]
+
+            #save2pickle(filename, to_pickle)
+            #import ipdb; ipdb.set_trace()
 
             # '''z_vals gives amt of change/distance'''
             # if not use_z_direct:
@@ -630,7 +678,7 @@ class RayCaster(nn.Module):
             # import sys; sys.path.append("/scratch/dajisafe/smpl/mirror_project_dir")
             # from util_loading import save2pickle
 
-            # filename = f"/scratch/dajisafe/smpl/mirror_project_dir/authors_eval_data/temp_dir/raycaster_paramsC.pickle"
+            # filename = f"{del_folder}/raycaster_paramsC.pickle"
             # to_pickle = [("pts_is",pts_is), ("z_vals", z_vals), 
             # ("pts_is_ref", pts_is_ref), ("z_vals_ref", z_vals_ref),
             
@@ -667,6 +715,39 @@ class RayCaster(nn.Module):
             near, far =  get_near_far_in_cylinder(rays_o, rays_d, cyls, near=near, far=far)
             pts, z_vals = self.sample_pts(rays_o, rays_d, near, far, N_rays, N_samples,
                                         perturb, lindisp, pytest=pytest, ray_noise_std=ray_noise_std)
+
+            n_m = normalize_batch_normal(m_normal)[0] if m_normal is not None else None #readable one-line
+            
+            
+            filename = f"{del_folder}/raycaster_params_no_mirr_Sep22_2022.pickle"
+            to_pickle = [("pts",pts), ("z_vals", z_vals), 
+                        # ("rays_ref", rays_ref),
+                        ("rays_o", rays_o), 
+                        # ("rays_o_v", rays_o_v), 
+                        ("rays_d", rays_d), 
+                        # ("rays_d_v", rays_d_v), 
+                        
+                        ("kp_batch", kp_batch), 
+                        # ("kp_batch_v", kp_batch_v), 
+                        ("cyls", cyls), 
+                        # ("cyls_v", cyls_v),
+                        ("near", near),
+                        ("far", far),
+                        ("n_m", n_m),
+                        ("avg_D", avg_D),
+
+                        ("skts", skts),
+                        ("bones", bones),
+                        ("N_rays", N_rays),
+                        ("N_samples", N_samples),
+                        ("perturb", perturb),
+                        ("lindisp", lindisp),
+                        ("pytest", pytest),
+                        ("ray_noise_std", ray_noise_std),
+                        ]
+
+            #save2pickle(filename, to_pickle)
+            #import ipdb; ipdb.set_trace()
 
             # prepare local coordinate system
             joint_coords = self.get_subject_joint_coords(subject_idxs, pts.device)

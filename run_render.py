@@ -1,7 +1,10 @@
 import os
+import ipdb
+import h5py
 import torch
 import shutil
 import imageio
+import datetime
 import numpy as np
 import deepdish as dd
 from run_nerf import render_path
@@ -49,6 +52,10 @@ def config_parser():
                         help='input data directory')
     parser.add_argument('--n_bullet', type=int, default=3,
                         help='no of bullet views to render')
+    parser.add_argument('--n_bubble', type=int, default=10,
+                        help='no of bubble views to render')
+    parser.add_argument('--switch_cam', action='store_true', default=False,
+                        help='replace real camera with virtual camera')
 
     parser.add_argument('--entry', type=str, required=True,
                         help='entry in the dataset catalog to render')
@@ -194,6 +201,7 @@ def load_render_data(args, nerf_args, poseopt_layer=None, opt_framecode=True):
 
     # Load data based on type:
     bones = None
+    root = None
     bg_imgs, bg_indices = None, None
     if args.render_type in ['retarget', 'mesh']:
         print(f'Load data for retargeting!')
@@ -202,7 +210,7 @@ def load_render_data(args, nerf_args, poseopt_layer=None, opt_framecode=True):
                                                                  **render_data)
     elif args.render_type == 'bullet':
         print(f'Load data for bullet time effect!')
-        kps, skts, c2ws, cam_idxs, focals, bones = load_bullettime(data_h5, c2ws, focals,
+        kps, skts, c2ws, cam_idxs, focals, bones, root = load_bullettime(data_h5, c2ws, focals,
                                                                    rest_pose, pose_keys,
                                                                   #centers=centers_n,
                                                                    **render_data)
@@ -313,6 +321,7 @@ def load_render_data(args, nerf_args, poseopt_layer=None, opt_framecode=True):
                 'bg_indices': bg_indices,
                 'subject_idxs': subject_idxs,
                 #'centers': centers, # May 4 addition
+                'root':root
                 }
 
     gt_dict = {'gt_paths': gt_paths,
@@ -321,7 +330,7 @@ def load_render_data(args, nerf_args, poseopt_layer=None, opt_framecode=True):
                'bg_imgs': bg_imgs,
                'bg_indices': bg_indices}
 
-    return ret_dict, gt_dict
+    return ret_dict, gt_dict, render_data['selected_idxs']
 
 def init_catalog(args, n_bullet=3):
     n_bullet = args.n_bullet
@@ -384,29 +393,39 @@ def init_catalog(args, n_bullet=3):
     comb = args.data_path.split("/")[-2]
     view = int(comb.split("_cam_")[1])
 
-    if view ==3:
-        easy_idx = [0, 473, 467, 1467]
-    elif view ==2:
-        easy_idx = [30, 400, 700, 1100]
-    elif view ==5:
-        easy_idx = [50, 200, 1000, 1200]
-    else:
-        import ipdb; ipdb.set_trace()
+    # if view ==3:
+    #     easy_idx = [0, 473, 467, 1467]
+    # elif view ==2:
+    #     easy_idx = [30, 400, 700, 1100]
+    # elif view ==5:
+    #     easy_idx = [50, 200, 1000, 1200]
+    # else:
+    #     import ipdb; ipdb.set_trace()
 
-    #easy_idx = [0, 465, 473, 467, 1467] # [10, 70, 350, 420, 490, 910, 980, 1050] #np.arange(0, args.train_len)
+    # [1,209,212,250,280,340,368,369,406,428,438,993]
+    # [449,624,644,680,705,746,998,1170]
+
+    #rebuttal_tim = np.arange(800,1178) #[992,1027,1041,1087,1088,1133,1134,1172,1175] #[449,624,644,680,705,746,998,1170,1,209,212,250,280,340,368,369,406,428,438,993]  #np.arange(0, 500) #[500] #1177, 814]
+    easy_idx = [0] #rebuttal_tim #[406,466,340,600,900,814] # #[0, 465, 473, 467, 1467] # [10, 70, 350, 420, 490, 910, 980, 1050] #np.arange(0, args.train_len)
+    
     mirror_easy = {
-        'data_h5': args.data_path + '/mirror_train_h5py.h5',
+        'data_h5': args.data_path + '/mirror_train_h5py.h5', #'/tim_train_h5py.h5',
         'data_h5_v': args.data_path + '/v_mirror_train_h5py.h5',
         'retarget': set_dict(easy_idx, length=25, skip=2, center_kps=True),
         'bullet': set_dict(easy_idx, n_bullet=args.n_bullet),
-        'bubble': set_dict(easy_idx, n_step=30),
+        'bubble': set_dict(easy_idx, n_step=args.n_bubble),
         'mesh': set_dict([0], length=1, skip=1),
     }
+
+    # h5_path =  args.data_path + '/tim_train_h5py.h5'
+    # dataset = h5py.File(h5_path, 'r', swmr=True)
+    # ipdb.set_trace()
 
     # TODO: create validation indices
     test_val_idx = [0]
     mirror_val = {
         'data_h5': args.data_path + '/mirror_val_h5py.h5',
+        'data_h5_v': args.data_path + '/v_mirror_train_h5py.h5',
         'val': set_dict(test_val_idx, length=1, skip=1),
         'val2': set_dict(test_val_idx, length=1, skip=1),
 
@@ -419,7 +438,7 @@ def init_catalog(args, n_bullet=3):
     
     hard_idx = [140, 210, 280, 490, 560, 630, 700, 770, 840, 910]
     mirror_hard = {
-        'data_h5': args.data_path + '/mirror_train_h5py.h5', #1620
+        'data_h5': args.data_path + '/mirror_train_h5py.h5', #'/tim_train_h5py.h5', #1620
         'data_h5_v': args.data_path + '/v_mirror_train_h5py.h5', #1620
         'retarget': set_dict(hard_idx, length=60, skip=5, center_kps=True),
         #'bullet': set_dict([190,  210,  230,  490,  510,  530,  790,  810,  830,  910,  930, 950, 1090, 1110, 1130],
@@ -942,7 +961,7 @@ def load_bullettime(pose_h5, c2ws, focals, rest_pose, pose_keys,
     #import ipdb; ipdb.set_trace()
 
    
-    return kps, skts, c2ws, cam_idxs, focals, bones#, centers
+    return kps, skts, c2ws, cam_idxs, focals, bones, root#, centers
 
 def load_selected(pose_h5, c2ws, focals, rest_pose, pose_keys,
                   selected_idxs, refined=None, idx_map=None):
@@ -973,15 +992,31 @@ def load_selected(pose_h5, c2ws, focals, rest_pose, pose_keys,
 
 def load_bubble(pose_h5, c2ws, focals, rest_pose, pose_keys,
                 selected_idxs, x_deg=15., y_deg=25., z_t=0.1,
-                refined=None, n_step=5, center_kps=True, idx_map=None):
+                refined=None, n_step=5, center_kps=True, idx_map=None, args=None):
     x_rad = x_deg * np.pi / 180.
     y_rad = y_deg * np.pi / 180.
+
+    # load poses
+    if refined is None:
+        kps, bones = dd.io.load(pose_h5, pose_keys, sel=dd.aslice[selected_idxs, ...])
+        selected_idxs = find_idxs_with_map(selected_idxs, idx_map)
+    else:
+        selected_idxs = find_idxs_with_map(selected_idxs, idx_map)
+        kps, bones = refined
+        kps = kps[selected_idxs]
+        bones = bones[selected_idxs]
+    cam_idxs = selected_idxs[:, None].repeat(n_step, 1).reshape(-1)
 
     # center camera
     c2ws = c2ws[selected_idxs]
     shift_x = c2ws[..., 0, -1].copy()
     shift_y = c2ws[..., 1, -1].copy()
     c2ws[..., :2, -1] = 0.
+
+    # shift camera
+    root = kps[..., :1, :].copy()
+    c2ws[..., :3, -1] -= root.reshape(-1,3)
+
     z_t = z_t * c2ws[0, 2, -1]
 
     if isinstance(focals, float):
@@ -1008,16 +1043,7 @@ def load_bubble(pose_h5, c2ws, focals, rest_pose, pose_keys,
             bubbles.append(cam_motion @ c)
         bubble_c2ws.append(bubbles)
 
-    # load poses
-    if refined is None:
-        kps, bones = dd.io.load(pose_h5, pose_keys, sel=dd.aslice[selected_idxs, ...])
-        selected_idxs = find_idxs_with_map(selected_idxs, idx_map)
-    else:
-        selected_idxs = find_idxs_with_map(selected_idxs, idx_map)
-        kps, bones = refined
-        kps = kps[selected_idxs]
-        bones = bones[selected_idxs]
-    cam_idxs = selected_idxs[:, None].repeat(n_step, 1).reshape(-1)
+    
 
     # undo rot
     #bones[..., 0, :] = np.array([1.5708, 0., 0.], dtype=np.float32).reshape(1, 1, 3)
@@ -1036,7 +1062,10 @@ def load_bubble(pose_h5, c2ws, focals, rest_pose, pose_keys,
     skts = skts[:, None].repeat(n_step, 1).reshape(len(selected_idxs) * n_step, -1, 4, 4)
 
     c2ws = np.array(bubble_c2ws).reshape(-1, 4, 4)
+
+    #import ipdb; ipdb.set_trace()
     return kps, skts, c2ws, cam_idxs, focals
+
 
 def to_tensors(data_dict):
     tensor_dict = {}
@@ -1187,7 +1216,34 @@ def run_render():
     
 
     # prepare the required data
-    render_data, gt_dict = load_render_data(args, nerf_args, poseopt_layer, nerf_args.opt_framecode)
+    render_data, gt_dict, selected_idxs = load_render_data(args, nerf_args, poseopt_layer, nerf_args.opt_framecode)
+
+    # if args.switch_cam:
+    #     print("switching real camera with virtual camera")
+    #     # do you need data from other view? --------------------
+    #     catalog = init_catalog(args)[args.dataset][args.entry]
+    #     if 'data_h5_v' in catalog: data_h5_v = catalog['data_h5_v']
+    #     # (['kp', 'skts', 'render_poses', 'cams', 'hwf', 'bones', 'bg_imgs', 'bg_indices', 'subject_idxs'])
+
+    #     A_mirr =  dd.io.load(data_h5_v, '/A_dash')
+    #     # A_mirr is duplicated. select id or pick one.
+    #     sel_id = catalog.get(args.render_type, {}) ['selected_idxs'] 
+    #     A_mirr = A_mirr[sel_id].reshape(4,4) 
+
+    #     # extract V cam from A mirror matrix. Do we add negative to V position?
+    #     v_cam_3_4 = np.concatenate((np.linalg.inv(A_mirr[:3,:3]), -A_mirr[:3,3:4]),1)
+    #     last_row = np.array([[0, 0, 0, 1]], dtype=np.float32)
+    #     v_cam =  np.concatenate([v_cam_3_4, last_row], axis=0)
+    #     v_cam = v_cam.reshape(1,4,4)
+
+    #     #import ipdb; ipdb.set_trace()
+    #     root = render_data['root']
+    #     if root is not None:
+    #         v_cam[..., :3, -1] -= root.reshape(-1,3)
+    #     # --- Testing: switch real with a virtual camera
+    #     render_data['render_poses'] = v_cam
+        # ------------------------------------------------------
+
     tensor_data = to_tensors(render_data)
 
     basedir = os.path.join(args.outputdir, args.runname)
@@ -1220,20 +1276,51 @@ def run_render():
 
     rgbs = (rgbs * 255).astype(np.uint8)
     accs = (accs * 255).astype(np.uint8)
+
+    # overlay on body reconstruction
     skeletons = draw_skeletons_3d(rgbs, render_data['kp'],
                                   render_data['render_poses'],
                                   *render_data['hwf'])
 
+    time = datetime.datetime.now().strftime("%Y-%m-%d-%H") # ("%Y-%m-%d-%H-%M-%S")
 
-    os.makedirs(os.path.join(basedir, f'image_{view}'), exist_ok=True)
-    os.makedirs(os.path.join(basedir, f'skel_{view}'), exist_ok=True)
-    os.makedirs(os.path.join(basedir, f'acc_{view}'), exist_ok=True)
+    #ipdb.set_trace()
+    os.makedirs(os.path.join(basedir, time, f'image_{view}'), exist_ok=True)
+    os.makedirs(os.path.join(basedir, time, f'skel_{view}'), exist_ok=True)
+    os.makedirs(os.path.join(basedir, time, f'acc_{view}'), exist_ok=True)
+
+
+    #refined_folder = "/scratch/dajisafe/smpl/A_temp_folder/A-NeRF/checkers/refined_overlay"
+    #h5_path =  args.data_path + '/tim_train_h5py.h5'
+    #dataset = h5py.File(h5_path, 'r', swmr=True)
 
     for i, (rgb, acc, skel) in enumerate(zip(rgbs, accs, skeletons)):
         #print(f"i {i}")
-        imageio.imwrite(os.path.join(basedir, f'image_{view}', f'{i:05d}.png'), rgb)
-        imageio.imwrite(os.path.join(basedir, f'acc_{view}', f'{i:05d}.png'), acc)
-        imageio.imwrite(os.path.join(basedir, f'skel_{view}', f'{i:05d}.png'), skel)
+        '''temp addition to the filename here'''
+
+
+        # # plot overlay on original plain image 
+        # rel_idx = selected_idxs[i]
+        # plain_img = dataset['imgs'][rel_idx].reshape(1, 1080, 1920, 3)
+
+        #ipdb.set_trace()
+        # skel_plain = draw_skeletons_3d(imgs=plain_img, skels=render_data['kp'][i:i+1],
+        #                             c2ws=render_data['render_poses'][i:i+1],
+        #                             H=render_data['hwf'][0], W=render_data['hwf'][1], 
+        #                             focals=render_data['hwf'][2])
+        #ipdb.set_trace()
+        # TODO:
+        # investigate "killed"
+        # detach tensors before saving e.g skel_plain etc
+        # check if they are on cuda
+        #imageio.imwrite(os.path.join(refined_folder, f'', f'{rel_idx:05d}.png'), skel_plain[0])
+        
+        #-----------------------------------------------
+        rel_idx = i
+        # plot overlay on volumetric reconstruction 
+        imageio.imwrite(os.path.join(basedir, time, f'image_{view}', f'{rel_idx:05d}.png'), rgb)
+        imageio.imwrite(os.path.join(basedir, time, f'acc_{view}', f'{rel_idx:05d}.png'), acc)
+        imageio.imwrite(os.path.join(basedir, time, f'skel_{view}', f'{rel_idx:05d}.png'), skel)
     
     #import ipdb; ipdb.set_trace()
     np.save(os.path.join(basedir, 'bboxes.npy'), bboxes, allow_pickle=True)

@@ -186,6 +186,7 @@ class NeRF(nn.Module):
         # weights = alpha * tf.math.cumprod(1.-alpha + 1e-10, -1, exclusive=True)
         # sum_{i=1 to N samples} prob_of_already_hit_particles * alpha_for_i * color_for_i
         # C(r) = sum [T_i * (1 - exp(-sigma_i * delta_i)) * c_i] = sum [T_i * alpha_i * c_i]
+        
         # alpha_i = 1 - exp(-sigma_i * delta_i)
         # T_i = exp(sum_{j=1 to i-1} -sigma_j * delta_j) = torch.cumprod(1 - alpha_i)
         # standard NeRF

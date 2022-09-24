@@ -23,12 +23,12 @@ sys.path.append(local_dir)
 
 # custom imports
 import dan_util_skel as skel
-from dan_pmpjpe import pmpjpe, procrustes
-from dan_evaluation import MPJPE, NMPJPE
-from extras import load_pickle, save2pickle
+from .dan_pmpjpe import pmpjpe, procrustes
+from .dan_evaluation import MPJPE, NMPJPE
+from .extras import load_pickle, save2pickle
 #from util_loading import load_pickle, save2pickle, sort_B_via_A
-from extras import alpha_to_hip_1st, hip_1st_to_alpha, calc_bone_length
-from dan_skeleton_utils import get_bone_names, get_parent_idx, verify_get_parent_idx
+from .extras import alpha_to_hip_1st, hip_1st_to_alpha, calc_bone_length
+from .dan_skeleton_utils import get_bone_names, get_parent_idx, verify_get_parent_idx
 #from transforms import h36m_to_DCPose, baseline_to_h36m_uniform_2D, baseline_to_h36m_uniform_3D
 #from plotting import plotPoseOnImage, plot_multiple_views, plot15j_2d, plot15j_3d, plot15j_2d_no_image, add_bbox_in_image, plot15j_2d_uniform, plot_2d_grouped, plot2d_halpe26, plot2d_halpe26_mirror_common_3D
 

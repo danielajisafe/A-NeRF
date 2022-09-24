@@ -19,8 +19,8 @@ local_dir = "/scratch/dajisafe/smpl/A_temp_folder" if platform.node() == "naye" 
 sys.path.append(local_dir)
 
 #import ipdb; ipdb.set_trace()
-from dan_skeleton_utils import get_parent_idx
-from extras import KinematicChain
+from .dan_skeleton_utils import get_parent_idx
+from .extras import KinematicChain
 
 #################################
 #         Skeleton Helpers      #

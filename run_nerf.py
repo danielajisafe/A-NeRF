@@ -2,6 +2,7 @@ import os, sys
 import numpy as np
 import time
 import torch
+import datetime
 import torch.nn as nn
 import torch.nn.functional as F
 import torch.autograd.profiler as profiler
@@ -35,23 +36,26 @@ def render_path(render_poses, hwf, chunk, render_kwargs,
 
 
     
-    #import ipdb; ipdb.set_trace()
-    # #if index%100==0:
-    # if index==None:
-    #     #import ipdb; ipdb.set_trace()
-    #     import sys; sys.path.append("/scratch/dajisafe/smpl/mirror_project_dir")
-    #     from util_loading import save2pickle
-
-    #     name = "post" # "train_time"  "post"
-    #     filename = f"/scratch/dajisafe/smpl/mirror_project_dir/authors_eval_data/temp_dir/entrance_params_{name}_{index}.pickle"
-    #     to_pickle = [("render_poses",render_poses), ("hwf", hwf), ("chunk", chunk), ("gt_imgs", gt_imgs),
-    #      # ("render_kwargs", render_kwargs), 
-    #     ("bg_imgs", bg_imgs), ("bg_indices", bg_indices),("centers", centers), ("kp", kp),("skts", skts),
-    #     ("cyls", cyls),("bones", bones),("cams", cams),("subject_idxs", subject_idxs),("render_factor", render_factor),
-    #     ("ext_scale", ext_scale),("white_bkgd", white_bkgd),("ret_acc", ret_acc),("base_bg", base_bg)]
-
-    #     print("render_kwargs", render_kwargs)
+    # import ipdb; ipdb.set_trace()
+    # if index%100==0:
+    if index==None:
         #import ipdb; ipdb.set_trace()
+        import sys; sys.path.append("/scratch/dajisafe/smpl/mirror_project_dir")
+        #from util_loading import save2pickle
+        from core.utils.extras import save2pickle, load_pickle
+
+        name = "post" # "train_time"  "post"
+        filename = f"/scratch/dajisafe/anerf_mirr/temp_dir/entrance_params_{name}_{index}.pickle"
+        to_pickle = [("render_poses",render_poses), ("hwf", hwf), ("chunk", chunk), ("gt_imgs", gt_imgs),
+         # ("render_kwargs", render_kwargs), 
+        ("bg_imgs", bg_imgs), ("bg_indices", bg_indices),("centers", centers), ("kp", kp),("skts", skts),
+        ("cyls", cyls),("bones", bones),("cams", cams),("subject_idxs", subject_idxs),("render_factor", render_factor),
+        ("ext_scale", ext_scale),("white_bkgd", white_bkgd),("ret_acc", ret_acc),("base_bg", base_bg)]
+
+        print("render_kwargs", render_kwargs)
+        # import ipdb; ipdb.set_trace()
+        # save2pickle(filename, to_pickle)
+        
 
     H, W, focal = hwf
 
@@ -541,7 +545,7 @@ def config_parser():
     parser.add_argument("--i_weights", type=int, default=1000,
                         help='frequency of weight ckpt saving')
     
-    parser.add_argument("--i_pose_weights", type=int, default=2000,
+    parser.add_argument("--i_pose_weights", type=int, default=1000,
                         help='frequency of saving pose weights')
     parser.add_argument("--i_testset", type=int, default=10000,
                         help='frequency of testset saving')

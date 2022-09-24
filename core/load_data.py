@@ -88,10 +88,11 @@ def load_data(args):
     # initialize dataloader
     dataloader = DataLoader(dataset, batch_sampler=sampler,
                             num_workers=args.num_workers, pin_memory=True,
-                            collate_fn=ray_collate_fn)
+                            collate_fn=ray_collate_fn) # how do you pass in use_mirr argument into ray_collate_fn?
     data_attrs = dataset.get_meta()
     render_data = dataset.get_render_data()
 
+    #import ipdb; ipdb.set_trace()
     return dataloader, render_data, data_attrs
 
 

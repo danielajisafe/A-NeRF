@@ -7,7 +7,7 @@ from collections import namedtuple
 import plotly.offline as py
 import plotly.graph_objs as go
 #from wandb import set_trace
-from dan_skeleton_utils import get_parent_idx, verify_get_parent_idx
+from .dan_skeleton_utils import get_parent_idx, verify_get_parent_idx
 
 py.init_notebook_mode(connected=True)
 

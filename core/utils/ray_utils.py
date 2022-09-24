@@ -1,9 +1,13 @@
+import ipdb
 import torch
 import numpy as np
 from .skeleton_utils import get_kp_bounding_cylinder, cylinder_to_box_2d, swap_mat, nerf_c2w_to_extrinsic
 
 # Ray helpers
 def get_rays(H, W, focal, c2w, center=None):
+    #print("when do we use this function?")
+    #ipdb.set_trace()
+
     # i, j both of size (H, W)
     if isinstance(focal, float) or (len(focal.reshape(-1)) < 2):
         focal_x = focal_y = focal
@@ -18,6 +22,10 @@ def get_rays(H, W, focal, c2w, center=None):
     i, j = torch.meshgrid(torch.linspace(0, W-1, W), torch.linspace(0, H-1, H))  # pytorch's meshgrid has indexing='ij'
     i = i.t()
     j = j.t()
+
+    pixel2d_loc = torch.stack([i, j], axis=-1)
+    #pic_loc2d = pixel2d_loc.copy()
+
     # neg-y : image indexing is ascending from top to bottom. Make it descending and centered in the middle
     dirs = torch.stack([(i-offset_x)/focal_x, -(j-offset_y)/focal_y, -torch.ones_like(i)], -1)
     # Rotate ray directions from camera frame to the world frame
@@ -25,7 +33,7 @@ def get_rays(H, W, focal, c2w, center=None):
     rays_d = torch.sum(dirs[..., np.newaxis, :] * c2w[:3,:3], -1)  # dot product, equals to: [c2w.dot(dir) for dir in dirs]
     # Translate camera frame's origin to the world frame. It is the origin of all rays.
     rays_o = c2w[:3,-1].expand(rays_d.shape)
-    return rays_o, rays_d
+    return rays_o, rays_d, pixel2d_loc.clone()
 
 
 def get_rays_np(H, W, focal, c2w, mesh=None, center=None):
@@ -117,7 +125,7 @@ def kp_to_valid_rays(poses, H, W, focal, kps=None, cylinder_params=None,
         h = H if isinstance(H, int) else H[i]
         w = W if isinstance(W, int) else W[i]
 
-        ray_o, ray_d = get_rays(h, w, f, c2w, center=center)
+        ray_o, ray_d, _ = get_rays(h, w, f, c2w, center=center)
 
         #w2c = np.linalg.inv(swap_mat(c2w.cpu().numpy()))
         w2c = nerf_c2w_to_extrinsic(c2w.cpu().numpy())
