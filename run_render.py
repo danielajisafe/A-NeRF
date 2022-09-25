@@ -56,6 +56,8 @@ def config_parser():
                         help='no of bubble views to render')
     parser.add_argument('--switch_cam', action='store_true', default=False,
                         help='replace real camera with virtual camera')
+    # parser.add_argument("--no_reload", action='store_true',
+    #                     help='do not reload weights from saved ckpt?')
 
     parser.add_argument('--entry', type=str, required=True,
                         help='entry in the dataset catalog to render')
@@ -1252,7 +1254,7 @@ def run_render():
         render_mesh(basedir, render_kwargs, tensor_data, res=args.mesh_res, chunk=nerf_args.chunk)
         return
 
-    #import ipdb; ipdb.set_trace()
+    print(f"render_path called in run_render.py")
     rgbs, _, accs, _, bboxes = render_path(render_kwargs=render_kwargs,
                                       chunk=nerf_args.chunk//8, #added May 4
                                       ext_scale=nerf_args.ext_scale,

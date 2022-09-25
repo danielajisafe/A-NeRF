@@ -537,6 +537,8 @@ class Trainer:
             rgb_loss_v = loss_fn(rgb_pred_ref, batch['target_s_v'], reduction='mean')
             #rgb_loss = (rgb_loss+rgb_loss_v)/2
             rgb_loss = rgb_loss*args.r_weight +rgb_loss_v*args.v_weight
+            #import ipdb; ipdb.set_trace()
+
 
         if coarse:
             rgb_loss = rgb_loss * args.coarse_weight

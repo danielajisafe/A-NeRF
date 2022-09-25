@@ -30,7 +30,7 @@ DEBUG = True
 def render_path(render_poses, hwf, chunk, render_kwargs,
                 centers=None, kp=None, skts=None, cyls=None, bones=None,
                 gt_imgs=None, bg_imgs=None, bg_indices=None,
-                cams=None, subject_idxs=None, render_factor=1, # added May 4
+                cams=None, subject_idxs=None, render_factor=1, root=None, # added 
                 white_bkgd=False, ret_acc=False,
                 ext_scale=0.00035, base_bg=1.0, index=None):
 
@@ -205,7 +205,7 @@ def render_testset(poses, hwf, args, render_kwargs, kps=None, skts=None, cyls=No
 
     render_kwargs["ray_caster"].eval()
 
-    
+    print(f"render_path called in run_nerf.py")
     rgbs, disps, _, valid_idxs, bboxes = render_path(poses, hwf, args.chunk//8, render_kwargs,
                                                      bg_imgs=bg_imgs, bg_indices=bg_indices,
                                                      #centers=centers, 
@@ -303,7 +303,7 @@ def config_parser():
     parser.add_argument("--netchunk", type=int, default=1024*64,
                         help='number of pts sent through network in parallel, decrease if running out of memory')
     parser.add_argument("--no_reload", action='store_true',
-                        help='do not reload weights from saved ckpt')
+                        help='do not reload weights from saved ckpt?')
     parser.add_argument("--ft_path", type=str, default=None,
                         help='specific weights npy file to reload for coarse network')
     parser.add_argument("--n_iters", type=int, default=200000,
@@ -542,10 +542,10 @@ def config_parser():
     # logging/saving options
     parser.add_argument("--i_print",   type=int, default=1000,
                         help='frequency of console printout and metric loggin')
-    parser.add_argument("--i_weights", type=int, default=1000,
+    parser.add_argument("--i_weights", type=int, default=10000,
                         help='frequency of weight ckpt saving')
     
-    parser.add_argument("--i_pose_weights", type=int, default=1000,
+    parser.add_argument("--i_pose_weights", type=int, default=10000,
                         help='frequency of saving pose weights')
     parser.add_argument("--i_testset", type=int, default=10000,
                         help='frequency of testset saving')
@@ -575,15 +575,17 @@ def train():
 
     # Create log dir and copy the config file
     basedir = args.basedir
-    expname = args.expname
 
     if args.no_reload:
         #update with new timestmap
-        expname = args_to_str(args)
+        args.expname = args_to_str(args)
     else:
         # use timestamp added from terminal
         pass
+
+    expname = args.expname
     print(f"Current timestamp: {expname.split('/')[-1]}")
+    #ipdb.set_trace()
 
     os.makedirs(os.path.join(basedir, expname), exist_ok=True)
     f = os.path.join(basedir, expname, 'args.txt')

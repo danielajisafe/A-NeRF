@@ -138,7 +138,10 @@ def create_raycaster(args, data_attrs, device=None):
 
     print('Found ckpts', ckpts)
     loaded_ckpt = None
-    if len(ckpts) > 0 and not args.no_reload:
+
+    #ipdb.set_trace()
+    #if len(ckpts) > 0 and not args.no_reload:
+    if len(ckpts) > 0:
         ckpt_path = ckpts[-1]
         print('Reloading from', ckpt_path)
         start, ray_caster, optimizer, loaded_ckpt = load_ckpt_from_path(ray_caster,
@@ -440,9 +443,28 @@ class RayCaster(nn.Module):
         bounds = torch.reshape(ray_batch[...,6:8], [-1,1,2])
         near, far = bounds[...,0], bounds[...,1] # [-1,1]
 
+        def plot_current_pixel(dataset, image_idx, pixel_loc, type="real"):
+            '''
+            get current pixel data (in np.uint8)
+            '''
+
+            img_shape = dataset['img_shape'][:]
+            HW = img_shape[1:3]
+
+            color = "og" if type == "real" else "or"
+            raw_img = dataset['imgs'][image_idx].reshape(*HW,3).astype(np.float32) / 255.
+            plt.imshow(raw_img); plt.axis("off")
+            plt.plot(*pixel_loc, color, markersize=2)
+            #return plt
+            plt.savefig(f"/scratch/dajisafe/smpl/A_temp_folder/A-NeRF/checkers/imgs/pixel_loc.jpg", dpi=300, bbox_inches='tight', pad_inches = 0)
+
         #import ipdb; ipdb.set_trace()
+        del_folder = "/scratch/dajisafe/smpl/mirror_project_dir/authors_eval_data/temp_dir/to_be_deleted_pickles"
+        h5_path = './data/mirror/3/23df3bb4-272d-4fba-b7a6-514119ca8d21_cam_3/2022-05-14-13/mirror_train_h5py.h5'
+
         # Use virt z_vals  directly 
         if use_mirr:
+            #print("using mirror in a-nerf...")
             #use_z_direct = True 
 
             N_rays = ray_batch.shape[0]
@@ -497,33 +519,14 @@ class RayCaster(nn.Module):
             #ref_z_vals = sample_from_lineseg(near=near, far=far, N_lines=N_rays, N_samples=64)
             #mirr2real_z_vals = sample_from_lineseg(near=torch.zeros_like(near), far=far, N_lines=n_rays, N_samples=64)
 
-            h5_path = './data/mirror/3/23df3bb4-272d-4fba-b7a6-514119ca8d21_cam_3/2022-05-14-13/mirror_train_h5py.h5'
-            dataset = h5py.File(h5_path, 'r')
+            #h5_path = './data/mirror/3/23df3bb4-272d-4fba-b7a6-514119ca8d21_cam_3/2022-05-14-13/mirror_train_h5py.h5'
+            #dataset = h5py.File(h5_path, 'r')
             #dataset_v = h5py.File(h5_path_v, 'r')
-            # TODO:
-            # check others parts of the code
-            # run training and debug early.
-
-            def plot_current_pixel(dataset, image_idx, pixel_loc, type="real"):
-                '''
-                get current pixel data (in np.uint8)
-                '''
-
-                img_shape = dataset['img_shape'][:]
-                HW = img_shape[1:3]
-
-                color = "og" if type == "real" else "or"
-                raw_img = dataset['imgs'][image_idx].reshape(*HW,3).astype(np.float32) / 255.
-                plt.imshow(raw_img); plt.axis("off")
-                plt.plot(*pixel_loc, color, markersize=2)
-                #return plt
-                plt.savefig(f"/scratch/dajisafe/smpl/A_temp_folder/A-NeRF/checkers/imgs/pixel_loc.jpg", dpi=300, bbox_inches='tight', pad_inches = 0)
-
+            
             '''we have pre-seleced 0 from the random pixels, see dataset.py'''
             #plot_current_pixel(dataset, idx_repeat[0].detach().cpu(), pixel_loc_repeat[0].detach().cpu(), type="real")
             #plot_current_pixel(dataset, idx_repeat[0].detach().cpu(), pixel_loc_v_repeat[0].detach().cpu(), type="virt")
   
-            del_folder = "/scratch/dajisafe/smpl/mirror_project_dir/authors_eval_data/temp_dir/to_be_deleted_pickles"
             filename = f"{del_folder}/raycaster_use_mirr_Sep22_2022.pickle"
             to_pickle = [("pts",pts), ("z_vals", z_vals), 
                         # ("pts_v",pts_v), ("z_vals_v", z_vals_v), 
@@ -707,7 +710,7 @@ class RayCaster(nn.Module):
         
         else:
             '''Rendering Time Without Mirrors'''
- 
+            #print("No mirror")
             N_rays = ray_batch.shape[0]
             #print(f"N_rays {N_rays}")
 
@@ -719,6 +722,13 @@ class RayCaster(nn.Module):
             n_m = normalize_batch_normal(m_normal)[0] if m_normal is not None else None #readable one-line
             
             
+            dataset = h5py.File(h5_path, 'r')
+            #dataset_v = h5py.File(h5_path_v, 'r')
+            
+            #'''we have pre-seleced 0 from the random pixels, see dataset.py'''
+            #plot_current_pixel(dataset, idx_repeat[0].detach().cpu(), pixel_loc_repeat[0].detach().cpu(), type="real")
+            #plot_current_pixel(dataset, idx_repeat[0].detach().cpu(), pixel_loc_v_repeat[0].detach().cpu(), type="virt")
+  
             filename = f"{del_folder}/raycaster_params_no_mirr_Sep22_2022.pickle"
             to_pickle = [("pts",pts), ("z_vals", z_vals), 
                         # ("rays_ref", rays_ref),
@@ -746,7 +756,7 @@ class RayCaster(nn.Module):
                         ("ray_noise_std", ray_noise_std),
                         ]
 
-            #save2pickle(filename, to_pickle)
+            save2pickle(filename, to_pickle)
             #import ipdb; ipdb.set_trace()
 
             # prepare local coordinate system
