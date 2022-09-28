@@ -756,7 +756,7 @@ class RayCaster(nn.Module):
                         ("ray_noise_std", ray_noise_std),
                         ]
 
-            save2pickle(filename, to_pickle)
+            #save2pickle(filename, to_pickle)
             #import ipdb; ipdb.set_trace()
 
             # prepare local coordinate system

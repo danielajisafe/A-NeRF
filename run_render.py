@@ -19,6 +19,9 @@ from core.utils.skeleton_utils import CMUSkeleton, smpl_rest_pose, get_smpl_l2ws
 from core.utils.skeleton_utils import draw_skeletons_3d, rotate_x, rotate_y, axisang_to_rot, rot_to_axisang
 from pytorch_msssim import SSIM
 
+import sys
+sys.path.append("/scratch/dajisafe/smpl/A_temp_folder/A-NeRF/core/utils")
+
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 GT_PREFIXES = {
@@ -859,15 +862,15 @@ def load_bullettime(pose_h5, c2ws, focals, rest_pose, pose_keys,
     
 
     #import ipdb; ipdb.set_trace()
-    #from dan_compute_eval import eval_opt_kp
+    from dan_compute_eval import eval_opt_kp
 
 
     # 3
     # python run_render.py --nerf_args logs/mirror/pose_opt_model/-2022-05-16-02-01-28/args.txt --ckptpath logs/mirror/pose_opt_model/-2022-05-16-02-01-28/107000.tar --dataset mirror --entry easy --render_type bullet --runname mirror_bullet --selected_framecode 0 --white_bkgd --selected_idxs 0 --render_refined --data_path ./data/mirror/3/23df3bb4-272d-4fba-b7a6-514119ca8d21_cam_3/2022-05-14-13 --n_bullet 10
     # python run_render.py --nerf_args logs/mirror/pose_opt_model/-2022-05-16-02-01-28/args.txt --ckptpath logs/mirror/pose_opt_model/-2022-05-16-02-01-28/107000.tar --dataset mirror --entry easy --render_type bullet --runname mirror_bullet --selected_framecode 0 --white_bkgd --selected_idxs 0 --render_refined --data_path ./data/mirror/3/23df3bb4-272d-4fba-b7a6-514119ca8d21_cam_3/2022-05-14-13 --n_bullet 1 --train_len 1620
     # comb="23df3bb4-272d-4fba-b7a6-514119ca8d21_cam_3" # 2022-05-16-02-01-28
-    # rec_eval_pts = [0, 100, 200, 300, 400, 500, 600, 700, 800, 900, 1000, 1100, 1200, 1300, 1400, 1500, 1600, 1700]
-    # gt_eval_pts = [0, 100, 200, 300, 400, 500, 600, 700, 800, 900, 1000, 1100, 1200, 1300, 1400, 1500, 1600, 1700]
+    rec_eval_pts = [0, 100, 200, 300, 400, 500, 600, 700, 800, 900, 1000, 1100, 1200, 1300, 1400, 1500, 1600, 1700]
+    gt_eval_pts = [0, 100, 200, 300, 400, 500, 600, 700, 800, 900, 1000, 1100, 1200, 1300, 1400, 1500, 1600, 1700]
     # # 'mpjpe_in_mm': 105.09, 'n_mpjpe_in_mm': 60.33, 'pmpjpe_in_mm': 41.74
     # short
     # {'mpjpe_in_mm': 105.09, 'n_mpjpe_in_mm': 60.16, 'pmpjpe_in_mm': 41.67, 'No_of_evaluations': '11/18', 'rec_eval_pts': array([   0,  100,  200,  300,  400,  500,  600,  700,  800,  900, 1000]), 'gt_eval_pts': array([   0,  100,  200,  300,  400,  500,  600,  700,  800,  900, 1000])}
@@ -918,12 +921,12 @@ def load_bullettime(pose_h5, c2ws, focals, rest_pose, pose_keys,
     # # {'mpjpe_in_mm': 112.81, 'n_mpjpe_in_mm': 78.13, 'pmpjpe_in_mm': 55.48, 'No_of_evaluations': '11/18', 'rec_eval_pts': array([   0,  100,  200,  300,  400,  500,  600,  700,  800,  900, 1000]), 'gt_eval_pts': array([   0,  100,  200,  300,  400,  500,  600,  700,  800,  900, 1000])}
 
 
-    #eval_opt_kp(kps, comb, rec_eval_pts, gt_eval_pts)
+    eval_opt_kp(kps, comb, rec_eval_pts, gt_eval_pts)
     #name = "pose_opt_eval_may16"
     #np.save(f"/scratch/dajisafe/smpl/mirror_project_dir/authors_eval_data/temp_dir/cam_trajectory_{name}.npy", np.array(c2ws))
     #np.save(f"/scratch/dajisafe/smpl/mirror_project_dir/authors_eval_data/temp_dir/kps_{name}.npy", np.array(kps))
 
-    #import ipdb; ipdb.set_trace()
+    import ipdb; ipdb.set_trace()
 
     #import ipdb; ipdb.set_trace()
     if center_kps:
