@@ -1,16 +1,17 @@
 # standard libraries
 import cv2
+import ipdb
 import json
 import glob
 import torch
 import numpy as np
 from glob import glob
 #import argparse
-#import sys
+import sys
 from tqdm import tqdm, trange
-# sys.path.append("../")
-# sys.path.append("/scratch/dajisafe/smpl/")
-# sys.path.append("/scratch/dajisafe/smpl/mirror_project_dir/")
+sys.path.append("../")
+sys.path.append("/scratch/dajisafe/smpl/")
+sys.path.append("/scratch/dajisafe/smpl/mirror_project_dir/")
 #----------------------------
 #import util_skel as skel
 import matplotlib.pyplot as plt
@@ -21,14 +22,16 @@ import sys
 local_dir = "/home/dajisafe/scratch/anerf_mirr/A-NeRF/core/utils"
 sys.path.append(local_dir)
 
+#ipdb.set_trace()
+
 # custom imports
 import dan_util_skel as skel
-from .dan_pmpjpe import pmpjpe, procrustes
-from .dan_evaluation import MPJPE, NMPJPE
-from .extras import load_pickle, save2pickle
+from core.utils.dan_pmpjpe import pmpjpe, procrustes
+from core.utils.dan_evaluation import MPJPE, NMPJPE
+from core.utils.extras import load_pickle, save2pickle
 #from util_loading import load_pickle, save2pickle, sort_B_via_A
-from .extras import alpha_to_hip_1st, hip_1st_to_alpha, calc_bone_length
-from .dan_skeleton_utils import get_bone_names, get_parent_idx, verify_get_parent_idx
+from core.utils.extras import alpha_to_hip_1st, hip_1st_to_alpha, calc_bone_length
+from core.utils.dan_skeleton_utils import get_bone_names, get_parent_idx, verify_get_parent_idx
 #from transforms import h36m_to_DCPose, baseline_to_h36m_uniform_2D, baseline_to_h36m_uniform_3D
 #from plotting import plotPoseOnImage, plot_multiple_views, plot15j_2d, plot15j_3d, plot15j_2d_no_image, add_bbox_in_image, plot15j_2d_uniform, plot_2d_grouped, plot2d_halpe26, plot2d_halpe26_mirror_common_3D
 
@@ -48,7 +51,8 @@ def eval_opt_kp(kps,comb, rec_eval_pts, gt_eval_pts):
     gt_eval_pts = np.array(gt_eval_pts)
 
     # 
-    test_idxs = np.where((rec_eval_pts/1005) >1)[0]
+    n_kps = kps.shape[0]
+    test_idxs = np.where((rec_eval_pts/n_kps) >1)[0]
     stp_idx = test_idxs[0]
     rec_eval_pts = rec_eval_pts[:stp_idx]
     gt_eval_pts = gt_eval_pts[:stp_idx]
@@ -57,7 +61,8 @@ def eval_opt_kp(kps,comb, rec_eval_pts, gt_eval_pts):
     print(f"rec_eval_pts: {rec_eval_pts}")
     print(f"gt_eval_pts: {gt_eval_pts}")
     
-    project_dir = "/home/dajisafe/scratch/anerf_mirr"
+    #project_dir = "/home/dajisafe/scratch/anerf_mirr"
+    project_dir = "/scratch/dajisafe/smpl/mirror_project_dir"
     skel_type = "alpha"
 
     #import ipdb; ipdb.set_trace()
@@ -104,7 +109,7 @@ def eval_opt_kp(kps,comb, rec_eval_pts, gt_eval_pts):
     '''read GT 3D data'''
     sequence_length = 1800
     #read extri file
-    extri_file = project_dir + '/A-NeRF/extri.yml'
+    extri_file = project_dir + '/authors_eval_data/extri.yml'
     gt3d_real_all = []
     #gt3d_virt_all = []
     #imgs_gt = []
@@ -128,7 +133,7 @@ def eval_opt_kp(kps,comb, rec_eval_pts, gt_eval_pts):
     # gt3d_real_all = torch.stack(gt3d_real_all, dim=0).detach().cpu()
 
 
-    filename = project_dir + f"/mirror_GT3D.pickle"
+    filename = project_dir + f"/authors_eval_data/mirror_GT3D.pickle"
     from_pickle = load_pickle(filename)
     gt3d_real_all = from_pickle["gt3d_real_all"]
 
@@ -140,7 +145,7 @@ def eval_opt_kp(kps,comb, rec_eval_pts, gt_eval_pts):
     #import ipdb; ipdb.set_trace()
     gt3d_chosen = gt3d_real_all[gt_eval_pts]
     kp3d_chosen = kp3d[rec_eval_pts].detach().cpu()
-    # ---------------------------------------------
+    # ---------------------------------------------wwww
 
     assert gt3d_chosen.shape[0] == kp3d_chosen.shape[0], "Eval GT 3D does not match the size of Eval Recon 3D"
 
@@ -227,6 +232,17 @@ def eval_opt_kp(kps,comb, rec_eval_pts, gt_eval_pts):
     #drop keypoints in the feet (mirror authors excluded that) 
     gt3d_chosen_c = gt3d_chosen_c[:,:19,:]
     kp3d_c = kp3d_c[:,:19,:]
+
+    #ipdb.set_trace()
+    # apples-to-apples (Alpha-to-Mirr skel vs SMPL-to-Mirr skel comparison)
+    resp = input("do you want apples-to-apples evaluation, yes or no? ")
+    if resp == "yes":
+        gt3d_chosen_c = gt3d_chosen_c[:,1:15,:]
+        kp3d_c = kp3d_c[:,1:15,:]
+        print("running apples-to-apples evaluation...")
+    else:
+        print("NOT running apples-to-apples evaluation...why?")
+        #ipdb.set_trace()
 
     mpjpe = MPJPE(gt3d_chosen_c, kp3d_c)
     n_mpjpe = NMPJPE(gt3d_chosen_c, kp3d_c)

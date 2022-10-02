@@ -22,8 +22,8 @@ import pickle
 import numpy as np
 #from mirror_project_dir.transforms import flip_h36m
 #from utils import rot6d_to_rotmat, axisang_to_rot
-from .skeletons import CMUSkeleton
-from .dan_skeleton_utils import get_parent_idx, verify_get_parent_idx
+from core.utils.skeletons import CMUSkeleton
+from core.utils.dan_skeleton_utils import get_parent_idx, verify_get_parent_idx
 
 #import torch.nn.functional as f 
 #from utils import axisang_to_rot6d
