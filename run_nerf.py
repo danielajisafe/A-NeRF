@@ -2,9 +2,11 @@ import os, sys
 import numpy as np
 import time
 import torch
+import imageio
 import datetime
 import torch.nn as nn
 import torch.nn.functional as F
+import matplotlib.pyplot as plt
 import torch.autograd.profiler as profiler
 from torch.utils.tensorboard import SummaryWriter
 from tqdm import tqdm, trange
@@ -32,7 +34,8 @@ def render_path(render_poses, hwf, chunk, render_kwargs,
                 gt_imgs=None, bg_imgs=None, bg_indices=None,
                 cams=None, subject_idxs=None, render_factor=1, root=None, # added 
                 white_bkgd=False, ret_acc=False,
-                ext_scale=0.00035, base_bg=1.0, index=None):
+                ext_scale=0.00035, base_bg=1.0, index=None,
+                args=None):
 
 
     
@@ -72,7 +75,8 @@ def render_path(render_poses, hwf, chunk, render_kwargs,
             if centers is not None:
                 centers = centers.copy() / render_factor
 
-    #import ipdb; ipdb.set_trace()
+    # print("in run_nerf.py")
+    # import ipdb; ipdb.set_trace()
     #centers = torch.FloatTensor(centers).to(kp.device) # added May 5
     if kp is not None or cyls is not None:
         # only render part of the image
@@ -80,10 +84,43 @@ def render_path(render_poses, hwf, chunk, render_kwargs,
                                                           focal, kps=kp, cylinder_params=cyls,
                                                           skts=skts, ext_scale=ext_scale,
                                                           #centers=centers
+                                                          args=args
                                                           )
     else:
         rays, valid_idxs = None, None
 
+    #import ipdb; ipdb.set_trace()
+    # # check: plot 2D bounding box
+    # blank_img = np.zeros((H[0],W[0],3)) #rgb (1080, 1920, 3)
+    # import matplotlib.pyplot as plt
+    # import matplotlib.patches as patches
+    # from PIL import Image
+
+    # # Display the image
+    # plt.imshow(blank_img)
+
+    # #import ipdb; ipdb.set_trace()
+    # # # Coordinates of rectangle vertices
+    # first = 0
+    # tl, br = bboxes[first][0], bboxes[first][1]
+    # xs = [tl[0],  br[0], br[0], tl[0]] + [tl[0]]
+    # ys = [tl[1],  tl[1], br[1], br[1]] + [tl[1]]
+    # plt.plot(xs, ys, color="green")
+    # plt.axis("off")
+    # plt.savefig(f"/scratch/dajisafe/smpl/A_temp_folder/A-NeRF/checkers/imgs/bbox2D_real.jpg", dpi=150, bbox_inches='tight', pad_inches = 0)
+    
+    #import ipdb; ipdb.set_trace()
+    # if args.switch_cam:
+    #     half_size = len(bboxes)//2
+    #     tl, br = bboxes[half_size][0], bboxes[half_size][1]
+    #     xs = [tl[0],  br[0], br[0], tl[0]] + [tl[0]]
+    #     ys = [tl[1],  tl[1], br[1], br[1]] + [tl[1]]
+    #     plt.plot(xs, ys, color="red")
+    #     plt.axis("off")
+    #     plt.savefig(f"/scratch/dajisafe/smpl/A_temp_folder/A-NeRF/checkers/imgs/bbox2D_virt.jpg", dpi=150, bbox_inches='tight', pad_inches = 0)
+    
+
+    #import ipdb; ipdb.set_trace()
     # to_pickle += [("rays",rays), ("valid_idxs",valid_idxs),
     #             ("cyls",cyls), ("bboxes",bboxes)]
     # save2pickle(filename, to_pickle)
@@ -109,14 +146,23 @@ def render_path(render_poses, hwf, chunk, render_kwargs,
     # to tensors
     #import ipdb; ipdb.set_trace()
     #centers = torch.tensor(centers)
+
+    #import ipdb; ipdb.set_trace()
+    if args.switch_cam:
+        bg_indices = bg_indices.repeat(2)
+        bg_imgs = bg_imgs.repeat(2,1,1,1)
     
+
     for i, c2w in enumerate(tqdm(render_poses)):
         print(i, time.time() - t)
         t = time.time()
-        h = H if isinstance(H, int) else H[i]
-        w = W if isinstance(W, int) else W[i]
 
-        #import ipdb; ipdb.set_trace()
+        try:
+            h = H if isinstance(H, int) else H[i]
+            w = W if isinstance(W, int) else W[i]
+        except:
+            import ipdb; ipdb.set_trace()
+
         ray_input = rays[i] if rays is not None else None
         expand = len(ray_input[0])
         kp_input = reuse_input(kp, expand)
@@ -129,17 +175,21 @@ def render_path(render_poses, hwf, chunk, render_kwargs,
 
         #import ipdb; ipdb.set_trace()
         if len(ray_input[0]) > 0:
-            #print(f"{index}: render called in render_path function")
+            #print(f"{index}: render called in render_path function for [TRAIN or TEST time]")
             ret_dict = render(h, w, focal, rays=ray_input, chunk=chunk, c2w=c2w[:3,:4],
                               kp_batch=kp_input, skts=skt_input, cyls=cyl_input, cams=cam_input,
                               subject_idxs=subject_input,
                               bones=bone_input, 
                               index=index, # added May 4 
                               #center=center_input, # added May 1
-                              **render_kwargs)
+                              **render_kwargs,
+
+                              # no need for use_mirr here; render_poses are indexed above 
+                              use_mirr=False)
             rgb, disp, acc = ret_dict['rgb_map'], ret_dict['disp_map'], ret_dict['acc_map'] 
         else:
             print("No rays for this view.")
+        
         #import ipdb; ipdb.set_trace()
         if valid_idxs is not None:
             # in this case, we only render the rays that are within the foreground or cylinder
@@ -148,23 +198,63 @@ def render_path(render_poses, hwf, chunk, render_kwargs,
             # initialize the images
             if bg_imgs is not None and not white_bkgd:
 
-                if bg_indices is not None:
-                    bg = torch.tensor(bg_imgs[bg_indices[i]]).permute(2, 0, 1)[None]
-                else:
-                    # TODO: HACK, FIX THIS
-                    bg = torch.tensor(bg_imgs[0]).permute(2, 0, 1)[None]
-                rgb_img = F.interpolate(bg, size=(h, w), mode='bilinear',
-                                   align_corners=False)[0].permute(1, 2, 0).view(h * w, 3)
+                if args.switch_cam: 
+                    # start with zero image, overlay both predictions and add background image later 
+                    rgb_img = torch.zeros(h * w, 3)
+                
+                else: # standard process
+                    if bg_indices is not None:
+                        bg = torch.tensor(bg_imgs[bg_indices[i]]).permute(2, 0, 1)[None]
+                    else:
+                        # TODO: HACK, FIX THIS 
+                        bg = torch.tensor(bg_imgs[0]).permute(2, 0, 1)[None]
+                        print("do you want to use the first background image?")
+                        ipdb.set_trace()
+
+                    # smoothen background with bilinear interpolation
+                    rgb_img = F.interpolate(bg, size=(h, w), mode='bilinear',
+                                    align_corners=False)[0].permute(1, 2, 0).view(h * w, 3)
             else:
                 rgb_img = torch.zeros(h * w, 3) if not white_bkgd else torch.ones(h * w, 3)
             disp_img = torch.zeros(h * w)
 
+            # check if we have rays for this image
             if len(valid_idx) > 0:
-                # check if we have rays for this image
+                # get zero person background
                 bg = (1. - acc[..., None]) * rgb_img[valid_idx]
 
+                #import ipdb; ipdb.set_trace()
+                # copy_a = rgb_img.clone()
+                # copy_b = rgb_img.clone()
+                # copy_c = rgb_img.clone()
+                # copy_d = rgb_img.clone()
+
+                # copy_b[valid_idx] = rgb
+                # copy_c[valid_idx] = bg
+                # copy_d[valid_idx] = rgb + bg 
+
+                
+                # plt.imshow(copy_a.cpu().numpy().reshape(1080,1920,3))
+                # plt.axis("off")
+                # plt.savefig(f"/scratch/dajisafe/smpl/A_temp_folder/A-NeRF/checkers/imgs/copy_a.jpg", dpi=300, bbox_inches='tight', pad_inches = 0)
+                
+                # plt.imshow(copy_b.cpu().numpy().reshape(1080,1920,3))
+                # plt.axis("off")
+                # plt.savefig(f"/scratch/dajisafe/smpl/A_temp_folder/A-NeRF/checkers/imgs/copy_b.jpg", dpi=300, bbox_inches='tight', pad_inches = 0)
+
+                # plt.imshow(copy_c.cpu().numpy().reshape(1080,1920,3))
+                # plt.axis("off")
+                # plt.savefig(f"/scratch/dajisafe/smpl/A_temp_folder/A-NeRF/checkers/imgs/copy_c.jpg", dpi=300, bbox_inches='tight', pad_inches = 0)
+
+                # plt.imshow(copy_d.cpu().numpy().reshape(1080,1920,3))
+                # plt.axis("off")
+                # plt.savefig(f"/scratch/dajisafe/smpl/A_temp_folder/A-NeRF/checkers/imgs/copy_d.jpg", dpi=300, bbox_inches='tight', pad_inches = 0)
+    
+                # import ipdb; ipdb.set_trace()
+                
                 # assign values to the corresponding ray location
-                rgb_img[valid_idx] = rgb + bg
+                rgb_img[valid_idx] = rgb + bg # person pred + zero person background (on a whole image)
+                
                 disp_img[valid_idx] = disp
                 if ret_acc:
                     acc_img = torch.zeros(h * w)
@@ -205,13 +295,15 @@ def render_testset(poses, hwf, args, render_kwargs, kps=None, skts=None, cyls=No
 
     render_kwargs["ray_caster"].eval()
 
+    #import ipdb; ipdb.set_trace()
     print(f"render_path called in run_nerf.py")
     rgbs, disps, _, valid_idxs, bboxes = render_path(poses, hwf, args.chunk//8, render_kwargs,
                                                      bg_imgs=bg_imgs, bg_indices=bg_indices,
                                                      #centers=centers, 
                                                      kp=kps, skts=skts, cyls=cyls, bones=bones,
                                                      cams=cams, subject_idxs=subject_idxs, render_factor=args.render_factor,
-                                                     ext_scale=args.ext_scale, white_bkgd=args.white_bkgd, index=index)
+                                                     ext_scale=args.ext_scale, white_bkgd=args.white_bkgd, index=index,
+                                                     args=args)
     render_kwargs["ray_caster"].train()
     if save_image:
         print("Warning: this is super hacky. Should terminate in the right way.")
@@ -227,7 +319,7 @@ def render_testset(poses, hwf, args, render_kwargs, kps=None, skts=None, cyls=No
                                   kps=kps, hwf=hwf, ext_scale=args.ext_scale, rgb_vid=rgb_vid,
                                   disp_vid=disp_vid, vid_base=vid_base, eval_postfix=eval_postfix,
                                   centers=centers, eval_both=eval_both, white_bkgd=False,
-                                  render_factor = args.render_factor)
+                                  render_factor = args.render_factor, args=args)
     else:
         metrics = {"psnr": None, "ssim": None}
     disps = disps / disps.max()
@@ -359,6 +451,8 @@ def config_parser():
                         help='downsampling factor to speed up rendering, set 4 or 8 for fast preview')
     parser.add_argument("--save_image", action='store_true',
                         help='save rendering outcomes as images instead of videos.')
+    parser.add_argument('--switch_cam', action='store_true', default=False,
+                        help='replace real camera with virtual camera')
 
     # training options
     parser.add_argument("--nerf_type", type=str, default="nerf",
@@ -563,10 +657,10 @@ def train():
 
     parser = config_parser()
     args = parser.parse_args()
-    #import ipdb; ipdb.set_trace()
+    
 
     train_loader, render_data, data_attrs = load_data(args)
-    
+    #import ipdb; ipdb.set_trace()
 
     skel_type = data_attrs['skel_type']
     hwf = data_attrs["hwf"]
@@ -581,7 +675,10 @@ def train():
         args.expname = args_to_str(args)
     else:
         # use timestamp added from terminal
-        pass
+        if args.finetune:
+            args.expname = args.expname+'/finetune'
+        else:
+            pass
 
     expname = args.expname
     print(f"Current timestamp: {expname.split('/')[-1]}")
@@ -655,13 +752,42 @@ def train():
                 skt_val = torch.tensor(render_data["skts"]).to(device)
                 bone_val = torch.tensor(render_data["bones"]).to(device)
 
-            #import ipdb; ipdb.set_trace()
-            pose_val = torch.tensor(render_data["c2ws"]).to(device)
+            
+            if args.switch_cam:
+                # real and virtual redenring at test time
+                A_mirr = render_data['A_dash']
+                n_size = A_mirr.shape[0]
+
+                #import ipdb; ipdb.set_trace()
+                '''flip the camera about the x-axis, to simulate flipped image'''
+                v_cam_3_4 = np.concatenate((swap_mat(A_mirr[...,:3,:3]), A_mirr[...,:3,3:4]),2)
+                last_row = np.tile(np.array([[0, 0, 0, 1]], dtype=np.float32), [n_size,1,1])
+                v_cam =  np.concatenate([v_cam_3_4, last_row], axis=1)
+                # Testing: switch real with a virtual camera
+                # print("c2ws", c2ws[0])
+                # print("v_cam", v_cam[0])
+
+                pose_val = torch.tensor(np.concatenate([render_data["c2ws"], v_cam]))
+                    
+                #duplicate kp and focal twice
+                #render_data['kp'] = np.tile(render_data['kp'],[2,1,1])
+                render_data['hwf'] = (np.tile(render_data['hwf'][0],[2]), 
+                                    np.tile(render_data['hwf'][1],[2]),
+                                    np.tile(render_data['hwf'][2],[2,1]))
+            
+            else:
+                # only real rendering
+                pose_val = torch.tensor(render_data["c2ws"]).to(device)
 
             gt_imgs = render_data["imgs"]
             gt_masks = render_data["fgs"]
             bg_imgs = render_data["bgs"]
             bg_indices = render_data.get("bg_idxs", None)
+            
+            import ipdb; ipdb.set_trace()
+            if args.switch_cam:
+                bg_indices = np.tile(bg_indices,[2])
+
             centers = render_data['center']
             cams_val = torch.tensor(render_data["cam_idxs"]) if args.opt_framecode else None
             subject_val = render_data.get("subject_idxs", None)

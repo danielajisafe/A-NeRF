@@ -1,5 +1,6 @@
 import io
 import cv2
+import ipdb
 import torch
 import numpy as np
 import plotly.graph_objects as go
@@ -712,7 +713,9 @@ def get_kp_bounding_cylinder(kp, skel_type=None, ext_scale=0.00035,
     # find root location
     root_loc = kp[..., skel_type.root_id, :]
 
-    # calculate distance to center line
+    #ipdb.set_trace()
+
+    '''calculate distance to center line (in 2D space)'''
     if n_dim == 2:
         dist = np.linalg.norm(kp[:, g_axes] - root_loc[g_axes], axis=-1)
     elif n_dim == 3: # batch
@@ -720,10 +723,12 @@ def get_kp_bounding_cylinder(kp, skel_type=None, ext_scale=0.00035,
         max_height = (flip * kp[..., h_axis]).max()
         min_height = (flip * kp[..., h_axis]).min()
 
-    # find the maximum distance to center line (in mm*ext_scale)
+    '''find the maximum distance from any part of the body to center/root line (in mm*ext_scale)'''
     max_dist = dist.max(-1)
     max_height = (flip * kp[..., h_axis]).max(-1)
     min_height = (flip * kp[..., h_axis]).min(-1)
+    
+    #ipdb.set_trace()
 
     # set the radius of cylinder to be a bit larger
     # so that every part of the human is covered
@@ -753,9 +758,11 @@ def cylinder_to_box_2d(cylinder_params, hwf, w2c=None, scale=1.0,
 
     H, W, focal = hwf
 
+    # root_loc is 2D; radius,top and bot are in scalar
     root_loc, radius = cylinder_params[..., :2], cylinder_params[..., 2:3]
     top, bot = cylinder_params[..., 3:4], cylinder_params[..., 4:5]
 
+    # linearly-spaced radians (0 to 360)
     rads = np.linspace(0., 2 * np.pi, 50)
 
     if len(root_loc.shape) == 1:
@@ -765,6 +772,7 @@ def cylinder_to_box_2d(cylinder_params, hwf, w2c=None, scale=1.0,
         bot = bot[None]
     N = root_loc.shape[0]
 
+    #ipdb.set_trace()
     x = root_loc[..., 0:1] + np.cos(rads)[None] * radius
     z = root_loc[..., 1:2] + np.sin(rads)[None] * radius
 
@@ -772,6 +780,9 @@ def cylinder_to_box_2d(cylinder_params, hwf, w2c=None, scale=1.0,
     y_bot = bot * np.ones_like(x)
     w = np.ones_like(x) # to make homogenous coord
 
+    # stack top 3D points and bottom 3D points (still keeping an extra 1 dimension)
+    # (50,4) (50,4) -> (100,4)
+    # made homogenous coord before projection
     top_cap = np.stack([x, y_top, z, w], axis=-1)
     bot_cap = np.stack([x, y_bot, z, w], axis=-1)
 
@@ -780,16 +791,19 @@ def cylinder_to_box_2d(cylinder_params, hwf, w2c=None, scale=1.0,
 
     intrinsic = focal_to_intrinsic_np(focal)
 
+    # projection: from 3D world to 3D camera to 2D pixel space
     if w2c is not None:
         cap_pts = cap_pts @ w2c.T
     cap_pts = cap_pts @ intrinsic.T
     cap_pts = cap_pts.reshape(N, -1, 3)
-    pts_2d = cap_pts[..., :2] / cap_pts[..., 2:3]
+    pts_2d = cap_pts[..., :2] / cap_pts[..., 2:3] # divide by last dimension
 
+    # get 2D bounding box corners
     max_x = pts_2d[..., 0].max(-1)
     min_x = pts_2d[..., 0].min(-1)
     max_y = pts_2d[..., 1].max(-1)
     min_y = pts_2d[..., 1].min(-1)
+    
 
     if make_int:
         max_x = np.ceil(max_x).astype(np.int32)
@@ -806,14 +820,14 @@ def cylinder_to_box_2d(cylinder_params, hwf, w2c=None, scale=1.0,
     else:
         offset_x, offset_y = int(center[0]), int(center[1])
 
-
+    # shift bounding box to offset or center
     tl[:, 0] += offset_x
     tl[:, 1] += offset_y
 
     br[:, 0] += offset_x
     br[:, 1] += offset_y
 
-    # scale the box
+    # scale the box (optional feature)
     if scale != 1.0:
         box_width = (max_x - min_x) * 0.5 * scale
         box_height = (max_y - min_y) * 0.5 * scale
@@ -825,11 +839,14 @@ def cylinder_to_box_2d(cylinder_params, hwf, w2c=None, scale=1.0,
         tl[:, 1] = center_y - box_height
         br[:, 1] = center_y + box_height
 
+    # make sure estimate bbox stays within image (valid bbox)
     tl[:, 0] = np.clip(tl[:, 0], 0, W-1)
     br[:, 0] = np.clip(br[:, 0], 0, W-1)
     tl[:, 1] = np.clip(tl[:, 1], 0, H-1)
     br[:, 1] = np.clip(br[:, 1], 0, H-1)
 
+
+    #ipdb.set_trace()
     if N == 1:
         tl = tl[0]
         br = br[0]
@@ -1471,7 +1488,7 @@ def plot_joint_axis(kp, l2ws=None, fig=None, scale=0.1):
     return fig
 
 def swap_mat(mat):
-    # [right, -up, -forward]
+    # [right, -up, -forward] means camera about the x-axis
     # equivalent to right multiply by:
     # [1, 0, 0, 0]
     # [0,-1, 0, 0]

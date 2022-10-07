@@ -257,14 +257,14 @@ def txt_to_argstring(path, ignore_config=False):
 def evaluate_metric(rgbs, gt_imgs, disps=None, gt_masks=None, valid_idxs=None, poses=None,
                     kps=None, hwf=None, centers=None, ext_scale=None, rgb_vid="rgb.mp4", disp_vid="disp.mp4",
                     vid_base=None, eval_postfix="", eval_both=False, white_bkgd=False,
-                    render_factor=0):
+                    render_factor=0, args=None):
 
     #import ipdb; ipdb.set_trace()
     if eval_both and (valid_idxs is None or render_factor != 0):
         RH, RW, Rfocal = hwf
         print("Valid idxs not provided or is calculated at different resolution. Calculate them from keypoints ...")
         _, valid_idxs, _, _ = kp_to_valid_rays(poses, RH, RW, Rfocal,
-                                               centers=centers, kps=kps, ext_scale=ext_scale)
+                                               centers=centers, kps=kps, ext_scale=ext_scale, args=args)
 
 
     # trim out nan to get visible outcomes

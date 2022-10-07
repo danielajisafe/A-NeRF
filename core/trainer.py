@@ -1,4 +1,5 @@
 import os
+import ipdb
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
@@ -127,11 +128,13 @@ def render(H, W, focal, chunk=1024*32, rays=None, c2w=None,
 
         # rendering time
         if len(rays) == 2:
+            '''whether real and/or virt, rays are indexed to have remain single (rays_o, rays_d) before getting here'''
             rays_o, rays_d  = rays
         
         # train time (then 4)
         elif not use_mirr:
             rays_o, rays_d, _, _ = rays
+            import ipdb; ipdb.set_trace()
         else:   
             rays_o, rays_d, rays_o_v, rays_d_v  = rays
 
@@ -139,7 +142,11 @@ def render(H, W, focal, chunk=1024*32, rays=None, c2w=None,
     if use_viewdirs:
         # provide ray directions as input
         viewdirs = rays_d
-        if use_mirr: viewdirs_v = rays_d_v
+
+        try:
+            if use_mirr: viewdirs_v = rays_d_v
+        except:
+            import ipdb; ipdb.set_trace()
 
         if c2w_staticcam is not None:
             # special case to visualize effect of viewdirs
@@ -336,7 +343,7 @@ class Trainer:
 
         # step 2: ray caster forward
         #if i in [4,5]:
-        #print(f"{i}: render called in train_batch function")
+        #print(f"{i}: render called in train_batch function for [LOSS] computation")
         #import ipdb; ipdb.set_trace()
         preds = render(H, W, focal, chunk=args.chunk, verbose=i < 10,
                       retraw=False, index=i, **kp_args, **fwd_args, **self.render_kwargs_train,

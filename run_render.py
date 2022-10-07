@@ -1,12 +1,15 @@
 import os
+import cv2
 import ipdb
 import h5py
+#from regex import P
 import torch
 import shutil
 import imageio
 import datetime
 import numpy as np
 import deepdish as dd
+import matplotlib.pyplot as plt
 from run_nerf import render_path
 from run_nerf import config_parser as nerf_config_parser
 
@@ -15,7 +18,7 @@ from core.load_data import generate_bullet_time, get_dataset
 from core.raycasters import create_raycaster
 
 from core.utils.evaluation_helpers import txt_to_argstring
-from core.utils.skeleton_utils import CMUSkeleton, smpl_rest_pose, get_smpl_l2ws, get_per_joint_coords
+from core.utils.skeleton_utils import CMUSkeleton, smpl_rest_pose, get_smpl_l2ws, nerf_c2w_to_extrinsic, swap_mat, get_per_joint_coords
 from core.utils.skeleton_utils import draw_skeletons_3d, rotate_x, rotate_y, axisang_to_rot, rot_to_axisang
 from pytorch_msssim import SSIM
 
@@ -59,8 +62,10 @@ def config_parser():
                         help='no of bubble views to render')
     parser.add_argument('--switch_cam', action='store_true', default=False,
                         help='replace real camera with virtual camera')
-    parser.add_argument('--evaluate', action='store_true', default=False,
-                        help='evaluate e.g training set or images')
+    parser.add_argument('--evaluate_pose', action='store_true', default=False,
+                        help='evaluate the [refined/initial] pose for e.g trainset or images')
+    parser.add_argument("--use_mirr", action='store_true',
+                        help='use both masks')
     # parser.add_argument("--no_reload", action='store_true',
     #                     help='do not reload weights from saved ckpt?')
 
@@ -149,6 +154,12 @@ def load_render_data(args, nerf_args, poseopt_layer=None, opt_framecode=True):
     data_h5 = catalog['data_h5']
     #import ipdb; ipdb.set_trace()
 
+    if args.use_mirr or args.switch_cam:
+        print("Also loading virtual camera!")
+        # catalog = init_catalog(args)[args.dataset][args.entry]
+        if 'data_h5_v' in catalog: data_h5_v = catalog['data_h5_v']
+
+
     # to real cameras (due to the extreme focal length they were trained on..)
     # TODO: add loading with opt pose option
     if poseopt_layer is not None:
@@ -194,9 +205,44 @@ def load_render_data(args, nerf_args, poseopt_layer=None, opt_framecode=True):
     # 3. camera stuff: focals, c2ws, ... etc
     c2ws, focals, centers_n = dd.io.load(data_h5, cam_keys)
     #centers_n = centers_n.detach.numpy()
-    _, H, W, _ = dd.io.load(data_h5, ['/img_shape'])[0]
-    #import ipdb; ipdb.set_trace()
 
+    if args.switch_cam:
+        A_mirr =  dd.io.load(data_h5_v, '/A_dash')
+        # A_mirr is duplicated. select id or pick one.
+        # sel_id = catalog.get(args.render_type, {}) ['selected_idxs'] 
+        # A_mirr = A_mirr[sel_id].reshape(4,4) 
+
+        n_size = A_mirr.shape[0]
+        # extract V cam from A mirror matrix. Do we add negative to V position?
+        #v_cam_3_4 = np.concatenate((np.linalg.inv(A_mirr[...,:3,:3]), -A_mirr[...,:3,3:4]),2)
+        #last_row = np.array([[0, 0, 0, 1]], dtype=np.float32)
+        #last_row = np.tile(np.array([[0, 0, 0, 1]], dtype=np.float32), [n_size,1,1])
+        #v_cam =  np.concatenate([v_cam_3_4, last_row], axis=1)
+
+        '''anerf-inspired'''
+        #A_mirr_flip = nerf_c2w_to_extrinsic(A_mirr[...,:3,:3])
+        #v_cam_3_4 = np.concatenate((A_mirr_flip, -A_mirr[...,:3,3:4]),2)
+        #v_cam =  np.concatenate([v_cam_3_4, last_row], axis=1)
+
+        #import ipdb; ipdb.set_trace()
+        #root = render_data['root']
+        #if root is not None:
+        #    v_cam[..., :3, -1] -= root.reshape(-1,3)
+        
+        '''flip the camera about the x-axis, to simulate flipped image'''
+        v_cam_3_4 = np.concatenate((swap_mat(A_mirr[...,:3,:3]), A_mirr[...,:3,3:4]),2)
+        last_row = np.tile(np.array([[0, 0, 0, 1]], dtype=np.float32), [n_size,1,1])
+        v_cam =  np.concatenate([v_cam_3_4, last_row], axis=1)
+        # Testing: switch real with a virtual camera
+        print("c2ws", c2ws[0])
+        print("v_cam", v_cam[0])
+
+        '''swap cameras'''
+        #c2ws = v_cam
+    
+    _, H, W, _ = dd.io.load(data_h5, ['/img_shape'])[0]
+    
+    #import ipdb; ipdb.set_trace()
     # handel resolution
     if args.render_res is not None:
         assert len(args.render_res) == 2, "Image resolution should be in (H, W)"
@@ -210,6 +256,8 @@ def load_render_data(args, nerf_args, poseopt_layer=None, opt_framecode=True):
     bones = None
     root = None
     bg_imgs, bg_indices = None, None
+
+
     if args.render_type in ['retarget', 'mesh']:
         print(f'Load data for retargeting!')
         kps, skts, c2ws, cam_idxs, focals, bones = load_retarget(data_h5, c2ws, focals,
@@ -217,7 +265,7 @@ def load_render_data(args, nerf_args, poseopt_layer=None, opt_framecode=True):
                                                                  **render_data)
     elif args.render_type == 'bullet':
         # resp = input("do you want to evaluate, yes or no ?")
-        if args.evaluate:
+        if args.evaluate_pose:
             print(f'Load data for evaluation!')
             kps, skts, c2ws, cam_idxs, focals, bones = eval_bullettime_kps(data_h5, c2ws, focals,
                                                                     rest_pose, pose_keys,
@@ -225,10 +273,26 @@ def load_render_data(args, nerf_args, poseopt_layer=None, opt_framecode=True):
                                                                     **render_data)
         else:
             print(f'Load data for bullet time effect!')
-            kps, skts, c2ws, cam_idxs, focals, bones, root = load_bullettime(data_h5, c2ws, focals,
+            if args.switch_cam:
+                '''only c2ws changes'''
+                kps, skts, c2ws, cam_idxs, focals, bones, root = load_bullettime(data_h5, c2ws, focals,
+                                                                        rest_pose, pose_keys,
+                                                                        #centers=centers_n,
+                                                                        **render_data)
+                kps, skts, c2ws_virt, cam_idxs, focals, bones, root = load_bullettime(data_h5, v_cam, focals,
+                                                                        rest_pose, pose_keys,
+                                                                        #centers=centers_n,
+                                                                        **render_data)
+                # combined real and virt rendering
+                #ipdb.set_trace()
+                c2ws = np.concatenate([c2ws, c2ws_virt])
+
+            else:
+                kps, skts, c2ws, cam_idxs, focals, bones, root = load_bullettime(data_h5, c2ws, focals,
                                                                     rest_pose, pose_keys,
                                                                     #centers=centers_n,
                                                                     **render_data)
+
         #import ipdb; ipdb.set_trace()
     elif args.render_type == 'poserot':
 
@@ -291,6 +355,14 @@ def load_render_data(args, nerf_args, poseopt_layer=None, opt_framecode=True):
 
     else:
         raise NotImplementedError(f'render type {args.render_type} is not implemented!')
+
+
+    #import ipdb; ipdb.set_trace()
+    # added for rendering background image
+    if not args.white_bkgd:
+        bg_imgs = dd.io.load(data_h5, '/bkgds').astype(np.float32).reshape(-1, H, W, 3) / 255.
+        bg_indices = dd.io.load(data_h5, '/bkgd_idxs')[cam_idxs].astype(np.int64)
+
 
     gt_paths, gt_mask_paths = None, None
     is_gt_paths = True
@@ -422,7 +494,7 @@ def init_catalog(args, n_bullet=3):
 
     #import ipdb; ipdb.set_trace()
     #rebuttal_tim = np.arange(800,1178) #[992,1027,1041,1087,1088,1133,1134,1172,1175] #[449,624,644,680,705,746,998,1170,1,209,212,250,280,340,368,369,406,428,438,993]  #np.arange(0, 500) #[500] #1177, 814]
-    if args.evaluate:
+    if args.evaluate_pose:
         easy_idx = np.arange(0, args.train_len)
     else: #render
         easy_idx = args.selected_idxs #[0] #rebuttal_tim #[406,466,340,600,900,814] # #[0, 465, 473, 467, 1467] # [10, 70, 350, 420, 490, 910, 980, 1050] #np.arange(0, args.train_len)
@@ -948,9 +1020,10 @@ def load_bullettime(pose_h5, c2ws, focals, rest_pose, pose_keys,
                     selected_idxs, refined=None, n_bullet=30, 
                     #centers=None,
                     undo_rot=False, center_cam=True, center_kps=True,
-                    idx_map=None):
+                    idx_map=None, args=None):
 
-    undo_rot=False; center_cam=True; center_kps=True
+    '''center kps or center cam'''
+    undo_rot=False; center_cam=False; center_kps=True
     #import ipdb; ipdb.set_trace()
 
     # prepare camera
@@ -967,6 +1040,9 @@ def load_bullettime(pose_h5, c2ws, focals, rest_pose, pose_keys,
     if refined is None:
         kps, bones = dd.io.load(pose_h5, pose_keys, sel=dd.aslice[selected_idxs, ...])
         selected_idxs = find_idxs_with_map(selected_idxs, idx_map)
+        if args.switch_cam:
+            print("are you using the right data path for pose_h5?")
+            ipdb.set_trace()
     else:
         selected_idxs = find_idxs_with_map(selected_idxs, idx_map)
         kps, bones = refined
@@ -974,73 +1050,6 @@ def load_bullettime(pose_h5, c2ws, focals, rest_pose, pose_keys,
         bones = bones[selected_idxs]
     cam_idxs = selected_idxs[:, None].repeat(n_bullet, 1).reshape(-1)
     
-
-    # #import ipdb; ipdb.set_trace()
-    # from dan_compute_eval import eval_opt_kp
-
-
-    # # 3
-    # # python run_render.py --nerf_args logs/mirror/pose_opt_model/-2022-05-16-02-01-28/args.txt --ckptpath logs/mirror/pose_opt_model/-2022-05-16-02-01-28/107000.tar --dataset mirror --entry easy --render_type bullet --runname mirror_bullet --selected_framecode 0 --white_bkgd --selected_idxs 0 --render_refined --data_path ./data/mirror/3/23df3bb4-272d-4fba-b7a6-514119ca8d21_cam_3/2022-05-14-13 --n_bullet 10
-    # # python run_render.py --nerf_args logs/mirror/pose_opt_model/-2022-05-16-02-01-28/args.txt --ckptpath logs/mirror/pose_opt_model/-2022-05-16-02-01-28/107000.tar --dataset mirror --entry easy --render_type bullet --runname mirror_bullet --selected_framecode 0 --white_bkgd --selected_idxs 0 --render_refined --data_path ./data/mirror/3/23df3bb4-272d-4fba-b7a6-514119ca8d21_cam_3/2022-05-14-13 --n_bullet 1 --train_len 1620
-    # comb="23df3bb4-272d-4fba-b7a6-514119ca8d21_cam_3" # 2022-05-16-02-01-28
-    # rec_eval_pts = [0, 100, 200, 300, 400, 500, 600, 700, 800, 900, 1000, 1100, 1200, 1300, 1400, 1500, 1600, 1700]
-    # gt_eval_pts = [0, 100, 200, 300, 400, 500, 600, 700, 800, 900, 1000, 1100, 1200, 1300, 1400, 1500, 1600, 1700]
-    # # # 'mpjpe_in_mm': 105.09, 'n_mpjpe_in_mm': 60.33, 'pmpjpe_in_mm': 41.74
-    # # short
-    # # {'mpjpe_in_mm': 105.09, 'n_mpjpe_in_mm': 60.16, 'pmpjpe_in_mm': 41.67, 'No_of_evaluations': '11/18', 'rec_eval_pts': array([   0,  100,  200,  300,  400,  500,  600,  700,  800,  900, 1000]), 'gt_eval_pts': array([   0,  100,  200,  300,  400,  500,  600,  700,  800,  900, 1000])}
-
-    # # # 6
-    # # python run_render.py --nerf_args logs/mirror/pose_opt_model/-2022-05-16-02-23-39/args.txt --ckptpath logs/mirror/pose_opt_model/-2022-05-16-02-23-39/102000.tar --dataset mirror --entry easy --render_type bullet --runname mirror_bullet --selected_framecode 0 --white_bkgd --selected_idxs 0 --render_refined --data_path ./data/mirror/6/ea8ddac0-6837-4434-b03a-09316277a4aa_cam_6/2022-05-14-13 --n_bullet 4
-    # # # python run_render.py --nerf_args logs/mirror/pose_opt_model/-2022-05-16-02-23-39/args.txt --ckptpath logs/mirror/pose_opt_model/-2022-05-16-02-23-39/102000.tar --dataset mirror --entry easy --render_type bullet --runname mirror_bullet --selected_framecode 0 --white_bkgd --selected_idxs 0 --render_refined --data_path ./data/mirror/6/ea8ddac0-6837-4434-b03a-09316277a4aa_cam_6/2022-05-14-13 --n_bullet 1 --train_len 1620
-    # # comb="ea8ddac0-6837-4434-b03a-09316277a4aa_cam_6" # 2022-05-16-02-23-39
-    # # rec_eval_pts = [0, 100, 200, 300, 400, 500, 599, 699, 799, 899, 999, 1099, 1199, 1299, 1399, 1499, 1599, 1699]
-    # # gt_eval_pts = [0, 100, 200, 300, 400, 500, 600, 700, 800, 900, 1000, 1100, 1200, 1300, 1400, 1500, 1600, 1700]
-    # # # 'mpjpe_in_mm': 70.0, 'n_mpjpe_in_mm': 56.43, 'pmpjpe_in_mm': 40.18
-    # # # short
-    # # # {'mpjpe_in_mm': 70.25, 'n_mpjpe_in_mm': 56.58, 'pmpjpe_in_mm': 40.21, 'No_of_evaluations': '11/18', 'rec_eval_pts': array([  0, 100, 200, 300, 400, 500, 599, 699, 799, 899, 999]), 'gt_eval_pts': array([   0,  100,  200,  300,  400,  500,  600,  700,  800,  900, 1000])}
-
-    
-
-    
-    # # # 2
-    # # python run_render.py --nerf_args logs/mirror/pose_opt_model/-2022-05-16-02-10-36/args.txt --ckptpath logs/mirror/pose_opt_model/-2022-05-16-02-10-36/133000.tar --dataset mirror --entry easy --render_type bullet --runname mirror_bullet --selected_framecode 0 --white_bkgd --selected_idxs 0 --render_refined --data_path ./data/mirror/2/fc4f46b9-1f80-4498-8949-ca1b52864d0c_cam_2/2022-05-14-13 --n_bullet 10
-    # # # python run_render.py --nerf_args logs/mirror/pose_opt_model/-2022-05-16-02-10-36/args.txt --ckptpath logs/mirror/pose_opt_model/-2022-05-16-02-10-36/133000.tar --dataset mirror --entry easy --render_type bullet --runname mirror_bullet --selected_framecode 0 --white_bkgd --selected_idxs 0 --render_refined --data_path ./data/mirror/2/fc4f46b9-1f80-4498-8949-ca1b52864d0c_cam_2/2022-05-14-13 --n_bullet 1 --train_len 1414
-    # # comb="fc4f46b9-1f80-4498-8949-ca1b52864d0c_cam_2" # 2022-05-16-02-10-36
-    # # rec_eval_pts = [0, 100, 200, 300, 400, 493, 593, 693, 793, 893, 993, 1093, 1193, 1293, 1393]
-    # # gt_eval_pts =  [0, 100, 200, 300, 400, 500, 600, 700, 800, 900, 1000, 1100, 1200, 1300, 1400]
-    # # # 'mpjpe_in_mm': 125.36, 'n_mpjpe_in_mm': 110.19, 'pmpjpe_in_mm': 78.72
-    # # # # short
-    # # # {'mpjpe_in_mm': 125.36, 'n_mpjpe_in_mm': 110.19, 'pmpjpe_in_mm': 78.72, 'No_of_evaluations': '11/18', 'rec_eval_pts': array([  0, 100, 200, 300, 400, 493, 593, 693, 793, 893, 993]), 'gt_eval_pts': array([   0,  100,  200,  300,  400,  500,  600,  700,  800,  900, 1000])}
-
-
-    # # # 5
-    # # python run_render.py --nerf_args logs/mirror/pose_opt_model/-2022-05-16-14-42-42/args.txt --ckptpath logs/mirror/pose_opt_model/-2022-05-16-14-42-42/115000.tar --dataset mirror --entry easy --render_type bullet --runname mirror_bullet --selected_framecode 0 --white_bkgd --selected_idxs 0 --render_refined --data_path ./data/mirror/5/c28e8104-b416-474c-914c-c911baa8540b_cam_5/2022-05-14-13 --n_bullet 10
-    # # # python run_render.py --nerf_args logs/mirror/pose_opt_model/-2022-05-16-14-42-42/args.txt --ckptpath logs/mirror/pose_opt_model/-2022-05-16-14-42-42/115000.tar --dataset mirror --entry easy --render_type bullet --runname mirror_bullet --selected_framecode 0 --white_bkgd --selected_idxs 0 --render_refined --data_path ./data/mirror/5/c28e8104-b416-474c-914c-c911baa8540b_cam_5/2022-05-14-13 --n_bullet 1 --train_len 1240
-    # # comb="c28e8104-b416-474c-914c-c911baa8540b_cam_5" # 2022-05-16-14-42-42
-    # # rec_eval_pts = [0, 100, 200, 288, 388, 488, 588, 688, 788, 888, 988, 1088]
-    # # gt_eval_pts = [0, 100, 200, 500, 600, 700, 800, 900, 1000, 1100, 1200, 1300]
-    # # # 'mpjpe_in_mm': 117.82, 'n_mpjpe_in_mm': 93.67, 'pmpjpe_in_mm': 72.49
-    # # # short
-    # # # {'mpjpe_in_mm': 118.05, 'n_mpjpe_in_mm': 93.97, 'pmpjpe_in_mm': 72.56, 'No_of_evaluations': '11/18', 'rec_eval_pts': array([  0, 100, 200, 288, 388, 488, 588, 688, 788, 888, 988]), 'gt_eval_pts': array([   0,  100,  200,  500,  600,  700,  800,  900, 1000, 1100, 1200])}
-    
-
-    
-    # # ## 7
-    # # ## python run_render.py --nerf_args logs/mirror/pose_opt_model/-2022-05-16-14-12-18/args.txt --ckptpath logs/mirror/pose_opt_model/-2022-05-16-14-12-18/092000.tar --dataset mirror --entry easy --render_type bullet --runname mirror_bullet --selected_framecode 0 --white_bkgd --selected_idxs 0 --render_refined --data_path ./data/mirror/7/261970f0-e705-4546-a957-b719526cbc4a_cam_7/2022-05-14-13 --n_bullet 1 --train_len 1563
-    # # comb="261970f0-e705-4546-a957-b719526cbc4a_cam_7" # 2022-05-16-14-12-18
-    # # rec_eval_pts = [0, 100, 200, 300, 400, 500, 600, 700, 800, 900, 1000, 1100, 1200, 1300, 1400, 1500, 1636]
-    # # gt_eval_pts = [0, 100, 200, 300, 400, 500, 600, 700, 800, 900, 1000, 1100, 1200, 1300, 1400, 1500, 1700]
-    # # # 'mpjpe_in_mm': 112.61, 'n_mpjpe_in_mm': 78.08, 'pmpjpe_in_mm': 55.36
-    # # # short
-    # # # {'mpjpe_in_mm': 112.81, 'n_mpjpe_in_mm': 78.13, 'pmpjpe_in_mm': 55.48, 'No_of_evaluations': '11/18', 'rec_eval_pts': array([   0,  100,  200,  300,  400,  500,  600,  700,  800,  900, 1000]), 'gt_eval_pts': array([   0,  100,  200,  300,  400,  500,  600,  700,  800,  900, 1000])}
-
-
-    # eval_opt_kp(kps, comb, rec_eval_pts, gt_eval_pts)
-    # #name = "pose_opt_eval_may16"
-    # #np.save(f"/scratch/dajisafe/smpl/mirror_project_dir/authors_eval_data/temp_dir/cam_trajectory_{name}.npy", np.array(c2ws))
-    # #np.save(f"/scratch/dajisafe/smpl/mirror_project_dir/authors_eval_data/temp_dir/kps_{name}.npy", np.array(kps))
-
-    # import ipdb; ipdb.set_trace()
 
     #import ipdb; ipdb.set_trace()
     if center_kps:
@@ -1204,7 +1213,7 @@ def to_tensors(data_dict):
             raise NotImplementedError(f"{k}: only nparray and hwf are handled now!")
     return tensor_dict
 
-def evaluate_metric(rgbs, accs, bboxes, gt_dict, basedir):
+def evaluate_metric(rgbs, accs, bboxes, gt_dict, basedir, time=""):
     '''
     Always evaluate in the box
     '''
@@ -1222,7 +1231,7 @@ def evaluate_metric(rgbs, accs, bboxes, gt_dict, basedir):
     for i, (rgb, acc, bbox, gt_path) in enumerate(zip(rgbs, accs, bboxes, gt_paths)):
 
         if (i + 1) % 150 == 0:
-            np.save(os.path.join(basedir, 'scores.npy'),
+            np.save(os.path.join(basedir, time, 'scores.npy'),
                     {'psnr': psnrs, 'ssim': ssims, 'fg_psnr': fg_psnrs, 'fg_ssim': fg_ssims},
                      allow_pickle=True)
 
@@ -1284,20 +1293,20 @@ def evaluate_metric(rgbs, accs, bboxes, gt_dict, basedir):
 
     score_dict = {'psnr': psnrs, 'ssim': ssims, 'fg_psnr': fg_psnrs, 'fg_ssim': fg_ssims}
 
-    np.save(os.path.join(basedir, 'scores.npy'), score_dict, allow_pickle=True)
+    np.save(os.path.join(basedir, time, 'scores.npy'), score_dict, allow_pickle=True)
 
-    with open(os.path.join(basedir, 'score_final.txt'), 'w') as f:
+    with open(os.path.join(basedir, time, 'score_final.txt'), 'w') as f:
         for k in score_dict:
             avg = np.mean(score_dict[k])
             f.write(f'{k}: {avg}\n')
 
 @torch.no_grad()
 def render_mesh(basedir, render_kwargs, tensor_data, chunk=1024, radius=1.80,
-                res=255, threshold=10.):
+                res=255, threshold=10., time=""):
     import mcubes, trimesh
     ray_caster = render_kwargs['ray_caster']
 
-    os.makedirs(os.path.join(basedir, 'meshes'), exist_ok=True)
+    os.makedirs(os.path.join(basedir, time, 'meshes'), exist_ok=True)
     kps, skts, bones = tensor_data['kp'], tensor_data['skts'], tensor_data['bones']
     v_t_tuples = []
     for i in range(len(kps)):
@@ -1307,13 +1316,15 @@ def render_mesh(basedir, render_kwargs, tensor_data, chunk=1024, radius=1.80,
         sigma = np.maximum(raw_d.cpu().numpy(), 0)
         vertices, triangles = mcubes.marching_cubes(sigma, threshold)
         mesh = trimesh.Trimesh(vertices / res - .5, triangles)
-        mesh.export(os.path.join(basedir, 'meshes', f'{i:03d}.ply'))
+        mesh.export(os.path.join(basedir, time, 'meshes', f'{i:03d}.ply'))
 
 def run_render():
     args = config_parser().parse_args()
 
     # check
     #import ipdb; ipdb.set_trace()
+    time = datetime.datetime.now().strftime("%Y-%m-%d-%H") # ("%Y-%m-%d-%H-%M-%S")
+
     comb = args.data_path.split("/")[-2]
     view = comb.split("_cam_")[1]
     print(f"camera: {view} comb: {comb}")
@@ -1363,25 +1374,31 @@ def run_render():
     #     render_data['render_poses'] = v_cam
         # ------------------------------------------------------
 
+    #import ipdb; ipdb.set_trace()
     tensor_data = to_tensors(render_data)
 
     basedir = os.path.join(args.outputdir, args.runname)
     os.makedirs(basedir, exist_ok=True)
     if args.render_type == 'mesh':
-        render_mesh(basedir, render_kwargs, tensor_data, res=args.mesh_res, chunk=nerf_args.chunk)
+        render_mesh(basedir, render_kwargs, tensor_data, res=args.mesh_res, chunk=nerf_args.chunk, time=time)
         return
 
+    #import ipdb; ipdb.set_trace()
     print(f"render_path called in run_render.py")
-    rgbs, _, accs, _, bboxes = render_path(render_kwargs=render_kwargs,
+    rgbs, _, accs, valid_idxs, bboxes = render_path(render_kwargs=render_kwargs,
                                       chunk=nerf_args.chunk//8, #added May 4
                                       ext_scale=nerf_args.ext_scale,
                                       ret_acc=True,
                                       white_bkgd=args.white_bkgd,
-                                      **tensor_data)
+                                      **tensor_data,
+                                      args=args)
 
+    #ipdb.set_trace()
+    
+    
     if gt_dict['gt_paths'] is not None:
         if args.eval:
-            evaluate_metric(rgbs, accs, bboxes, gt_dict, basedir)
+            evaluate_metric(rgbs, accs, bboxes, gt_dict, basedir, time)
             pass
 
         elif args.save_gt and gt_dict['is_gt_paths']:
@@ -1396,23 +1413,131 @@ def run_render():
     rgbs = (rgbs * 255).astype(np.uint8)
     accs = (accs * 255).astype(np.uint8)
 
+    if args.switch_cam:
+        #duplicate kp and focal twice
+        render_data['kp'] = np.tile(render_data['kp'],[2,1,1])
+        render_data['hwf'] = (render_data['hwf'][0], 
+                              render_data['hwf'][1],
+                              np.tile(render_data['hwf'][2],[2,1]))
+
     # overlay on body reconstruction
     skeletons = draw_skeletons_3d(rgbs, render_data['kp'],
                                   render_data['render_poses'],
                                   *render_data['hwf'])
 
-    time = datetime.datetime.now().strftime("%Y-%m-%d-%H") # ("%Y-%m-%d-%H-%M-%S")
-
     #ipdb.set_trace()
+
     os.makedirs(os.path.join(basedir, time, f'image_{view}'), exist_ok=True)
     os.makedirs(os.path.join(basedir, time, f'skel_{view}'), exist_ok=True)
     os.makedirs(os.path.join(basedir, time, f'acc_{view}'), exist_ok=True)
+
+    '''post-rendering real-virt blending'''
+    
+    def blend(img1,alpha,img2,beta,gamma):
+        # ref https://docs.opencv.org/3.4/d2/de8/group__core__array.html#gafafb2513349db3bcff51f54ee5592a19
+    
+        blended_img = (img1*alpha + img2*beta) + gamma
+        return blended_img
+
+    if args.switch_cam:
+        alpha, beta, gamma = 1.0, 1.0, 0.0
+
+        # perform operation in 0,1 space
+        rgbs = rgbs/255.0
+        accs = accs/255.0
+        skeletons = skeletons/255.0
+
+               
+        half_size = rgbs.shape[0]//2
+        rgbs = blend(rgbs[:half_size], alpha, rgbs[half_size:], beta, gamma)
+        accs = blend(accs[:half_size], alpha, accs[half_size:], beta, gamma)
+        skeletons = blend(skeletons[:half_size], alpha, skeletons[half_size:], beta, gamma)
+
+        # # move back to 0,255 space for saving image
+        # rgbs = (rgbs * 255.0).astype(np.uint8)
+        # accs = (accs * 255.0).astype(np.uint8)
+        # skeletons = (skeletons * 255.0).astype(np.uint8)
+
+        plt.imshow(skeletons[0])
+        plt.axis("off")
+        plt.savefig(f"/scratch/dajisafe/smpl/A_temp_folder/A-NeRF/checkers/imgs/to_be_del_a_img.jpg", dpi=300, bbox_inches='tight', pad_inches = 0)
+
+
+        #import ipdb; ipdb.set_trace() 
+        H, W = render_data['hwf'][0], render_data['hwf'][1]
+        #valid_idxs = torch.stack(valid_idxs)
+
+        # compositing both predictions on background image
+        bkgd_img = render_data['bg_imgs'].reshape(-1,3)
+        # bkgd_img = np.tile(bkgd_img, [half_size,1,1])
+
+        valid_idxs = valid_idxs
+        valid_idxs_real = valid_idxs[:half_size]
+        valid_idxs_virt = valid_idxs[half_size:]
+
+        def mini_container(accs, preds_on_img, bg_img, v_idxs_real, v_idxs_virt):
+            n_size = preds_on_img.shape[0]
+
+            #bg = (1. - accs.reshape(n_size,-1,1)) * bg_img[v_idxs_real + v_idxs_virt]
+            bg_img = np.tile(bg_img.reshape(1,H,W,3), [n_size,1,1,1])
+            bg = (1. - accs) * bg_img
+            #ipdb.set_trace()
+
+            # # set both persons spot to 0 
+            # bg_img[v_idxs_real.cpu().numpy(), :] = 0
+            # bg_img[v_idxs_virt.cpu().numpy(), :] = 0
+
+            
+            # bg_img = np.tile(bg_img.reshape(H,W,3), [n_size,1,1,1])
+            img_compose = preds_on_img + bg
+
+            #ipdb.set_trace()
+
+            # plt.imshow(bg_img[0])
+            # plt.axis("off")
+            # plt.savefig(f"/scratch/dajisafe/smpl/A_temp_folder/A-NeRF/checkers/imgs/to_be_del_a_img.jpg", dpi=300, bbox_inches='tight', pad_inches = 0)
+
+            # plt.imshow(preds_on_img[0])
+            # plt.axis("off")
+            # plt.savefig(f"/scratch/dajisafe/smpl/A_temp_folder/A-NeRF/checkers/imgs/to_be_del_b_img.jpg", dpi=300, bbox_inches='tight', pad_inches = 0)
+        
+
+            # plt.imshow(img_compose[0])
+            # plt.axis("off")
+            # plt.savefig(f"/scratch/dajisafe/smpl/A_temp_folder/A-NeRF/checkers/imgs/to_be_del_c_img.jpg", dpi=300, bbox_inches='tight', pad_inches = 0)
+        
+            # ipdb.set_trace()
+            return img_compose
+
+        #ipdb.set_trace()
+        # get background image with black person in parallel
+        rgbs_compose = list(map(lambda v_idxs_real, v_idxs_virt: mini_container(accs, rgbs, bkgd_img.copy(), v_idxs_real, v_idxs_virt), valid_idxs_real, valid_idxs_virt))
+        skeletons_compose = list(map(lambda v_idxs_real, v_idxs_virt: mini_container(accs, skeletons, bkgd_img.copy(), v_idxs_real, v_idxs_virt), valid_idxs_real, valid_idxs_virt))
+
+        
+        #ipdb.set_trace()
+        # stack images
+        rgbs = np.concatenate(rgbs_compose)
+        skeletons = np.concatenate(skeletons_compose)
+
+        # plt.imshow(skeletons[0])
+        # plt.axis("off")
+        # plt.savefig(f"/scratch/dajisafe/smpl/A_temp_folder/A-NeRF/checkers/imgs/to_be_del_skel.jpg", dpi=300, bbox_inches='tight', pad_inches = 0)
+        
+        
 
 
     #refined_folder = "/scratch/dajisafe/smpl/A_temp_folder/A-NeRF/checkers/refined_overlay"
     #h5_path =  args.data_path + '/tim_train_h5py.h5'
     #dataset = h5py.File(h5_path, 'r', swmr=True)
 
+    '''converts from [0,1] float64bits (2^64) to [0,255] unsigned 8bits (2^8) - losses information
+    due to quantization'''
+    rgbs = (rgbs * 255).astype(np.uint8)
+    accs = (accs * 255).astype(np.uint8)
+    skeletons = (skeletons * 255).astype(np.uint8)
+
+    #ipdb.set_trace()
     for i, (rgb, acc, skel) in enumerate(zip(rgbs, accs, skeletons)):
         #print(f"i {i}")
         '''temp addition to the filename here'''
@@ -1437,6 +1562,7 @@ def run_render():
         #-----------------------------------------------
         rel_idx = i
         # plot overlay on volumetric reconstruction 
+        #print(f"rgb {rgb.shape}")
         imageio.imwrite(os.path.join(basedir, time, f'image_{view}', f'{rel_idx:05d}.png'), rgb)
         imageio.imwrite(os.path.join(basedir, time, f'acc_{view}', f'{rel_idx:05d}.png'), acc)
         imageio.imwrite(os.path.join(basedir, time, f'skel_{view}', f'{rel_idx:05d}.png'), skel)

@@ -89,6 +89,7 @@ class BaseH5Dataset(Dataset):
         # or implement a different sampler
         # as we may not actually use the idx here
 
+        #import ipdb; ipdb.set_trace()
         if self.dataset is None and self.dataset_v is None:
             self.init_dataset()
 
@@ -225,6 +226,9 @@ class BaseH5Dataset(Dataset):
         # initialize some attributes
         self.has_bg = 'bkgds' in self.dataset_keys
         self.centers = None
+        self.A_dash = None
+        self.m_normal = None
+        self.avg_D = None
 
         if 'centers' in dataset:
             self.centers = dataset['centers'][:]
@@ -443,7 +447,11 @@ class BaseH5Dataset(Dataset):
 
             if self.mask_img:
                 img = img * fg + (1. - fg) * bg
-
+        
+        # ipdb.set_trace()
+        # plt.imshow(img.reshape(*self.HW,3).astype(np.float32) / 255.); plt.axis("off")
+        # plt.savefig(f"/scratch/dajisafe/smpl/A_temp_folder/A-NeRF/checkers/imgs/img_compose.jpg", dpi=300, bbox_inches='tight', pad_inches = 0)
+        # ipdb.set_trace()
         return img, fg, bg
 
     def get_img_data_v(self, idx, pixel_idxs):
@@ -461,10 +469,28 @@ class BaseH5Dataset(Dataset):
             bg = self.bgs[bg_idx, pixel_idxs].astype(np.float32) / 255.
 
             if self.mask_img:
-                # pick foreground out from crowded image + create blank space for that spot in background
-                # result: clean background with foreground
+                # pick foreground out from original image using foreground mask + create blank space for that spot in background
+                ''' set the fg in the left to 1, everything else to 0
+                    set the fg in the right to 0, everything else to 1
+                hence, get the foreground from the left and place it in the right'''
                 # update: result is of size pixel_idxs
                 img = img * fg + (1. - fg) * bg
+
+        # #ipdb.set_trace()
+        # plt.imshow(bg.reshape(*self.HW,3).astype(np.float32)); plt.axis("off")
+        # plt.savefig(f"/scratch/dajisafe/smpl/A_temp_folder/A-NeRF/checkers/imgs/img_compose_virt_bg.jpg", dpi=300, bbox_inches='tight', pad_inches = 0)
+        
+        # plt.imshow(fg.reshape(*self.HW,1).astype(np.float32)); plt.axis("off")
+        # plt.savefig(f"/scratch/dajisafe/smpl/A_temp_folder/A-NeRF/checkers/imgs/img_compose_virt_fg.jpg", dpi=300, bbox_inches='tight', pad_inches = 0)
+     
+        # plt.imshow(img_bf.reshape(*self.HW,3).astype(np.float32)); plt.axis("off")
+A_temp_folder/A-NeRF/core/dataset.py        # plt.savefig(f"/scratch/dajisafe/smpl/A_temp_folder/A-NeRF/checkers/imgs/img_compose_virt_img_bf.jpg", dpi=300, bbox_inches='tight', pad_inches = 0)
+     
+        # plt.imshow(img_after.reshape(*self.HW,3).astype(np.float32)); plt.axis("off")
+        # plt.savefig(f"/scratch/dajisafe/smpl/A_temp_folder/A-NeRF/checkers/imgs/img_compose_virt_img_after.jpg", dpi=300, bbox_inches='tight', pad_inches = 0)
+     
+
+        ipdb.set_trace()
 
         return img, fg, bg
 
@@ -869,6 +895,7 @@ class BaseH5Dataset(Dataset):
             'cam_idxs': c_idxs,
             'cam_idxs_len': len(self.c2ws),
             'c2ws': self.c2ws[c_idxs],
+            'A_dash': self.A_dash[c_idxs],
             'hwf': hwf,
             'center': center,
             # keypoint data

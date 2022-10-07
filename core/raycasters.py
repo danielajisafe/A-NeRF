@@ -458,10 +458,11 @@ class RayCaster(nn.Module):
             #return plt
             plt.savefig(f"/scratch/dajisafe/smpl/A_temp_folder/A-NeRF/checkers/imgs/pixel_loc.jpg", dpi=300, bbox_inches='tight', pad_inches = 0)
 
-        #import ipdb; ipdb.set_trace()
+        
         del_folder = "/scratch/dajisafe/smpl/mirror_project_dir/authors_eval_data/temp_dir/to_be_deleted_pickles"
         h5_path = './data/mirror/3/23df3bb4-272d-4fba-b7a6-514119ca8d21_cam_3/2022-05-14-13/mirror_train_h5py.h5'
 
+        #import ipdb; ipdb.set_trace()
         # Use virt z_vals  directly 
         if use_mirr:
             #print("using mirror in a-nerf...")

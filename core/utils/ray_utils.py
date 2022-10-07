@@ -26,7 +26,7 @@ def get_rays(H, W, focal, c2w, center=None):
     pixel2d_loc = torch.stack([i, j], axis=-1)
     #pic_loc2d = pixel2d_loc.copy()
 
-    # neg-y : image indexing is ascending from top to bottom. Make it descending and centered in the middle
+    # neg-y : image indexing is ascending from top to bottom. Make it descending and centered in the middle as 0,0
     dirs = torch.stack([(i-offset_x)/focal_x, -(j-offset_y)/focal_y, -torch.ones_like(i)], -1)
     # Rotate ray directions from camera frame to the world frame
     # TODO: verify this
@@ -89,7 +89,7 @@ def ndc_rays(H, W, focal, near, rays_o, rays_d):
     return rays_o, rays_d
 
 def kp_to_valid_rays(poses, H, W, focal, kps=None, cylinder_params=None,
-                     skts=None, centers=None, ext_scale=0.00035):
+                     skts=None, centers=None, ext_scale=0.00035, args=None):
     if cylinder_params is None:
         assert kps is not None
         kps_np = kps.cpu().numpy()
@@ -115,32 +115,58 @@ def kp_to_valid_rays(poses, H, W, focal, kps=None, cylinder_params=None,
     valid_idxs = []
     rays = []
     bboxes = []
-    for i, c2w in enumerate(poses):
-        # assume #kp <= #poses,
-        # and we want to render images from the same pose consecutively
-        cyl_idx = i % kps.shape[0]
-        cyl_param = cylinder_params[cyl_idx]
-        f = focal if isinstance(focal, float) else focal[i]
-        center = None if centers is None else centers[i]
-        h = H if isinstance(H, int) else H[i]
-        w = W if isinstance(W, int) else W[i]
 
-        ray_o, ray_d, _ = get_rays(h, w, f, c2w, center=center)
+    if args.switch_cam:
+        half_size = poses.shape[0]//2
+        v_poses = poses[half_size:]
+        poses = poses[:half_size]
 
-        #w2c = np.linalg.inv(swap_mat(c2w.cpu().numpy()))
-        w2c = nerf_c2w_to_extrinsic(c2w.cpu().numpy())
-        tl, br, _ = cylinder_to_box_2d(cyl_param.cpu().numpy(), [h, w, f], w2c,
-                                       center=center)
+    #ipdb.set_trace()
+    def sub_function(poses, valid_idxs, rays, bboxes):
+        for i, c2w in enumerate(poses):
+            # assume #kp <= #poses,
+            # and we want to render images from the same pose consecutively
+            cyl_idx = i % kps.shape[0]
+            cyl_param = cylinder_params[cyl_idx]
+            f = focal if isinstance(focal, float) else focal[i]
+            center = None if centers is None else centers[i]
+            h = H if isinstance(H, int) else H[i]
+            w = W if isinstance(W, int) else W[i]
 
-        h_range = torch.arange(tl[1], br[1])
-        w_range = torch.arange(tl[0], br[0])
-        valid_h, valid_w = torch.meshgrid(h_range, w_range)
-        valid_idx =  (valid_h * w + valid_w).view(-1)
+            # pre-compute the rays for all HxW-sized pixel locations (whole image)
+            ray_o, ray_d, _ = get_rays(h, w, f, c2w, center=center)
+            
+            #import ipdb; ipdb.set_trace()
+            #w2c = np.linalg.inv(swap_mat(c2w.cpu().numpy()))
+            '''c2w to extrinsic matrix'''
+            w2c = nerf_c2w_to_extrinsic(c2w.cpu().numpy())
 
-        rays.append((ray_o.view(-1, 3)[valid_idx], ray_d.view(-1, 3)[valid_idx]))
-        valid_idxs.append(valid_idx)
-        bboxes.append((tl, br))
+            # get bbox, and top left and bottom right pixel values 
+            tl, br, _ = cylinder_to_box_2d(cyl_param.cpu().numpy(), [h, w, f], w2c,
+                                        center=center)
 
+            h_range = torch.arange(tl[1], br[1])
+            w_range = torch.arange(tl[0], br[0])
+
+            # meshgrid pre-computes the raw pixel's 2d locations in parallel
+            valid_h, valid_w = torch.meshgrid(h_range, w_range)
+
+            # convert 2D locations to indices 
+            valid_idx =  (valid_h * w + valid_w).view(-1)
+            #ipdb.set_trace()
+
+            # select rays that are within bounding box
+            rays.append((ray_o.view(-1, 3)[valid_idx], ray_d.view(-1, 3)[valid_idx]))
+            valid_idxs.append(valid_idx)
+            bboxes.append((tl, br))
+        return rays, valid_idxs, bboxes
+
+    # mini-container function
+    rays, valid_idxs, bboxes = sub_function(poses, valid_idxs, rays, bboxes)
+    if args.switch_cam:
+        rays, valid_idxs, bboxes = sub_function(v_poses, valid_idxs, rays, bboxes)
+
+    #ipdb.set_trace()
     return rays, valid_idxs, cylinder_params, bboxes
 
 def get_corner_rays(H, W, focal, poses):
