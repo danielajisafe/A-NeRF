@@ -431,7 +431,11 @@ class BaseH5Dataset(Dataset):
         get image data (in np.uint8)
         '''
 
+        #idx = 676
         fg = self.dataset['masks'][idx, pixel_idxs].astype(np.float32)
+        '''Binarize the mask'''
+        fg = (fg > 0.5).astype(np.int_)
+
         img = self.dataset['imgs'][idx, pixel_idxs].astype(np.float32) / 255.
 
         # raw_img = self.dataset['imgs'][idx].reshape(*self.HW,3).astype(np.float32) / 255.
@@ -448,6 +452,19 @@ class BaseH5Dataset(Dataset):
             if self.mask_img:
                 img = img * fg + (1. - fg) * bg
         
+        # plt.imshow(bg.reshape(*self.HW,3).astype(np.float32)); plt.axis("off")
+        # plt.savefig(f"/scratch/dajisafe/smpl/A_temp_folder/A-NeRF/checkers/imgs/img_compose_real_bg.jpg", dpi=300, bbox_inches='tight', pad_inches = 0)
+        
+        # plt.imshow(fg.reshape(*self.HW,1).astype(np.float32)); plt.axis("off")
+        # plt.savefig(f"/scratch/dajisafe/smpl/A_temp_folder/A-NeRF/checkers/imgs/img_compose_real_fg.jpg", dpi=300, bbox_inches='tight', pad_inches = 0)
+     
+        # plt.imshow(img_bf.reshape(*self.HW,3).astype(np.float32)); plt.axis("off")
+        # plt.savefig(f"/scratch/dajisafe/smpl/A_temp_folder/A-NeRF/checkers/imgs/img_compose_real_img_bf.jpg", dpi=300, bbox_inches='tight', pad_inches = 0)
+     
+        # plt.imshow(img_after.reshape(*self.HW,3).astype(np.float32)); plt.axis("off")
+        # plt.savefig(f"/scratch/dajisafe/smpl/A_temp_folder/A-NeRF/checkers/imgs/img_compose_real_img_after.jpg", dpi=300, bbox_inches='tight', pad_inches = 0)
+     
+
         # ipdb.set_trace()
         # plt.imshow(img.reshape(*self.HW,3).astype(np.float32) / 255.); plt.axis("off")
         # plt.savefig(f"/scratch/dajisafe/smpl/A_temp_folder/A-NeRF/checkers/imgs/img_compose.jpg", dpi=300, bbox_inches='tight', pad_inches = 0)
@@ -459,7 +476,11 @@ class BaseH5Dataset(Dataset):
         get image data (in np.uint8)
         '''
 
+        #idx = 676 # [idx, pixel_idxs]
         fg = self.dataset_v['masks'][idx, pixel_idxs].astype(np.float32)
+        '''Binarize the mask'''
+        fg = (fg > 0.5).astype(np.int_)
+
         # reuse image from real data
         img = self.dataset['imgs'][idx, pixel_idxs].astype(np.float32) / 255.
 
@@ -484,13 +505,13 @@ class BaseH5Dataset(Dataset):
         # plt.savefig(f"/scratch/dajisafe/smpl/A_temp_folder/A-NeRF/checkers/imgs/img_compose_virt_fg.jpg", dpi=300, bbox_inches='tight', pad_inches = 0)
      
         # plt.imshow(img_bf.reshape(*self.HW,3).astype(np.float32)); plt.axis("off")
-A_temp_folder/A-NeRF/core/dataset.py        # plt.savefig(f"/scratch/dajisafe/smpl/A_temp_folder/A-NeRF/checkers/imgs/img_compose_virt_img_bf.jpg", dpi=300, bbox_inches='tight', pad_inches = 0)
+        # plt.savefig(f"/scratch/dajisafe/smpl/A_temp_folder/A-NeRF/checkers/imgs/img_compose_virt_img_bf.jpg", dpi=300, bbox_inches='tight', pad_inches = 0)
      
         # plt.imshow(img_after.reshape(*self.HW,3).astype(np.float32)); plt.axis("off")
         # plt.savefig(f"/scratch/dajisafe/smpl/A_temp_folder/A-NeRF/checkers/imgs/img_compose_virt_img_after.jpg", dpi=300, bbox_inches='tight', pad_inches = 0)
      
 
-        ipdb.set_trace()
+        #ipdb.set_trace()
 
         return img, fg, bg
 
@@ -503,6 +524,7 @@ A_temp_folder/A-NeRF/core/dataset.py        # plt.savefig(f"/scratch/dajisafe/sm
         # TODO: check if sampling masks need adjustment
         # assume sampling masks are of shape (N, H, W, 1)
         sampling_mask = self.dataset['sampling_masks'][idx].reshape(-1)
+        sampling_mask = (sampling_mask > 0.5).astype(np.int_)
 
         valid_idxs, = np.where(sampling_mask>0)
         sampled_idxs = np.random.choice(valid_idxs,
@@ -553,6 +575,7 @@ A_temp_folder/A-NeRF/core/dataset.py        # plt.savefig(f"/scratch/dajisafe/sm
         # TODO: check if sampling masks need adjustment
         # assume sampling masks are of shape (N, H, W, 1)
         sampling_mask_v = self.dataset_v['sampling_masks'][idx].reshape(-1)
+        sampling_mask_v = (sampling_mask_v > 0.5).astype(np.int_)
 
         valid_idxs_v, = np.where(sampling_mask_v>0)
 
@@ -874,6 +897,9 @@ A_temp_folder/A-NeRF/core/dataset.py        # plt.savefig(f"/scratch/dajisafe/sm
         H, W = self.HW
         render_imgs = dataset['imgs'][i_idxs].reshape(-1, H, W, 3).astype(np.float32) / 255.
         render_fgs = dataset['masks'][i_idxs].reshape(-1, H, W, 1)
+        '''Binarize mask'''
+        render_fgs = (render_fgs > 0.5).astype(np.int_)
+
         render_bgs = self.bgs.reshape(-1, H, W, 3).astype(np.float32) / 255.
         render_bg_idxs = self.bg_idxs[i_idxs]
 

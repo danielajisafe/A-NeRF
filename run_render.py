@@ -275,11 +275,13 @@ def load_render_data(args, nerf_args, poseopt_layer=None, opt_framecode=True):
             print(f'Load data for bullet time effect!')
             if args.switch_cam:
                 '''only c2ws changes'''
+                v_focals = focals.copy()
                 kps, skts, c2ws, cam_idxs, focals, bones, root = load_bullettime(data_h5, c2ws, focals,
                                                                         rest_pose, pose_keys,
                                                                         #centers=centers_n,
                                                                         **render_data)
-                kps, skts, c2ws_virt, cam_idxs, focals, bones, root = load_bullettime(data_h5, v_cam, focals,
+                #ipdb.set_trace()
+                _, _, c2ws_virt, _, _, _, _ = load_bullettime(data_h5, v_cam, v_focals,
                                                                         rest_pose, pose_keys,
                                                                         #centers=centers_n,
                                                                         **render_data)
