@@ -60,6 +60,8 @@ def config_parser():
                         help='no of bullet views to render')
     parser.add_argument('--n_bubble', type=int, default=10,
                         help='no of bubble views to render')
+    parser.add_argument('--bullet_ang', type=int, default=360,
+    help='angle of novel bullet view to render') 
     parser.add_argument('--switch_cam', action='store_true', default=False,
                         help='replace real camera with virtual camera')
     parser.add_argument('--evaluate_pose', action='store_true', default=False,
@@ -423,6 +425,7 @@ def load_render_data(args, nerf_args, poseopt_layer=None, opt_framecode=True):
 
 def init_catalog(args, n_bullet=3):
     n_bullet = args.n_bullet
+    bullet_ang = args.bullet_ang
     #import ipdb; ipdb.set_trace()
 
     RenderCatalog = {
@@ -489,6 +492,7 @@ def init_catalog(args, n_bullet=3):
     # elif view ==5:
     #     easy_idx = [50, 200, 1000, 1200]
     # else:
+
     #     import ipdb; ipdb.set_trace()
 
     # [1,209,212,250,280,340,368,369,406,428,438,993]
@@ -506,7 +510,7 @@ def init_catalog(args, n_bullet=3):
         'data_h5': args.data_path + '/mirror_train_h5py.h5', #'/tim_train_h5py.h5',
         'data_h5_v': args.data_path + '/v_mirror_train_h5py.h5',
         'retarget': set_dict(easy_idx, length=25, skip=2, center_kps=True),
-        'bullet': set_dict(easy_idx, n_bullet=args.n_bullet),
+        'bullet': set_dict(easy_idx, n_bullet=args.n_bullet, bullet_ang=args.bullet_ang),
         'bubble': set_dict(easy_idx, n_step=args.n_bubble),
         'mesh': set_dict([0], length=1, skip=1),
     }
@@ -1019,7 +1023,7 @@ def eval_bullettime_kps(pose_h5, c2ws, focals, rest_pose, pose_keys,
 
 
 def load_bullettime(pose_h5, c2ws, focals, rest_pose, pose_keys,
-                    selected_idxs, refined=None, n_bullet=30, 
+                    selected_idxs, refined=None, n_bullet=30, bullet_ang=360,
                     #centers=None,
                     undo_rot=False, center_cam=True, center_kps=True,
                     idx_map=None, args=None):
@@ -1065,7 +1069,8 @@ def load_bullettime(pose_h5, c2ws, focals, rest_pose, pose_keys,
         kps[..., :, 1] -= shift_y[:, None]
 
     #import ipdb; ipdb.set_trace()
-    c2ws = generate_bullet_time(c2ws, n_bullet).transpose(1, 0, 2, 3).reshape(-1, 4, 4)
+    c2ws = generate_bullet_time(c2ws, n_views=n_bullet, bullet_ang=bullet_ang).transpose(1, 0, 2, 3).reshape(-1, 4, 4)
+    
 
     if isinstance(focals, float):
         focals = np.array([focals] * len(selected_idxs))
@@ -1460,84 +1465,89 @@ def run_render():
         # accs = (accs * 255.0).astype(np.uint8)
         # skeletons = (skeletons * 255.0).astype(np.uint8)
 
-        plt.imshow(skeletons[0])
-        plt.axis("off")
-        plt.savefig(f"/scratch/dajisafe/smpl/A_temp_folder/A-NeRF/checkers/imgs/to_be_del_a_img.jpg", dpi=300, bbox_inches='tight', pad_inches = 0)
+        # plt.imshow(skeletons[0])
+        # plt.axis("off")
+        # plt.savefig(f"/scratch/dajisafe/smpl/A_temp_folder/A-NeRF/checkers/imgs/to_be_del_a_img.jpg", dpi=300, bbox_inches='tight', pad_inches = 0)
 
 
         #import ipdb; ipdb.set_trace() 
         H, W = render_data['hwf'][0], render_data['hwf'][1]
         #valid_idxs = torch.stack(valid_idxs)
 
-        # compositing both predictions on background image
-        bkgd_img = render_data['bg_imgs'].reshape(-1,3)
-        # bkgd_img = np.tile(bkgd_img, [half_size,1,1])
+        if not args.white_bkgd:
+            # compositing both predictions on background image
+            bkgd_img = render_data['bg_imgs'].reshape(-1,3)
+            # bkgd_img = np.tile(bkgd_img, [half_size,1,1])
 
-        valid_idxs = valid_idxs
-        valid_idxs_real = valid_idxs[:half_size]
-        valid_idxs_virt = valid_idxs[half_size:]
+            valid_idxs = valid_idxs
+            valid_idxs_real = valid_idxs[:half_size]
+            valid_idxs_virt = valid_idxs[half_size:]
 
-        def mini_container(accs, preds_on_img, bg_img, v_idxs_real, v_idxs_virt):
-            n_size = preds_on_img.shape[0]
+            def mini_container(accs, preds_on_img, bg_img, v_idxs_real, v_idxs_virt):
+                n_size = preds_on_img.shape[0]
 
-            #bg = (1. - accs.reshape(n_size,-1,1)) * bg_img[v_idxs_real + v_idxs_virt]
-            bg_img = np.tile(bg_img.reshape(1,H,W,3), [n_size,1,1,1])
-            bg = (1. - accs) * bg_img
+                #bg = (1. - accs.reshape(n_size,-1,1)) * bg_img[v_idxs_real + v_idxs_virt]
+                bg_img = np.tile(bg_img.reshape(1,H,W,3), [n_size,1,1,1])
+                bg = (1. - accs) * bg_img
+                #ipdb.set_trace()
+
+                # # set both persons spot to 0 
+                # bg_img[v_idxs_real.cpu().numpy(), :] = 0
+                # bg_img[v_idxs_virt.cpu().numpy(), :] = 0
+
+                
+                # bg_img = np.tile(bg_img.reshape(H,W,3), [n_size,1,1,1])
+                img_compose = preds_on_img + bg
+
+                #ipdb.set_trace()
+
+                # plt.imshow(bg_img[0])
+                # plt.axis("off")
+                # plt.savefig(f"/scratch/dajisafe/smpl/A_temp_folder/A-NeRF/checkers/imgs/to_be_del_a_img.jpg", dpi=300, bbox_inches='tight', pad_inches = 0)
+
+                # plt.imshow(preds_on_img[0])
+                # plt.axis("off")
+                # plt.savefig(f"/scratch/dajisafe/smpl/A_temp_folder/A-NeRF/checkers/imgs/to_be_del_b_img.jpg", dpi=300, bbox_inches='tight', pad_inches = 0)
+            
+
+                # plt.imshow(img_compose[0])
+                # plt.axis("off")
+                # plt.savefig(f"/scratch/dajisafe/smpl/A_temp_folder/A-NeRF/checkers/imgs/to_be_del_c_img.jpg", dpi=300, bbox_inches='tight', pad_inches = 0)
+            
+                # ipdb.set_trace()
+                return img_compose
+
             #ipdb.set_trace()
-
-            # # set both persons spot to 0 
-            # bg_img[v_idxs_real.cpu().numpy(), :] = 0
-            # bg_img[v_idxs_virt.cpu().numpy(), :] = 0
+            # get background image with black person in parallel
+            rgbs_compose = list(map(lambda v_idxs_real, v_idxs_virt: mini_container(accs, rgbs, bkgd_img.copy(), v_idxs_real, v_idxs_virt), valid_idxs_real, valid_idxs_virt))
+            skeletons_compose = list(map(lambda v_idxs_real, v_idxs_virt: mini_container(accs, skeletons, bkgd_img.copy(), v_idxs_real, v_idxs_virt), valid_idxs_real, valid_idxs_virt))
 
             
-            # bg_img = np.tile(bg_img.reshape(H,W,3), [n_size,1,1,1])
-            img_compose = preds_on_img + bg
-
             #ipdb.set_trace()
-
-            # plt.imshow(bg_img[0])
-            # plt.axis("off")
-            # plt.savefig(f"/scratch/dajisafe/smpl/A_temp_folder/A-NeRF/checkers/imgs/to_be_del_a_img.jpg", dpi=300, bbox_inches='tight', pad_inches = 0)
-
-            # plt.imshow(preds_on_img[0])
-            # plt.axis("off")
-            # plt.savefig(f"/scratch/dajisafe/smpl/A_temp_folder/A-NeRF/checkers/imgs/to_be_del_b_img.jpg", dpi=300, bbox_inches='tight', pad_inches = 0)
-        
-
-            # plt.imshow(img_compose[0])
-            # plt.axis("off")
-            # plt.savefig(f"/scratch/dajisafe/smpl/A_temp_folder/A-NeRF/checkers/imgs/to_be_del_c_img.jpg", dpi=300, bbox_inches='tight', pad_inches = 0)
-        
-            # ipdb.set_trace()
-            return img_compose
-
-        #ipdb.set_trace()
-        # get background image with black person in parallel
-        rgbs_compose = list(map(lambda v_idxs_real, v_idxs_virt: mini_container(accs, rgbs, bkgd_img.copy(), v_idxs_real, v_idxs_virt), valid_idxs_real, valid_idxs_virt))
-        skeletons_compose = list(map(lambda v_idxs_real, v_idxs_virt: mini_container(accs, skeletons, bkgd_img.copy(), v_idxs_real, v_idxs_virt), valid_idxs_real, valid_idxs_virt))
-
-        
-        #ipdb.set_trace()
-        # stack images
-        rgbs = np.concatenate(rgbs_compose)
-        skeletons = np.concatenate(skeletons_compose)
+            # stack images
+            rgbs = np.concatenate(rgbs_compose)
+            skeletons = np.concatenate(skeletons_compose)
 
         # plt.imshow(skeletons[0])
         # plt.axis("off")
         # plt.savefig(f"/scratch/dajisafe/smpl/A_temp_folder/A-NeRF/checkers/imgs/to_be_del_skel.jpg", dpi=300, bbox_inches='tight', pad_inches = 0)
-        
-        
 
 
-    #refined_folder = "/scratch/dajisafe/smpl/A_temp_folder/A-NeRF/checkers/refined_overlay"
-    #h5_path =  args.data_path + '/tim_train_h5py.h5'
-    #dataset = h5py.File(h5_path, 'r', swmr=True)
+    if not args.white_bkgd:    
+        '''converts from [0,1] float64bits (2^64) to [0,255] unsigned 8bits (2^8) - losses information
+        due to quantization'''
+        rgbs = (rgbs * 255).astype(np.uint8)
+        accs = (accs * 255).astype(np.uint8)
+        skeletons = (skeletons * 255).astype(np.uint8)
 
-    '''converts from [0,1] float64bits (2^64) to [0,255] unsigned 8bits (2^8) - losses information
-    due to quantization'''
-    rgbs = (rgbs * 255).astype(np.uint8)
-    accs = (accs * 255).astype(np.uint8)
-    skeletons = (skeletons * 255).astype(np.uint8)
+    else: 
+        '''if white background''' 
+        # I convert to np.uint8 but the red skeleton becomes white. imageio converts internally, red skeleton looks okay.
+
+        rgbs = (rgbs * 255)
+        accs = (accs * 255)
+        skeletons = (skeletons * 255)
+
 
     #ipdb.set_trace()
     for i, (rgb, acc, skel) in enumerate(zip(rgbs, accs, skeletons)):

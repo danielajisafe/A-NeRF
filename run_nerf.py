@@ -148,10 +148,15 @@ def render_path(render_poses, hwf, chunk, render_kwargs,
     #centers = torch.tensor(centers)
 
     #import ipdb; ipdb.set_trace()
-    if args.switch_cam:
+    if args.switch_cam and not args.white_bkgd:
         bg_indices = bg_indices.repeat(2)
-        bg_imgs = bg_imgs.repeat(2,1,1,1)
+        if isinstance(bg_imgs, np.ndarray):
+            bg_imgs = np.tile(bg_imgs, [2,1,1,1])
+        else:
+            bg_imgs = np.tile(bg_imgs.cpu().numpy(), [2,1,1,1])
+        #bg_imgs = bg_imgs.repeat(2,1,1,1)
     
+    #import ipdb; ipdb.set_trace()
 
     for i, c2w in enumerate(tqdm(render_poses)):
         print(i, time.time() - t)
@@ -522,7 +527,7 @@ def config_parser():
     parser.add_argument("--bgnet_reg", type=float, default=0.01,
                         help='penalize bgnet for deviating from bg values')
     parser.add_argument("--use_bgfill", action='store_true',
-                        help='fill in mean bg image at foreground, while keeping othe the same')
+                        help='fill in mean bg image at foreground, while keeping others the same')
 
     parser.add_argument("--lbsnet_type", type=str, default="default",
                         help='type of LBSNET')
@@ -784,7 +789,7 @@ def train():
             bg_imgs = render_data["bgs"]
             bg_indices = render_data.get("bg_idxs", None)
             
-            import ipdb; ipdb.set_trace()
+            #import ipdb; ipdb.set_trace()
             if args.switch_cam:
                 bg_indices = np.tile(bg_indices,[2])
 

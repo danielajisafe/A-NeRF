@@ -315,13 +315,13 @@ def evaluate_metric(rgbs, gt_imgs, disps=None, gt_masks=None, valid_idxs=None, p
         th_rgbs = th_rgbs.cpu()
     th_gt = torch.tensor(gt_imgs).permute(0, 3, 1, 2).cpu()
     try:
+        #import pdb; pdb.set_trace() # what works here?
         th_ssim = ssim_eval(th_rgbs, th_gt)
     except:
-        import pdb; pdb.set_trace()
+        th_ssim = ssim_eval(th_rgbs.float(), th_gt.float())
         print()
     test_ssim = th_ssim.permute(0, 2, 3, 1).cpu().numpy()
     sqr_diff = np.square(gt_imgs - rgbs)
-
     if gt_masks is not None:
         denom = np.maximum(gt_masks.reshape(len(poses), -1).sum(-1) * 3., 1.)# avoid dividing by zero
 
