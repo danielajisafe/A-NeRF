@@ -507,14 +507,15 @@ def train():
 
     # Create log dir and copy the config file
     basedir = args.basedir
-    expname = args.expname
 
     if args.no_reload:
         #update with new timestmap
-        expname = args_to_str(args)
+        args.expname = args_to_str(args)
     else:
         # use timestamp added from terminal
         pass
+
+    expname = args.expname
     print(f"Current timestamp: {expname.split('/')[-1]}")
 
     os.makedirs(os.path.join(basedir, expname), exist_ok=True)
@@ -534,7 +535,7 @@ def train():
 
     popt_kwargs, pose_optimizer = None, None
     if args.opt_pose:
-        gt_kps = data_attrs['gt_kp3d']
+        #gt_kps = data_attrs['gt_kp3d']
         pose_optimizer, popt_kwargs = create_popt(args, data_attrs, ckpt=loaded_ckpt, device=device)
     print('done creating popt')
 

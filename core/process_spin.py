@@ -16,8 +16,8 @@ from .utils.skeleton_utils import smpl_rest_pose, calculate_bone_length, get_smp
 # old submission code
 sys.path.append("/scratch/dajisafe/smpl/mirror_project_dir")
 
-from util_loading import load_pickle, save2pickle, sort_B_via_A, get_joint_trees, \
-calc_bone_length, detect_flip
+# from util_loading import load_pickle, save2pickle, sort_B_via_A, get_joint_trees, \
+# calc_bone_length, detect_flip
 
 # mapper to map joints
 SMPL_JOINT_MAPPER = lambda joints: joints[:, [0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23]]

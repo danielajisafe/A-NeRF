@@ -328,6 +328,7 @@ class Trainer:
         total_loss = 0.
         results = []
 
+        #import ipdb; ipdb.set_trace()
         # rgb loss of nerf
         results.append(self._compute_nerf_loss(batch, preds['rgb_map'], preds['acc_map']))
         if 'rgb0' in preds:

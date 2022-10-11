@@ -45,7 +45,7 @@ DATASET_CATALOG = {
     },
 
     'vanilla': {
-        'subset': '',
+        'subset': '/scratch/st-rhodin-1/users/dajisafe/anerf_mirr/A-NeRF/data/vanilla/3/23df3bb4-272d-4fba-b7a6-514119ca8d21_cam_3/2022-05-14-13/vanilla_train_h5py.h5',
     }
 
 }

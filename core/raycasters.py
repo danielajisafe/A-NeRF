@@ -130,7 +130,8 @@ def create_raycaster(args, data_attrs, device=None):
 
     print('Found ckpts', ckpts)
     loaded_ckpt = None
-    if len(ckpts) > 0 and not args.no_reload:
+    # if len(ckpts) > 0 and not args.no_reload:
+    if len(ckpts) > 0:
         ckpt_path = ckpts[-1]
         print('Reloading from', ckpt_path)
         start, ray_caster, optimizer, loaded_ckpt = load_ckpt_from_path(ray_caster,

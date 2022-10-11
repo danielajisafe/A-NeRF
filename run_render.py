@@ -1,7 +1,9 @@
 import os
+import ipdb
 import torch
 import shutil
 import imageio
+import datetime
 import numpy as np
 import deepdish as dd
 from run_nerf import render_path
@@ -15,6 +17,11 @@ from core.utils.evaluation_helpers import txt_to_argstring
 from core.utils.skeleton_utils import CMUSkeleton, smpl_rest_pose, get_smpl_l2ws, get_per_joint_coords
 from core.utils.skeleton_utils import draw_skeletons_3d, rotate_x, rotate_y, axisang_to_rot, rot_to_axisang
 from pytorch_msssim import SSIM
+
+
+import sys
+sys.path.append("/scratch/st-rhodin-1/users/dajisafe/anerf_mirr/A-NeRF/core/utils")
+
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
@@ -42,6 +49,16 @@ def config_parser():
                         help='tuple of resolution in (H, W) for rendering')
     parser.add_argument('--dataset', type=str, required=True,
                         help='dataset to render')
+    parser.add_argument("--data_path", type=str, default='./data/llff/fern',
+                        help='input data directory')
+
+    parser.add_argument('--n_bullet', type=int, default=10,
+                        help='no of bullet views to render') 
+    parser.add_argument('--n_bubble', type=int, default=10,
+                        help='no of bubble views to render') 
+    parser.add_argument('--bullet_ang', type=int, default=360,
+                        help='angle of novel bullet view to render')
+
     parser.add_argument('--entry', type=str, required=True,
                         help='entry in the dataset catalog to render')
     parser.add_argument('--white_bkgd', action='store_true',
@@ -61,6 +78,11 @@ def config_parser():
                         help='which subject to render (for MINeRF)')
 
     # frame-related
+    parser.add_argument('--train_len', type=int, default=0,
+                        help='length of trainset') 
+    parser.add_argument('--test_len', type=int, default=0,
+                        help='length of testset')
+
     parser.add_argument('--selected_idxs', nargs='+', type=int, default=None,
                         help='hand-picked idxs for rendering')
     parser.add_argument('--selected_framecode', type=int, default=None,
@@ -115,8 +137,11 @@ def load_nerf(args, nerf_args, skel_type=CMUSkeleton):
 
 def load_render_data(args, nerf_args, poseopt_layer=None, opt_framecode=True):
     # TODO: note that for models trained on SPIN data, they may not react well
+
+    #ipdb.set_trace()
     catalog = init_catalog(args)[args.dataset][args.entry]
     render_data = catalog.get(args.render_type, {})
+    #ipdb.set_trace()
     data_h5 = catalog['data_h5']
 
     # to real cameras (due to the extreme focal length they were trained on..)
@@ -306,6 +331,7 @@ def init_catalog(args, n_bullet=10):
         'perfcap': None,
         'mixamo': None,
         '3dhp': None,
+        'vanilla':None,
     }
 
     def load_idxs(path):
@@ -373,6 +399,78 @@ def init_catalog(args, n_bullet=10):
         'bubble': set_dict(hard_idx, n_step=30),
         'val': set_dict(np.array([1200 * i + np.arange(420, 700)[::5] for i in range(0, 9, 2)]).reshape(-1), length=1, skip=1),
         'mesh': set_dict([930], length=1, skip=1),
+    }
+
+
+
+    # VANILLA
+    #import ipdb; ipdb.set_trace()
+    comb = args.data_path.split("/")[-2]
+    view = int(comb.split("_cam_")[1])
+
+    
+    # if view ==2:
+    #     easy_idx = [30, 400, 700, 1100] # [1539, 1609, 1692] #[30, 400, 700, 1100]
+    # elif view ==3:
+    #     easy_idx = [0, 20, 119, 475, 730, 1258, 1290, 1397, 1518]
+    # elif view ==5:
+    #     easy_idx = [50, 200, 1000, 1200] # [1379, 1392, 1413, 1458] #[50, 200, 1000, 1200]
+    # elif view ==6:
+    #     easy_idx = [185, 1497]#, 1746]
+    # elif view ==7:
+    #     easy_idx = [140, 210, 455]#, 1616, 1475]
+    # else:
+    #     import ipdb; ipdb.set_trace()
+
+    easy_idx = [0]#, 20] #, 465, 473, 467, 1467] # [10, 70, 350, 420, 490, 910, 980, 1050] #np.arange(0, args.train_len)
+    #easy_idx = np.arange(0, args.train_len)
+
+    vanilla_easy = {
+        'data_h5': args.data_path + '/vanilla_train_h5py.h5',
+        # 'data_h5_v': args.data_path + '/v_mirror_train_h5py.h5',
+        # 'retarget': set_dict(easy_idx, length=1, skip=1, center_kps=True),
+        # #'retarget': set_dict(easy_idx, length=25, skip=2, center_kps=True),
+
+        # 'interpolate': set_dict(easy_idx, n_step=4, undo_rot=False,
+        #                         center_cam=True),
+        'bullet': set_dict(easy_idx, n_bullet=args.n_bullet),
+        'bubble': set_dict(easy_idx, n_step=args.n_bubble),
+        # 'mesh': set_dict([0], length=1, skip=1),
+        # 'animate': set_dict([0, 20], n_step=4, center_cam=True, center_kps=True,
+        #                     joints=np.array([20,21,22,23,24,25])),
+                            # joints=np.array([18,19,20,21,22,23])),
+    }
+
+    # TODO: create validation indices
+    test_val_idx = np.arange(0,args.test_len) #[0]
+    vanilla_val = {
+        'data_h5': args.data_path + '/mirror_test_h5py.h5', # we render only the real
+        'data_h5_v': args.data_path + '/v_mirror_test_h5py.h5',
+
+        #'''this needs to be .tar from model 1'''
+        'refined': 'template',
+        #'refined' : '/home/dajisafe/scratch/anerf_mirr/A-NeRF/data/mirror/3/23df3bb4-272d-4fba-b7a6-514119ca8d21_cam_3/refined_pose/200000.tar',
+        #'refined': 'neurips21_ckpt/trained/ours/h36m/s9_sub64_500k.tar',
+        'val': set_dict(test_val_idx, length=1, skip=1),
+        #'val2': set_dict(test_val_idx, length=1, skip=1),
+
+        # dan
+        #'bullet': set_dict(test_val_idx, n_bullet=args.n_bullet),
+    #     'val': set_dict(load_idxs(args.data_path + '/mirror_val_idxs.npy'), length=1, skip=1),
+    #     'val2': set_dict(load_idxs(args.data_path + '/mirror_val_idxs.npy')[:300], length=1, skip=1),
+    }
+    
+    #ipdb.set_trace()
+    hard_idx = [140, 210, 280, 490, 560, 630, 700, 770, 840, 910]
+    vanilla_hard = {
+        'data_h5': args.data_path + '/mirror_train_h5py.h5', #1620
+        'data_h5_v': args.data_path + '/v_mirror_train_h5py.h5', #1620
+        'retarget': set_dict(hard_idx, length=60, skip=5, center_kps=True),
+        #'bullet': set_dict([190,  210,  230,  490,  510,  530,  790,  810,  830,  910,  930, 950, 1090, 1110, 1130],
+        #                   n_bullet=n_bullet, center_kps=True, center_cam=False),
+        'bubble': set_dict(hard_idx, n_step=30),
+        #'val': set_dict(np.array([1200 * i + np.arange(420, 700)[::5] for i in range(0, 9, 2)]).reshape(-1), length=1, skip=1),
+        'mesh': set_dict([0], length=1, skip=1),
     }
 
     # PerfCap
@@ -454,6 +552,11 @@ def init_catalog(args, n_bullet=10):
         'val': surreal_val,
         'easy': surreal_easy,
         'hard': surreal_hard,
+    }
+    RenderCatalog['vanilla'] = {
+        'val': vanilla_val,
+        'easy': vanilla_easy,
+        'hard': vanilla_hard,
     }
     RenderCatalog['perfcap'] = {
         'weipeng': perfcap_weipeng,
@@ -749,6 +852,46 @@ def load_bullettime(pose_h5, c2ws, focals, rest_pose, pose_keys,
         bones = bones[selected_idxs]
     cam_idxs = selected_idxs[:, None].repeat(n_bullet, 1).reshape(-1)
 
+
+    #import ipdb; ipdb.set_trace()
+    #from dan_compute_eval import eval_opt_kp
+
+
+    # 3 
+    # python run_render.py --nerf_args logs/mirror/pose_opt_model/-2022-05-16-02-01-28/args.txt --ckptpath logs/mirror/pose_opt_model/-2022-05-16-02-01-28/107000.tar --dataset mirror --entry val --render_type val  --runname mirror_val --selected_framecode 0 --white_bkgd --selected_idxs 0 --render_refined --data_path ./data/mirror/3/23df3bb4-272d-4fba-b7a6-514119ca8d21_cam_3/2022-05-14-13 --test_len 180 --eval
+    
+    # python run_render.py --nerf_args logs/mirror/pose_opt_model/-2022-05-16-02-01-28/args.txt --ckptpath logs/mirror/pose_opt_model/-2022-05-16-02-01-28/107000.tar --dataset mirror --entry easy --render_type bullet --runname mirror_bullet --selected_framecode 0 --white_bkgd --selected_idxs 0 --render_refined --data_path ./data/mirror/3/23df3bb4-272d-4fba-b7a6-514119ca8d21_cam_3/2022-05-14-13 --n_bullet 10
+    # python run_render.py --nerf_args logs/mirror/pose_opt_model/-2022-05-16-02-01-28/args.txt --ckptpath logs/mirror/pose_opt_model/-2022-05-16-02-01-28/107000.tar --dataset mirror --entry easy --render_type bullet --runname mirror_bullet --selected_framecode 0 --white_bkgd --selected_idxs 0 --render_refined --data_path ./data/mirror/3/23df3bb4-272d-4fba-b7a6-514119ca8d21_cam_3/2022-05-14-13 --n_bullet 1 --train_len 1620
+    
+    # comb="23df3bb4-272d-4fba-b7a6-514119ca8d21_cam_3" # 2022-05-16-02-01-28
+    
+    # # there is an internal cutting in eval_opt_kp
+    # rec_eval_pts = [0, 100, 200, 300, 400, 500, 600, 700, 800, 900, 1000, 1100, 1200, 1300, 1400, 1500, 1600, 1700]
+    # gt_eval_pts = [0, 100, 200, 300, 400, 500, 600, 700, 800, 900, 1000, 1100, 1200, 1300, 1400, 1500, 1600, 1700]
+    # # # 'mpjpe_in_mm': 105.09, 'n_mpjpe_in_mm': 60.33, 'pmpjpe_in_mm': 41.74
+    # # short
+    # # {'mpjpe_in_mm': 105.09, 'n_mpjpe_in_mm': 60.16, 'pmpjpe_in_mm': 41.67, 'No_of_evaluations': '11/18', 'rec_eval_pts': array([   0,  100,  200,  300,  400,  500,  600,  700,  800,  900, 1000]), 'gt_eval_pts': array([   0,  100,  200,  300,  400,  500,  600,  700,  800,  900, 1000])}
+
+
+    # eval_opt_kp(kps, comb, rec_eval_pts, gt_eval_pts)
+    # #name = "pose_opt_eval_may16"
+    # #np.save(f"/scratch/dajisafe/smpl/mirror_project_dir/authors_eval_data/temp_dir/cam_trajectory_{name}.npy", np.array(c2ws))
+    # #np.save(f"/scratch/dajisafe/smpl/mirror_project_dir/authors_eval_data/temp_dir/kps_{name}.npy", np.array(kps))
+
+
+    # import ipdb; ipdb.set_trace()
+
+
+    # camera 3
+    #
+    #
+    #
+    #
+    #
+
+
+    #ipdb.set_trace()
+
     if center_kps:
         root = kps[..., :1, :].copy() # assume to be CMUSkeleton
         kps[..., :, :] -= root
@@ -988,6 +1131,11 @@ def render_mesh(basedir, render_kwargs, tensor_data, chunk=1024, radius=1.80,
 def run_render():
     args = config_parser().parse_args()
 
+    comb = args.data_path.split("/")[-2]
+    view = comb.split("_cam_")[1]
+    print(f"camera: {view} comb: {comb}")
+    #import ipdb; ipdb.set_trace()
+
     # parse nerf model args
     nerf_args = txt_to_argstring(args.nerf_args)
     nerf_args, unknown_args = nerf_config_parser().parse_known_args(nerf_args)
@@ -1033,14 +1181,25 @@ def run_render():
                                   render_data['render_poses'],
                                   *render_data['hwf'])
 
-    os.makedirs(os.path.join(basedir, 'image'), exist_ok=True)
-    os.makedirs(os.path.join(basedir, 'skel'), exist_ok=True)
-    os.makedirs(os.path.join(basedir, 'acc'), exist_ok=True)
+    time = datetime.datetime.now().strftime("%Y-%m-%d-%H") # ("%Y-%m-%d-%H-%M-%S")
+
+    os.makedirs(os.path.join(basedir, time, f'image_{view}'), exist_ok=True)
+    os.makedirs(os.path.join(basedir, time, f'skel_{view}'), exist_ok=True)
+    os.makedirs(os.path.join(basedir, time, f'acc_{view}'), exist_ok=True)
+
+    # os.makedirs(os.path.join(basedir, 'image'), exist_ok=True)
+    # os.makedirs(os.path.join(basedir, 'skel'), exist_ok=True)
+    # os.makedirs(os.path.join(basedir, 'acc'), exist_ok=True)
 
     for i, (rgb, acc, skel) in enumerate(zip(rgbs, accs, skeletons)):
-        imageio.imwrite(os.path.join(basedir, 'image', f'{i:05d}.png'), rgb)
-        imageio.imwrite(os.path.join(basedir, 'acc', f'{i:05d}.png'), acc)
-        imageio.imwrite(os.path.join(basedir, 'skel', f'{i:05d}.png'), skel)
+
+        imageio.imwrite(os.path.join(basedir, time, f'image_{view}', f'{i:05d}.png'), rgb)
+        imageio.imwrite(os.path.join(basedir, time, f'acc_{view}', f'{i:05d}.png'), acc)
+        imageio.imwrite(os.path.join(basedir, time, f'skel_{view}', f'{i:05d}.png'), skel)
+
+        # imageio.imwrite(os.path.join(basedir, 'image', f'{i:05d}.png'), rgb)
+        # imageio.imwrite(os.path.join(basedir, 'acc', f'{i:05d}.png'), acc)
+        # imageio.imwrite(os.path.join(basedir, 'skel', f'{i:05d}.png'), skel)
     np.save(os.path.join(basedir, 'bboxes.npy'), bboxes, allow_pickle=True)
     imageio.mimwrite(os.path.join(basedir, "render_rgb.mp4"), rgbs, fps=args.fps)
 

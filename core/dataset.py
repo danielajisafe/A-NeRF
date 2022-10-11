@@ -101,17 +101,17 @@ class BaseH5Dataset(Dataset):
         chk_img = self.dataset['imgs'][first].reshape(1080,1920,3)
         c2ws_expanded = c2w[None, ...]
 
-        #ipdb.set_trace()
+        # ipdb.set_trace()
 
         # # debugging
         # _= input("debugging?")
         # focal = np.array([1.2803090021884900e+03, 1.3033885156746885e+03]).reshape(-1,2)
 
-        # kp2d = skeleton3d_to_2d(kps, c2ws_expanded, int(self.HW[0]), int(self.HW[1]), float(focal), center[None, ...])
-        # plot_skeleton2d(kp2d[first], img=chk_img)
-        # plt.savefig(f"/scratch/dajisafe/smpl/Rebuttal/A-NeRF/checkers/imgs/kp_3d_to_2d.jpg", dpi=150, bbox_inches='tight', pad_inches = 0)
+        kp2d = skeleton3d_to_2d(kps, c2ws_expanded, int(self.HW[0]), int(self.HW[1]), float(focal), center[None, ...])
+        plot_skeleton2d(kp2d[first], img=chk_img)
+        plt.savefig(f"/scratch/dajisafe/smpl/Rebuttal/A-NeRF/checkers/imgs/kp_3d_to_2d.jpg", dpi=150, bbox_inches='tight', pad_inches = 0)
 
-        #ipdb.set_trace()
+        ipdb.set_trace()
         return_dict = {'rays_o': rays_o,
                        'rays_d': rays_d,
                        'target_s': rays_rgb,
@@ -143,6 +143,7 @@ class BaseH5Dataset(Dataset):
             return
         print('init dataset')
 
+        #ipdb.set_trace()
         self.dataset = h5py.File(self.h5_path, 'r')
 
     def init_meta(self):
@@ -180,6 +181,9 @@ class BaseH5Dataset(Dataset):
 
         # pre-computed direction, the first two cols
         # need to be divided by focal
+
+        '''img shape in (h,w,3) =(y,x,3) but ray in (x,y) 
+        hence why center is flipped to (cx,cy) in line with ray'''
         self._dirs = np.stack([ (i-offset_x),
                               -(j-offset_y),
                               -np.ones_like(i)], axis=-1)
@@ -208,6 +212,8 @@ class BaseH5Dataset(Dataset):
         '''
         read pose data from .h5 file
         '''
+
+        #ipdb.set_trace()
         kp3d, bones, skts, cyls = dataset['kp3d'][:], dataset['bones'][:], \
                                     dataset['skts'][:], dataset['cyls'][:]
         if self.multiview:
@@ -476,6 +482,7 @@ class BaseH5Dataset(Dataset):
             W = np.repeat([W], len(c_idxs), 0)
         hwf = (H, W, self.focals[c_idxs])
 
+        #ipdb.set_trace()
         # prepare center if there's one
         center = None
         if self.centers is not None:
