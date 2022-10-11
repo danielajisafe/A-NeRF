@@ -460,7 +460,7 @@ class RayCaster(nn.Module):
 
         
         del_folder = "/scratch/dajisafe/smpl/mirror_project_dir/authors_eval_data/temp_dir/to_be_deleted_pickles"
-        h5_path = './data/mirror/3/23df3bb4-272d-4fba-b7a6-514119ca8d21_cam_3/2022-05-14-13/mirror_train_h5py.h5'
+        #h5_path = './data/mirror/3/23df3bb4-272d-4fba-b7a6-514119ca8d21_cam_3/2022-05-14-13/mirror_train_h5py.h5'
 
         #import ipdb; ipdb.set_trace()
         # Use virt z_vals  directly 
@@ -520,13 +520,13 @@ class RayCaster(nn.Module):
             #ref_z_vals = sample_from_lineseg(near=near, far=far, N_lines=N_rays, N_samples=64)
             #mirr2real_z_vals = sample_from_lineseg(near=torch.zeros_like(near), far=far, N_lines=n_rays, N_samples=64)
 
-            #h5_path = './data/mirror/3/23df3bb4-272d-4fba-b7a6-514119ca8d21_cam_3/2022-05-14-13/mirror_train_h5py.h5'
-            #dataset = h5py.File(h5_path, 'r')
-            #dataset_v = h5py.File(h5_path_v, 'r')
+            # h5_path = './data/mirror/7/261970f0-e705-4546-a957-b719526cbc4a_cam_7/2022-05-14-13/mirror_train_h5py.h5'
+            # dataset = h5py.File(h5_path, 'r')
+            # #dataset_v = h5py.File(h5_path_v, 'r')
             
-            '''we have pre-seleced 0 from the random pixels, see dataset.py'''
-            #plot_current_pixel(dataset, idx_repeat[0].detach().cpu(), pixel_loc_repeat[0].detach().cpu(), type="real")
-            #plot_current_pixel(dataset, idx_repeat[0].detach().cpu(), pixel_loc_v_repeat[0].detach().cpu(), type="virt")
+            # '''we have pre-seleced 0 from the random pixels, see dataset.py'''
+            # plot_current_pixel(dataset, idx_repeat[0].detach().cpu(), pixel_loc_repeat[0].detach().cpu(), type="real")
+            # plot_current_pixel(dataset, idx_repeat[0].detach().cpu(), pixel_loc_v_repeat[0].detach().cpu(), type="virt")
   
             filename = f"{del_folder}/raycaster_use_mirr_Sep22_2022.pickle"
             to_pickle = [("pts",pts), ("z_vals", z_vals), 
@@ -723,7 +723,7 @@ class RayCaster(nn.Module):
             n_m = normalize_batch_normal(m_normal)[0] if m_normal is not None else None #readable one-line
             
             
-            dataset = h5py.File(h5_path, 'r')
+            #dataset = h5py.File(h5_path, 'r')
             #dataset_v = h5py.File(h5_path_v, 'r')
             
             #'''we have pre-seleced 0 from the random pixels, see dataset.py'''

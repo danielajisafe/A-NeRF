@@ -1,6 +1,8 @@
+import io
 import ipdb
 import imageio
 import bisect
+# from regex import B
 import torch
 import random
 import h5py, math
@@ -12,10 +14,11 @@ from torch.utils.data._utils.collate import default_collate
 
 from .pose_opt import pose_ckpt_to_pose_data
 from .utils.skeleton_utils import SMPLSkeleton, get_per_joint_coords, cylinder_to_box_2d, nerf_c2w_to_extrinsic
-from .utils.ray_utils import get_rays_np
+from .utils.ray_utils import get_rays_np, kp_to_valid_rays
 
 from .utils.skeleton_utils import SMPLSkeleton, get_per_joint_coords, cylinder_to_box_2d, nerf_c2w_to_extrinsic,\
-    skeleton3d_to_2d, plot_skeleton2d, draw_skeleton2d
+    skeleton3d_to_2d, plot_skeleton2d, draw_skeleton2d, plot_bbox2D, get_iou
+
 
 dataset_catalog = {
     'h36m': {},
@@ -27,7 +30,7 @@ dataset_catalog = {
 class BaseH5Dataset(Dataset):
     # TODO: poor naming
     def __init__(self, h5_path, h5_path_v, N_samples=96, patch_size=1, split='full',
-                 N_nms=0,N_nms_v=0, subject=None, mask_img=False, multiview=False):
+                 N_nms=0,N_nms_v=0, subject=None, mask_img=False, multiview=False, overlap=False):
         '''
         Base class for multi-proc h5 dataset
 
@@ -68,10 +71,16 @@ class BaseH5Dataset(Dataset):
         self.box2d = None
         self.box2d_v = None
 
+        self.overlap = overlap
+
         if self.N_nms > 0.0:
             self.init_box2d()
         if self.N_nms_v > 0.0:
             self.init_box2d_v()
+
+        if self.overlap:
+            self.init_box2d(scale=0.9, box2d_overlap=True)
+            self.init_box2d_v(scale=0.9, box2d_overlap=True)
 
     def __getitem__(self, q_idx):
         '''
@@ -99,17 +108,72 @@ class BaseH5Dataset(Dataset):
         # get kp index and kp, skt, bone, cyl
         kp_idxs, kps, bones, skts, cyls = self.get_pose_data(idx, q_idx, self.N_samples)
         kp_idxs_v, kps_v, cyls_v, A_dash, m_normal, avg_D = self.get_pose_data_v(idx, q_idx, self.N_samples)
+        
+        '''Find overlap area'''
+        def simple_container(box2d_overlap, box2d_v_overlap):
+            tl, br = box2D_real = box2d_overlap
+            tl_v, br_v  = box2D_virt = box2d_v_overlap
+
+            bb1 = {'x1':tl[0], 'x2':br[0], 'y1':tl[1], 'y2':br[1]}
+            bb2 = {'x1':tl_v[0], 'x2':br_v[0], 'y1':tl_v[1], 'y2':br_v[1]}
+            # calculate IOU
+            iou_val = get_iou(bb1, bb2)
+            return iou_val
+
+        if self.overlap:
+            overlap_found = False
+            overlap_thshd = 0.2 
+            N_rand_ratio = 0.7 # 70% for fogs, 30% for overlap areas
+            #idx= 2 1344
+            '''single-frame overlap assessment'''
+            iou_vals = np.array(list(map(lambda x,y:simple_container(x,y), [self.box2d_overlap[idx]], [self.box2d_v_overlap[idx]])))
+            
+            if iou_vals[0]>=overlap_thshd:
+                box2D_real = self.box2d_overlap[idx]
+                box2D_virt = self.box2d_v_overlap[idx]
+                overlap_found = True
+            else:
+                N_rand_ratio = 1
+
+        '''all frames assessment'''        
+        # iou_vals = np.array(list(map(lambda x,y:simple_container(x,y), self.box2d_overlap, self.box2d_v_overlap)))
+        # bools = iou_vals>ov_thshd
+        # n_overlaps = np.sum(bools)
+        # ov_ratio = n_overlaps/len(iou_vals)
+        # print(f"n_overlaps:{n_overlaps} ov_ratio:{ov_ratio}")
+        # ov_idxs = np.where(bools)[0]; 
+        
+        # box2D_real = self.box2d_overlap[idx]
+        # box2D_virt = self.box2d_v_overlap[idx]
+        
+        # #chk_img = np.zeros((*self.HW,3))
+        # chk_img = self.dataset['imgs'][idx].reshape(1080,1920,3)
+        # plt.imshow(chk_img); plt.axis("off")
+
+        # plot_bbox2D(box2D_real, plt=plt, color="green")
+        # plot_bbox2D(box2D_virt, plt=plt, color="red")
+
+        # plt.savefig(f"/scratch/dajisafe/smpl/A_temp_folder/A-NeRF/checkers/imgs/bbox2D.jpg", dpi=150, bbox_inches='tight', pad_inches = 0)
         #import ipdb; ipdb.set_trace()
 
         # sample pixels
-
-        pixel_idxs = self.sample_pixels(idx, q_idx)
-        # import ipdb; ipdb.set_trace()
+        pixel_idxs = self.sample_pixels(idx, q_idx, N_rand_ratio)
 
         v_empty=False
         # in case mask is empty
-        pixel_idxs_v, v_empty = self.sample_pixels_v(idx, q_idx)
+        pixel_idxs_v, v_empty = self.sample_pixels_v(idx, q_idx, N_rand_ratio)
+        
+        #import ipdb; ipdb.set_trace()
+        if self.overlap and overlap_found:
+            pixel_idxs_overlap = self.sample_overlap_pixels(idx, q_idx, box2D_real, box2D_virt, N_rand_ratio)
+            
+            pixel_idxs = np.sort(np.concatenate([pixel_idxs, pixel_idxs_overlap]))
+            pixel_idxs_v = np.sort(np.concatenate([pixel_idxs_v, pixel_idxs_overlap]))
 
+            # pixel_idxs = np.sort(np.tile(pixel_idxs_overlap, [5]))[:5]
+            # pixel_idxs_v = np.sort(np.tile(pixel_idxs_overlap, [5]))[:5]
+
+        #import ipdb; ipdb.set_trace()
         # maybe get a version that computes only sampled points?
         rays_o, rays_d, pic_loc2d = self.get_rays(c2w, focal, pixel_idxs, center)
         if not v_empty:
@@ -121,6 +185,7 @@ class BaseH5Dataset(Dataset):
         if not v_empty:
             rays_rgb_v, fg_v, bg_v = self.get_img_data_v(idx, pixel_idxs_v)
 
+        #import ipdb; ipdb.set_trace()
         # #-------------------------------------------
         # '''Choice selection, not current training step'''
         # for first in trange(1178):
@@ -148,8 +213,9 @@ class BaseH5Dataset(Dataset):
         pre_select = 0
         # self.plot_current_pixel(idx, pixel_idxs, pre_select, type="real")
         # self.plot_current_pixel(idx, pixel_idxs_v, pre_select, type="virt")
-        #plt.savefig(f"/scratch/dajisafe/smpl/A_temp_folder/A-NeRF/checkers/imgs/pixel_loc.jpg", dpi=300, bbox_inches='tight', pad_inches = 0)
+        # plt.savefig(f"/scratch/dajisafe/smpl/A_temp_folder/A-NeRF/checkers/imgs/pixel_loc.jpg", dpi=300, bbox_inches='tight', pad_inches = 0)
 
+        #ipdb.set_trace()
         idx_repeat = np.array([idx]).repeat(self.N_samples, 0)
         pixel_loc_repeat = self._2d_pixel_loc[pixel_idxs[pre_select:pre_select+1]].repeat(self.N_samples, 0)
         pixel_loc_v_repeat = self._2d_pixel_loc[pixel_idxs_v[pre_select:pre_select+1]].repeat(self.N_samples, 0)
@@ -343,7 +409,7 @@ class BaseH5Dataset(Dataset):
         '''
         return dataset['focals'][:], dataset['c2ws'][:]
 
-    def init_box2d(self):
+    def init_box2d(self, scale=1.3, box2d_overlap=True):
         '''
         pre-compute box2d
         '''
@@ -352,7 +418,8 @@ class BaseH5Dataset(Dataset):
         l = len(self)
 
         H, W = self.HW
-        self.box2d = []
+        
+        temp = []
         for i in range(len(dataset['imgs'])):
             q_idx = i
             #if self._idx_map is not None:
@@ -366,12 +433,18 @@ class BaseH5Dataset(Dataset):
             # get kp index and kp, skt, bone, cyl
             _, _, _, _, cyls = self.get_pose_data(idx, q_idx, 1)
             tl, br, _ = cylinder_to_box_2d(cyls[0], [H, W, focal], nerf_c2w_to_extrinsic(c2w),
-                                           center=center, scale=1.3)
-            self.box2d.append((tl, br))
-        self.box2d = np.array(self.box2d)
+                                           center=center, scale=scale)
+            temp.append((tl, br))
+
+        if box2d_overlap:
+            self.box2d_overlap = np.array(temp)
+        else:
+            self.box2d = np.array(temp)
+            import ipdb; ipdb.set_trace()
+
         dataset.close()
 
-    def init_box2d_v(self):
+    def init_box2d_v(self, scale=1.3, box2d_overlap=True):
         '''
         pre-compute box2d
         '''
@@ -381,7 +454,7 @@ class BaseH5Dataset(Dataset):
         l = len(self)
 
         H, W = self.HW
-        self.box2d_v = []
+        temp_v = []
 
         # use images from real data
         for i in range(len(dataset['imgs'])):
@@ -395,11 +468,18 @@ class BaseH5Dataset(Dataset):
             c2w, focal, center, cam_idxs = self.get_camera_data(idx, q_idx, 1)
 
             # get kp index and kp, cyl
-            _, _, cyls_v = self.get_pose_data_v(idx, q_idx, 1)
+            #_, _, cyls_v = self.get_pose_data_v(idx, q_idx, 1)
+            _, _, cyls_v, _, _, _ = self.get_pose_data_v(idx, q_idx, 1)
             tl, br, _ = cylinder_to_box_2d(cyls_v[0], [H, W, focal], nerf_c2w_to_extrinsic(c2w),
-                                           center=center, scale=1.3)
-            self.box2d_v.append((tl, br))
-        self.box2d_v = np.array(self.box2d_v)
+                                           center=center, scale=scale)
+            temp_v.append((tl, br))
+
+        if box2d_overlap:
+            self.box2d_v_overlap = np.array(temp_v)
+        else:
+            self.box2d_v = np.array(temp_v)
+            import ipdb; ipdb.set_trace()
+
         dataset.close()
 
     def init_temporal_validity(self):
@@ -456,7 +536,7 @@ class BaseH5Dataset(Dataset):
         # plt.savefig(f"/scratch/dajisafe/smpl/A_temp_folder/A-NeRF/checkers/imgs/img_compose_real_bg.jpg", dpi=300, bbox_inches='tight', pad_inches = 0)
         
         # plt.imshow(fg.reshape(*self.HW,1).astype(np.float32)); plt.axis("off")
-        # plt.savefig(f"/scratch/dajisafe/smpl/A_temp_folder/A-NeRF/checkers/imgs/img_compose_real_fg.jpg", dpi=300, bbox_inches='tight', pad_inches = 0)
+        # plt.savefig(f"/scratch/dajisafe/smpl/A_temp_folder/A-NeRF/checkers/imgs/img_real_fg.jpg", dpi=300, bbox_inches='tight', pad_inches = 0)
      
         # plt.imshow(img_bf.reshape(*self.HW,3).astype(np.float32)); plt.axis("off")
         # plt.savefig(f"/scratch/dajisafe/smpl/A_temp_folder/A-NeRF/checkers/imgs/img_compose_real_img_bf.jpg", dpi=300, bbox_inches='tight', pad_inches = 0)
@@ -465,7 +545,7 @@ class BaseH5Dataset(Dataset):
         # plt.savefig(f"/scratch/dajisafe/smpl/A_temp_folder/A-NeRF/checkers/imgs/img_compose_real_img_after.jpg", dpi=300, bbox_inches='tight', pad_inches = 0)
      
 
-        # ipdb.set_trace()
+        #ipdb.set_trace()
         # plt.imshow(img.reshape(*self.HW,3).astype(np.float32) / 255.); plt.axis("off")
         # plt.savefig(f"/scratch/dajisafe/smpl/A_temp_folder/A-NeRF/checkers/imgs/img_compose.jpg", dpi=300, bbox_inches='tight', pad_inches = 0)
         # ipdb.set_trace()
@@ -502,7 +582,7 @@ class BaseH5Dataset(Dataset):
         # plt.savefig(f"/scratch/dajisafe/smpl/A_temp_folder/A-NeRF/checkers/imgs/img_compose_virt_bg.jpg", dpi=300, bbox_inches='tight', pad_inches = 0)
         
         # plt.imshow(fg.reshape(*self.HW,1).astype(np.float32)); plt.axis("off")
-        # plt.savefig(f"/scratch/dajisafe/smpl/A_temp_folder/A-NeRF/checkers/imgs/img_compose_virt_fg.jpg", dpi=300, bbox_inches='tight', pad_inches = 0)
+        # plt.savefig(f"/scratch/dajisafe/smpl/A_temp_folder/A-NeRF/checkers/imgs/img_virt_fg.jpg", dpi=300, bbox_inches='tight', pad_inches = 0)
      
         # plt.imshow(img_bf.reshape(*self.HW,3).astype(np.float32)); plt.axis("off")
         # plt.savefig(f"/scratch/dajisafe/smpl/A_temp_folder/A-NeRF/checkers/imgs/img_compose_virt_img_bf.jpg", dpi=300, bbox_inches='tight', pad_inches = 0)
@@ -512,18 +592,68 @@ class BaseH5Dataset(Dataset):
      
 
         #ipdb.set_trace()
-
         return img, fg, bg
 
-    def sample_pixels(self, idx, q_idx):
+
+
+    def sample_overlap_pixels(self, idx, q_idx, box2D_real, box2D_virt, N_rand_ratio):
+        p = self.patch_size
+        N_rand = self.N_samples // int(p**2)
+        N_rand_overlap = np.ceil(N_rand * (1-N_rand_ratio)).astype(np.int_) # 70% fog, 30% overlap
+
+        tl, br = box2D_real
+        tl_v, br_v = box2D_virt
+
+        # extract intersection area
+        max_x1 = max(tl[0], tl_v[0])
+        min_x2 = min(br[0], br_v[0])
+        max_y1 = max(tl[1], tl_v[1])
+        min_y2 = min(br[1], br_v[1])
+        inter_box = [[max_x1, max_y1], [min_x2, min_y2]]
+
+        # chk_img = self.dataset['imgs'][idx].reshape(1080,1920,3)
+        # plt.imshow(chk_img); plt.axis("off")
+        # plot_bbox2D(inter_box, plt=plt, color="cyan")
+        # plt.savefig(f"/scratch/dajisafe/smpl/A_temp_folder/A-NeRF/checkers/imgs/bbox2D.jpg", dpi=150, bbox_inches='tight', pad_inches = 0)
+        # ipdb.set_trace()
+
+        # h_range = torch.arange(max_y1, min_y2)
+        # w_range = torch.arange(max_x1, min_x2)
+
+        # meshgrid pre-computes the raw pixel's 2d locations in parallel
+        valid_h, valid_w = np.meshgrid(np.arange(max_y1, min_y2, dtype=np.float32),
+                           np.arange(max_x1, min_x2, dtype=np.float32),
+                           indexing='xy')
+
+        # meshgrid pre-computes the raw pixel's 2d locations in parallel
+        #valid_h, valid_w = torch.meshgrid(h_range, w_range)
+
+        h, w = self.HW # relative to original image
+        # convert 2D locations to indices 
+        valid_idxs =  (valid_h * w + valid_w).reshape(-1)
+        sampled_idxs = np.random.choice(valid_idxs,
+                                        N_rand_overlap,
+                                        replace=False)
+
+        #ipdb.set_trace()
+        sampled_idxs = np.sort(sampled_idxs).astype(np.int_)
+        return sampled_idxs
+
+
+    def sample_pixels(self, idx, q_idx, N_rand_ratio=1.0):
         '''
         return sampled pixels (in (H*W,) indexing, not (H, W))
         '''
         p = self.patch_size
         N_rand = self.N_samples // int(p**2)
+
+        if self.overlap:
+            N_rand = np.floor(N_rand*N_rand_ratio).astype(np.int_) # 70% fog, 30% overlap
+
         # TODO: check if sampling masks need adjustment
         # assume sampling masks are of shape (N, H, W, 1)
         sampling_mask = self.dataset['sampling_masks'][idx].reshape(-1)
+        '''Binarize mask'''
         sampling_mask = (sampling_mask > 0.5).astype(np.int_)
 
         valid_idxs, = np.where(sampling_mask>0)
@@ -533,6 +663,8 @@ class BaseH5Dataset(Dataset):
 
         #import ipdb; ipdb.set_trace()
         if self.patch_size > 1:
+            #import ipdb; ipdb.set_trace()
+
             H, W = self.HW
             hs, ws = sampled_idxs // W, sampled_idxs % W
             # clip to valid range
@@ -566,26 +698,40 @@ class BaseH5Dataset(Dataset):
         return sampled_idxs
 
 
-    def sample_pixels_v(self, idx, q_idx):
+    def sample_pixels_v(self, idx, q_idx, N_rand_ratio=1.0):
         '''
         return sampled pixels_v (in (H*W,) indexing, not (H, W))
         '''
         p = self.patch_size
         N_rand = self.N_samples // int(p**2)
+
+        if self.overlap:
+            N_rand = np.floor(N_rand*N_rand_ratio).astype(np.int_) # 70% fog, 30% overlap
+
         # TODO: check if sampling masks need adjustment
         # assume sampling masks are of shape (N, H, W, 1)
         sampling_mask_v = self.dataset_v['sampling_masks'][idx].reshape(-1)
         sampling_mask_v = (sampling_mask_v > 0.5).astype(np.int_)
-
         valid_idxs_v, = np.where(sampling_mask_v>0)
 
+        # ipdb.set_trace()
+        # plt.imshow(sampling_mask_v.reshape(*self.HW,1)); plt.axis("off")
+        # plt.savefig(f"/scratch/dajisafe/smpl/A_temp_folder/A-NeRF/checkers/imgs/sampling_mask_v.jpg", dpi=300, bbox_inches='tight', pad_inches = 0)
+
+
         if len(valid_idxs_v)<1:
-            #import ipdb; ipdb.set_trace()
-            return True, True
+            '''blank or no segmentation for virtual?, then sample real mask randomly'''
+            
+            sampling_mask = self.dataset['sampling_masks'][idx].reshape(-1)
+            sampling_mask = (sampling_mask > 0.5).astype(np.int_)
+            valid_idxs, = np.where(sampling_mask>0)
+            valid_idxs_v = valid_idxs.copy()
 
         sampled_idxs_v = np.random.choice(valid_idxs_v,
                                         N_rand,
                                         replace=False)
+        #ipdb.set_trace()
+            
         if self.patch_size > 1:
             H, W = self.HW
             hs, ws = sampled_idxs_v // W, sampled_idxs_v % W
@@ -618,6 +764,7 @@ class BaseH5Dataset(Dataset):
             sampled_idxs_v = np.sort(sampled_idxs_v)
             sampled_idxs_v[np.random.choice(len(sampled_idxs_v), size=(N_nms,), replace=False)] = nms_idxs
 
+        #import ipdb; ipdb.set_trace()
         sampled_idxs_v = np.sort(sampled_idxs_v)
         return sampled_idxs_v, False
 

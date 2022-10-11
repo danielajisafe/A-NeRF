@@ -1222,6 +1222,80 @@ def plot_frustum(os, ds, near=1.0, far=6.0, color="red", fig=None, near_only=Fal
 
     return fig
 
+
+def get_iou(bb1, bb2):
+    """
+    ref: https://stackoverflow.com/a/42874377
+
+    Calculate the Intersection over Union (IoU) of two bounding boxes.
+
+    Parameters
+    ----------
+    bb1 : dict
+        Keys: {'x1', 'x2', 'y1', 'y2'}
+        The (x1, y1) position is at the top left corner,
+        the (x2, y2) position is at the bottom right corner
+    bb2 : dict
+        Keys: {'x1', 'x2', 'y1', 'y2'}
+        The (x, y) position is at the top left corner,
+        the (x2, y2) position is at the bottom right corner
+
+    Returns
+    -------
+    float
+        in [0, 1]
+    """
+    assert bb1['x1'] <= bb1['x2']
+    assert bb1['y1'] <= bb1['y2']
+    assert bb2['x1'] <= bb2['x2']
+    assert bb2['y1'] <= bb2['y2']
+
+    # determine the coordinates of the intersection rectangle
+    x_left = max(bb1['x1'], bb2['x1'])
+    y_top = max(bb1['y1'], bb2['y1'])
+    x_right = min(bb1['x2'], bb2['x2'])
+    y_bottom = min(bb1['y2'], bb2['y2'])
+
+    if x_right < x_left or y_bottom < y_top:
+        return 0.0
+    #................................................
+
+    # The intersection of two axis-aligned bounding boxes is always an
+    # axis-aligned bounding box.
+    # NOTE: We MUST ALWAYS add +1 to calculate area when working in
+    # screen coordinates, since 0,0 is the top left pixel, and w-1,h-1
+    # is the bottom right pixel. If we DON'T add +1, the result is wrong.
+    intersection_area = (x_right - x_left + 1) * (y_bottom - y_top + 1)
+
+    # compute the area of both AABBs
+    bb1_area = (bb1['x2'] - bb1['x1'] + 1) * (bb1['y2'] - bb1['y1'] + 1)
+    bb2_area = (bb2['x2'] - bb2['x1'] + 1) * (bb2['y2'] - bb2['y1'] + 1)
+
+    # compute the intersection over union by taking the intersection
+    # area and dividing it by the sum of prediction + ground-truth
+    # areas - the interesection area
+    iou = intersection_area / float(bb1_area + bb2_area - intersection_area)
+    assert iou >= 0.0
+    assert iou <= 1.0
+    return iou
+
+
+
+def plot_bbox2D(bbox, plt,color="red"):
+        # https://stackoverflow.com/a/72793114
+
+        tl, br = bbox
+        # Create figure and axes
+        #fig, ax = plt.subplots()
+
+        # Coordinates of rectangle vertices
+        # in clockwise order
+        xs = [tl[0], br[0], br[0], tl[0], tl[0]]
+        ys = [tl[1], tl[1], br[1], br[1], tl[1]]
+        plt.plot(xs, ys, color=color)
+
+        return plt
+
 def plot_3d_bounding_box(vertices, fig=None):
     v0, v1, v2, v3, v4, v5, v6, v7 = vertices
 

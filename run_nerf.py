@@ -365,6 +365,8 @@ def config_parser():
                         help='layers in fine network')
     parser.add_argument("--netwidth_fine", type=int, default=256,
                         help='channels per layer in fine network')
+    parser.add_argument("--overlap", action='store_true',
+                        help='shoot more probable rays in overlap areas')
 
     parser.add_argument("--N_rand", type=int, default=32*32*4,
                         help='batch size (number of random rays per gradient step)')
@@ -632,7 +634,7 @@ def config_parser():
     parser.add_argument("--image_batching", action='store_true',
                         help='sample rays from N_sample images')
     parser.add_argument("--mask_image", action='store_true',
-                        help='mask out pixels that are not in the foreground when providing image target')
+                        help='mask out pixels that are not in the foreground when providing image target. (ii) replace background parts with estimated background pixels')
     parser.add_argument("--patch_size", type=int, default=1,
                         help='sample patches of rays from the image')
     parser.add_argument("--load_refined", action='store_true',
