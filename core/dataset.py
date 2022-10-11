@@ -126,7 +126,7 @@ class BaseH5Dataset(Dataset):
         if self.overlap:
             overlap_thshd = 0.2 # 20%
             
-            #idx= 2 1344
+            idx= 1344
             '''single-frame overlap assessment'''
             iou_vals = np.array(list(map(lambda x,y:simple_container(x,y), [self.box2d_overlap[idx]], [self.box2d_v_overlap[idx]])))
             
@@ -167,7 +167,8 @@ class BaseH5Dataset(Dataset):
         
         
         if self.overlap and overlap_found:
-            pixel_idxs_overlap = self.sample_overlap_pixels(idx, q_idx, box2D_real, box2D_virt, N_rand_ratio)
+            #import ipdb; ipdb.set_trace()
+            pixel_idxs_overlap = self.sample_overlap_pixels(idx, q_idx, pixel_idxs, pixel_idxs_v, box2D_real, box2D_virt, N_rand_ratio)
             
             #import ipdb; ipdb.set_trace()
             pixel_idxs = np.sort(np.concatenate([pixel_idxs, pixel_idxs_overlap]))
@@ -599,7 +600,7 @@ class BaseH5Dataset(Dataset):
 
 
 
-    def sample_overlap_pixels(self, idx, q_idx, box2D_real, box2D_virt, N_rand_ratio):
+    def sample_overlap_pixels(self, idx, q_idx, pixel_idxs, pixel_idxs_v, box2D_real, box2D_virt, N_rand_ratio):
         p = self.patch_size
         N_rand = self.N_samples // int(p**2)
         N_rand_overlap = np.ceil(N_rand * (1-N_rand_ratio)).astype(np.int_) # 70% fog, 30% overlap
@@ -634,6 +635,10 @@ class BaseH5Dataset(Dataset):
         h, w = self.HW # relative to original image
         # convert 2D locations to indices 
         valid_idxs =  (valid_h * w + valid_w).reshape(-1)
+
+        # remove others from the list
+        valid_idxs = list(set(valid_idxs) - set(pixel_idxs) - set(pixel_idxs_v))
+
         sampled_idxs = np.random.choice(valid_idxs,
                                         N_rand_overlap,
                                         replace=False)
