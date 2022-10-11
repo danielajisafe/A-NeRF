@@ -722,7 +722,6 @@ class BaseH5Dataset(Dataset):
         # plt.imshow(sampling_mask_v.reshape(*self.HW,1)); plt.axis("off")
         # plt.savefig(f"/scratch/dajisafe/smpl/A_temp_folder/A-NeRF/checkers/imgs/sampling_mask_v.jpg", dpi=300, bbox_inches='tight', pad_inches = 0)
 
-
         if len(valid_idxs_v)<1:
             '''blank or no segmentation for virtual?, then sample real mask randomly'''
             
