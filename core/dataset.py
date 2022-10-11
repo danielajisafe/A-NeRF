@@ -79,8 +79,8 @@ class BaseH5Dataset(Dataset):
             self.init_box2d_v()
 
         if self.overlap:
-            self.init_box2d(scale=0.9, box2d_overlap=True)
-            self.init_box2d_v(scale=0.9, box2d_overlap=True)
+            self.init_box2d(scale=1.0, box2d_overlap=True)
+            self.init_box2d_v(scale=1.0, box2d_overlap=True)
 
     def __getitem__(self, q_idx):
         '''
@@ -120,10 +120,12 @@ class BaseH5Dataset(Dataset):
             iou_val = get_iou(bb1, bb2)
             return iou_val
 
+        
+        N_rand_ratio = 1
+        overlap_found = False
         if self.overlap:
-            overlap_found = False
-            overlap_thshd = 0.2 
-            N_rand_ratio = 0.7 # 70% for fogs, 30% for overlap areas
+            overlap_thshd = 0.2 # 20%
+            
             #idx= 2 1344
             '''single-frame overlap assessment'''
             iou_vals = np.array(list(map(lambda x,y:simple_container(x,y), [self.box2d_overlap[idx]], [self.box2d_v_overlap[idx]])))
@@ -132,8 +134,8 @@ class BaseH5Dataset(Dataset):
                 box2D_real = self.box2d_overlap[idx]
                 box2D_virt = self.box2d_v_overlap[idx]
                 overlap_found = True
-            else:
-                N_rand_ratio = 1
+                N_rand_ratio = 0.7 # 70% for fogs, 30% for overlap areas
+           
 
         '''all frames assessment'''        
         # iou_vals = np.array(list(map(lambda x,y:simple_container(x,y), self.box2d_overlap, self.box2d_v_overlap)))
@@ -163,10 +165,11 @@ class BaseH5Dataset(Dataset):
         # in case mask is empty
         pixel_idxs_v, v_empty = self.sample_pixels_v(idx, q_idx, N_rand_ratio)
         
-        #import ipdb; ipdb.set_trace()
+        
         if self.overlap and overlap_found:
             pixel_idxs_overlap = self.sample_overlap_pixels(idx, q_idx, box2D_real, box2D_virt, N_rand_ratio)
             
+            #import ipdb; ipdb.set_trace()
             pixel_idxs = np.sort(np.concatenate([pixel_idxs, pixel_idxs_overlap]))
             pixel_idxs_v = np.sort(np.concatenate([pixel_idxs_v, pixel_idxs_overlap]))
 
@@ -657,6 +660,7 @@ class BaseH5Dataset(Dataset):
         sampling_mask = (sampling_mask > 0.5).astype(np.int_)
 
         valid_idxs, = np.where(sampling_mask>0)
+        #import ipdb; ipdb.set_trace()
         sampled_idxs = np.random.choice(valid_idxs,
                                         N_rand,
                                         replace=False)
