@@ -520,15 +520,47 @@ class Trainer:
         loss_fn = get_loss_fn(args.loss_fn, args.loss_beta)
         reg_fn = get_reg_fn(args.reg_fn)
 
-        #import ipdb; ipdb.set_trace()
+        
         bgs = batch['bgs'] if 'bgs' in batch else base_bg
         bgs_v = batch['bgs_v'] if 'bgs_v' in batch else base_bg
 
+        
         if args.use_background:
-            rgb_pred = rgb_pred + (1. - acc_pred)[..., None] * bgs
             if use_mirr:
                 rgb_pred_ref = rgb_pred_ref + (1. - acc_pred_ref)[..., None] * bgs_v
 
+                
+                n_rays = batch['n_rays_per_img_dups'][0].item()
+                n_overlap_pixels = batch['n_overlap_pixels_dups'][0].item()
+
+                #import ipdb; ipdb.set_trace()
+                if args.overlap and n_rays != -1: 
+                    # use mask for differentiability purpose
+                    
+                    zero_mask1 = torch.ones_like(bgs.reshape(-1,n_rays, 3))
+                    zero_mask2 = torch.ones_like(rgb_pred_ref.reshape(-1,n_rays, 3))
+                
+                    zero_mask1[:,:-n_overlap_pixels,:] = 0; 
+                    zero_mask2[:,-n_overlap_pixels:,:] = 0; 
+
+                    
+                    bgs_masked = bgs.reshape(-1,n_rays, 3) * zero_mask2
+                    rgb_pred_ref_masked = rgb_pred_ref.reshape(-1,n_rays, 3) * zero_mask1
+                    
+                    # first n is background, n:end is overlap pixels
+                    bgs = bgs_masked + rgb_pred_ref_masked
+                    bgs = bgs.reshape(-1, 3)
+
+            rgb_pred = rgb_pred + (1. - acc_pred)[..., None] * bgs
+            #import ipdb; ipdb.set_trace()
+            
+            # double-check (do this only when there is (and for only) overlapping pixels)
+            # rgb_pred = rgb_pred + (1. - acc_pred)[..., None] * rgb_pred_ref
+            
+            # overlapping pixels, bgs==bgs_v
+            # render real, then virtual
+            # two loss fn
+            # keept track of rays and calling the right fn.
 
         # TODOS:
         # 1. comfirm visually reflected rays in the 3D makes sense (No for inference, ? at train time)

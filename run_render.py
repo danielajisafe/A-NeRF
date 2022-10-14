@@ -256,7 +256,7 @@ def load_render_data(args, nerf_args, poseopt_layer=None, opt_framecode=True):
 
     # Load data based on type:
     bones = None
-    root = None
+    root = NoneIS
     bg_imgs, bg_indices = None, None
 
 

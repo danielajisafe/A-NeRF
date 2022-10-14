@@ -121,12 +121,12 @@ class BaseH5Dataset(Dataset):
             return iou_val
 
         
-        N_rand_ratio = 1
+        N_rand_ratio = 1.0
         overlap_found = False
         if self.overlap:
             overlap_thshd = 0.2 # 20%
             
-            idx= 1344
+            #idx= 1344
             '''single-frame overlap assessment'''
             iou_vals = np.array(list(map(lambda x,y:simple_container(x,y), [self.box2d_overlap[idx]], [self.box2d_v_overlap[idx]])))
             
@@ -165,21 +165,35 @@ class BaseH5Dataset(Dataset):
         # in case mask is empty
         pixel_idxs_v, v_empty = self.sample_pixels_v(idx, q_idx, N_rand_ratio)
         
-        
+        n_overlap_pixels_dups = np.array([-1])
+        n_rays_per_img_dups = np.array([-1])
+        # overlap_indices = None
+        # overlap_indices_v = None
+
         if self.overlap and overlap_found:
             #import ipdb; ipdb.set_trace()
             pixel_idxs_overlap = self.sample_overlap_pixels(idx, q_idx, pixel_idxs, pixel_idxs_v, box2D_real, box2D_virt, N_rand_ratio)
             
             #import ipdb; ipdb.set_trace()
-            pixel_idxs = np.sort(np.concatenate([pixel_idxs, pixel_idxs_overlap]))
-            pixel_idxs_v = np.sort(np.concatenate([pixel_idxs_v, pixel_idxs_overlap]))
 
-            # pixel_idxs = np.sort(np.tile(pixel_idxs_overlap, [5]))[:5]
-            # pixel_idxs_v = np.sort(np.tile(pixel_idxs_overlap, [5]))[:5]
+            pixel_idxs = np.concatenate([pixel_idxs, pixel_idxs_overlap])
+            pixel_idxs_v = np.concatenate([pixel_idxs_v, pixel_idxs_overlap])
+
+            n_overlap_pixels_dups = np.array([len(pixel_idxs_overlap)])
+            n_rays_per_img_dups = np.array([len(pixel_idxs)])
+
+        n_overlap_pixels_dups = n_overlap_pixels_dups.repeat(self.N_samples, 0)
+        n_rays_per_img_dups = n_rays_per_img_dups.repeat(self.N_samples, 0)
+
+        # pixel_idxs = np.sort(pixel_idxs_unsorted)
+        # pixel_idxs_v = np.sort(pixel_idxs_v_unsorted)
+
+        # overlap_indices = np.argsort(pixel_idxs_unsorted)
+        # overlap_indices_v = np.argsort(pixel_idxs_v_unsorted)
 
         #import ipdb; ipdb.set_trace()
         # maybe get a version that computes only sampled points?
-        rays_o, rays_d, pic_loc2d = self.get_rays(c2w, focal, pixel_idxs, center)
+        rays_o, rays_d, _ = self.get_rays(c2w, focal, pixel_idxs, center)
         if not v_empty:
             rays_o_v, rays_d_v, _ = self.get_rays_v(c2w, focal, pixel_idxs_v, center)
 
@@ -247,7 +261,7 @@ class BaseH5Dataset(Dataset):
                         "avg_D": avg_D,
                         "idx_repeat": idx_repeat,
                         "pixel_loc_repeat": pixel_loc_repeat,
-                        "pixel_loc_v_repeat": pixel_loc_v_repeat
+                        "pixel_loc_v_repeat": pixel_loc_v_repeat,
 
                        #'pic_loc2d':pic_loc2d,
                        }
@@ -261,6 +275,13 @@ class BaseH5Dataset(Dataset):
             return_dict['cyls_v'] = cyls_v
             return_dict['bgs_v'] = bg_v
             return_dict['fgs_v'] = fg_v
+
+        #if overlap_found:
+            return_dict["n_overlap_pixels_dups"] = n_overlap_pixels_dups
+            return_dict["n_rays_per_img_dups"] = n_rays_per_img_dups
+            
+            #return_dict["overlap_indices"] = overlap_indices
+            #return_dict["overlap_indices_v"] = overlap_indices_v
 
         return return_dict
 
@@ -516,11 +537,12 @@ class BaseH5Dataset(Dataset):
         '''
 
         #idx = 676
-        fg = self.dataset['masks'][idx, pixel_idxs].astype(np.float32)
+        #ipdb.set_trace()
+        fg = self.dataset['masks'][idx][pixel_idxs].astype(np.float32)
         '''Binarize the mask'''
         fg = (fg > 0.5).astype(np.int_)
 
-        img = self.dataset['imgs'][idx, pixel_idxs].astype(np.float32) / 255.
+        img = self.dataset['imgs'][idx][pixel_idxs].astype(np.float32) / 255.
 
         # raw_img = self.dataset['imgs'][idx].reshape(*self.HW,3).astype(np.float32) / 255.
         # plt.imshow(raw_img); plt.axis("off")
@@ -531,7 +553,7 @@ class BaseH5Dataset(Dataset):
         bg = None
         if self.has_bg:
             bg_idx = self.bg_idxs[idx]
-            bg = self.bgs[bg_idx, pixel_idxs].astype(np.float32) / 255.
+            bg = self.bgs[bg_idx][pixel_idxs].astype(np.float32) / 255.
 
             if self.mask_img:
                 img = img * fg + (1. - fg) * bg
@@ -561,17 +583,17 @@ class BaseH5Dataset(Dataset):
         '''
 
         #idx = 676 # [idx, pixel_idxs]
-        fg = self.dataset_v['masks'][idx, pixel_idxs].astype(np.float32)
+        fg = self.dataset_v['masks'][idx][pixel_idxs].astype(np.float32)
         '''Binarize the mask'''
         fg = (fg > 0.5).astype(np.int_)
 
         # reuse image from real data
-        img = self.dataset['imgs'][idx, pixel_idxs].astype(np.float32) / 255.
+        img = self.dataset['imgs'][idx][pixel_idxs].astype(np.float32) / 255.
 
         bg = None
         if self.has_bg:
             bg_idx = self.bg_idxs[idx]
-            bg = self.bgs[bg_idx, pixel_idxs].astype(np.float32) / 255.
+            bg = self.bgs[bg_idx][pixel_idxs].astype(np.float32) / 255.
 
             if self.mask_img:
                 # pick foreground out from original image using foreground mask + create blank space for that spot in background
