@@ -534,7 +534,7 @@ class Trainer:
                 n_overlap_pixels = batch['n_overlap_pixels_dups'][0].item()
 
                 #import ipdb; ipdb.set_trace()
-                if args.overlap and n_rays != -1: 
+                if args.overlap_rays and n_rays != -1 and args.layered_bkgd: 
                     # use mask for differentiability purpose
                     
                     zero_mask1 = torch.ones_like(bgs.reshape(-1,n_rays, 3))
@@ -547,7 +547,7 @@ class Trainer:
                     bgs_masked = bgs.reshape(-1,n_rays, 3) * zero_mask2
                     rgb_pred_ref_masked = rgb_pred_ref.reshape(-1,n_rays, 3) * zero_mask1
                     
-                    # first n is background, n:end is overlap pixels
+                    # first n is background, n:end is overlap_rays pixels
                     bgs = bgs_masked + rgb_pred_ref_masked
                     bgs = bgs.reshape(-1, 3)
 

@@ -311,7 +311,7 @@ class MirrorDataset(BaseH5Dataset):
     #render_skip = 1
     #N_render = 9
     render_skip = 1
-    N_render = 1
+    N_render =  1 #1344
 
     rand_kps = {'230': 'data/mirror/mirror_rand_230.npy',
                 '400': 'data/mirror/mirror_rand_400.npy',

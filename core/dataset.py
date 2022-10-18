@@ -30,7 +30,7 @@ dataset_catalog = {
 class BaseH5Dataset(Dataset):
     # TODO: poor naming
     def __init__(self, h5_path, h5_path_v, N_samples=96, patch_size=1, split='full',
-                 N_nms=0,N_nms_v=0, subject=None, mask_img=False, multiview=False, overlap=False):
+                 N_nms=0,N_nms_v=0, subject=None, mask_img=False, multiview=False, overlap_rays=False):
         '''
         Base class for multi-proc h5 dataset
 
@@ -71,14 +71,14 @@ class BaseH5Dataset(Dataset):
         self.box2d = None
         self.box2d_v = None
 
-        self.overlap = overlap
+        self.overlap_rays = overlap_rays
 
         if self.N_nms > 0.0:
             self.init_box2d()
         if self.N_nms_v > 0.0:
             self.init_box2d_v()
 
-        if self.overlap:
+        if self.overlap_rays:
             self.init_box2d(scale=1.0, box2d_overlap=True)
             self.init_box2d_v(scale=1.0, box2d_overlap=True)
 
@@ -109,7 +109,7 @@ class BaseH5Dataset(Dataset):
         kp_idxs, kps, bones, skts, cyls = self.get_pose_data(idx, q_idx, self.N_samples)
         kp_idxs_v, kps_v, cyls_v, A_dash, m_normal, avg_D = self.get_pose_data_v(idx, q_idx, self.N_samples)
         
-        '''Find overlap area'''
+        '''Find overlap_rays area'''
         def simple_container(box2d_overlap, box2d_v_overlap):
             tl, br = box2D_real = box2d_overlap
             tl_v, br_v  = box2D_virt = box2d_v_overlap
@@ -123,18 +123,18 @@ class BaseH5Dataset(Dataset):
         
         N_rand_ratio = 1.0
         overlap_found = False
-        if self.overlap:
+        if self.overlap_rays:
             overlap_thshd = 0.2 # 20%
             
             #idx= 1344
-            '''single-frame overlap assessment'''
+            '''single-frame overlap_rays assessment'''
             iou_vals = np.array(list(map(lambda x,y:simple_container(x,y), [self.box2d_overlap[idx]], [self.box2d_v_overlap[idx]])))
             
             if iou_vals[0]>=overlap_thshd:
                 box2D_real = self.box2d_overlap[idx]
                 box2D_virt = self.box2d_v_overlap[idx]
                 overlap_found = True
-                N_rand_ratio = 0.7 # 70% for fogs, 30% for overlap areas
+                N_rand_ratio = 0.7 # 70% for fogs, 30% for overlap_rays areas
            
 
         '''all frames assessment'''        
@@ -170,7 +170,7 @@ class BaseH5Dataset(Dataset):
         # overlap_indices = None
         # overlap_indices_v = None
 
-        if self.overlap and overlap_found:
+        if self.overlap_rays and overlap_found:
             #import ipdb; ipdb.set_trace()
             pixel_idxs_overlap = self.sample_overlap_pixels(idx, q_idx, pixel_idxs, pixel_idxs_v, box2D_real, box2D_virt, N_rand_ratio)
             
@@ -625,7 +625,7 @@ class BaseH5Dataset(Dataset):
     def sample_overlap_pixels(self, idx, q_idx, pixel_idxs, pixel_idxs_v, box2D_real, box2D_virt, N_rand_ratio):
         p = self.patch_size
         N_rand = self.N_samples // int(p**2)
-        N_rand_overlap = np.ceil(N_rand * (1-N_rand_ratio)).astype(np.int_) # 70% fog, 30% overlap
+        N_rand_overlap = np.ceil(N_rand * (1-N_rand_ratio)).astype(np.int_) # 70% fog, 30% overlap_rays
 
         tl, br = box2D_real
         tl_v, br_v = box2D_virt
@@ -677,8 +677,8 @@ class BaseH5Dataset(Dataset):
         p = self.patch_size
         N_rand = self.N_samples // int(p**2)
 
-        if self.overlap:
-            N_rand = np.floor(N_rand*N_rand_ratio).astype(np.int_) # 70% fog, 30% overlap
+        if self.overlap_rays:
+            N_rand = np.floor(N_rand*N_rand_ratio).astype(np.int_) # 70% fog, 30% overlap_rays
 
         # TODO: check if sampling masks need adjustment
         # assume sampling masks are of shape (N, H, W, 1)
@@ -736,8 +736,8 @@ class BaseH5Dataset(Dataset):
         p = self.patch_size
         N_rand = self.N_samples // int(p**2)
 
-        if self.overlap:
-            N_rand = np.floor(N_rand*N_rand_ratio).astype(np.int_) # 70% fog, 30% overlap
+        if self.overlap_rays:
+            N_rand = np.floor(N_rand*N_rand_ratio).astype(np.int_) # 70% fog, 30% overlap_rays
 
         # TODO: check if sampling masks need adjustment
         # assume sampling masks are of shape (N, H, W, 1)
@@ -1062,13 +1062,21 @@ class BaseH5Dataset(Dataset):
         # get the subset idxs to collect the right data
         k_idxs, c_idxs, i_idxs, kq_idxs, cq_idxs = self._get_subset_idxs(render=True)
 
+        #import ipdb; ipdb.set_trace()
         # grab only a subset (15 images) for rendering
+        # kq_idxs = kq_idxs[::self.render_skip][self.N_render : self.N_render + 1] #[:self.N_render]
+        # cq_idxs = cq_idxs[::self.render_skip][self.N_render : self.N_render + 1] #[:self.N_render]
+        # i_idxs = i_idxs[::self.render_skip][self.N_render : self.N_render + 1] #[:self.N_render]
+        # k_idxs = k_idxs[::self.render_skip][self.N_render : self.N_render + 1] #[:self.N_render]
+        # c_idxs = c_idxs[::self.render_skip][self.N_render : self.N_render + 1] #[:self.N_render]
+
         kq_idxs = kq_idxs[::self.render_skip][:self.N_render]
         cq_idxs = cq_idxs[::self.render_skip][:self.N_render]
         i_idxs = i_idxs[::self.render_skip][:self.N_render]
         k_idxs = k_idxs[::self.render_skip][:self.N_render]
         c_idxs = c_idxs[::self.render_skip][:self.N_render]
 
+        
         # get images if split == 'render'
         # note: needs to have self._idx_map
         H, W = self.HW

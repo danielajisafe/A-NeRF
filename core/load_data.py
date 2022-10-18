@@ -159,7 +159,7 @@ def get_dataset_from_catalog(args, N_samples, dataset_type, subject=None, N_nms=
         path_v = args.data_path +'/v_mirror_train_h5py.h5'
         #import ipdb; ipdb.set_trace()
         
-        dataset = MirrorDataset(path, path_v, N_cams=args.N_cams, N_rand_kps=args.rand_train_kps, overlap=args.overlap,
+        dataset = MirrorDataset(path, path_v, N_cams=args.N_cams, N_rand_kps=args.rand_train_kps, overlap_rays=args.overlap_rays,
                                  **shared_kwargs)
     
     elif dataset_type == 'zju':

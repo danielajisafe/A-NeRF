@@ -126,6 +126,7 @@ def render_path(render_poses, hwf, chunk, render_kwargs,
     # save2pickle(filename, to_pickle)
 
     rgbs, disps, accs = [], [], []
+    #raw_rgbs, raw_disps, raw_accs = [], [], []
 
     t = time.time()
     # reuse human pose if #render_poses > #human_poses and #human_poses > 0
@@ -168,6 +169,7 @@ def render_path(render_poses, hwf, chunk, render_kwargs,
         except:
             import ipdb; ipdb.set_trace()
 
+        #import ipdb; ipdb.set_trace()
         ray_input = rays[i] if rays is not None else None
         expand = len(ray_input[0])
         kp_input = reuse_input(kp, expand)
@@ -266,8 +268,13 @@ def render_path(render_poses, hwf, chunk, render_kwargs,
                     acc_img[valid_idx] = acc
                     accs.append(acc_img.view(h, w, 1).detach().cpu().numpy())
 
+                    #raw_accs.append(acc.cpu().numpy())
+
             rgbs.append(rgb_img.view(h, w, 3).detach().cpu().numpy())
             disps.append(disp_img.view(h, w, 1).detach().cpu().numpy())
+
+            # raw_rgbs.append(rgb.cpu().numpy())
+            # raw_disps.append(disp.cpu().numpy())
 
         else:
             # render the whole image in this case, can append directly
@@ -275,20 +282,30 @@ def render_path(render_poses, hwf, chunk, render_kwargs,
             disps.append(disp.cpu().numpy())
 
         # if i == 2:
-        #     import ipdb; ipdb.set_trace()
+        #import ipdb; ipdb.set_trace()
 
     rgbs = np.stack(rgbs, 0)
     disps = np.stack(disps, 0)
     disps_nan = np.isnan(disps)
     disps[disps_nan] = 0.
+    
+    # raw outcomes
+    #raw_rgbs = np.stack(raw_rgbs, 0)
+    #raw_disps = np.stack(raw_disps, 0)
+    #raw_disps_nan = np.isnan(raw_disps)
+    #raw_disps[raw_disps_nan] = 0.
 
     
     if ret_acc:
         try:
             accs = np.stack(accs, 0)
+            #raw_accs = np.stack(raw_accs, 0)
+
         except:
             #TODO:  why first acc is empty?
+            ipdb.set_trace()
             accs = np.array([])
+
     return rgbs, disps, accs, valid_idxs, bboxes
 
 @torch.no_grad()
@@ -365,8 +382,11 @@ def config_parser():
                         help='layers in fine network')
     parser.add_argument("--netwidth_fine", type=int, default=256,
                         help='channels per layer in fine network')
-    parser.add_argument("--overlap", action='store_true',
-                        help='shoot more probable rays in overlap areas')
+    parser.add_argument("--overlap_rays", action='store_true',
+                        help='shoot more intentional rays in overlap_rays areas')
+    parser.add_argument("--layered_bkgd", action='store_true',
+                        help='if overlap_rays occurs, render predicted mirror pixel under predicted real pixel instead of bkgd')
+                        
 
     parser.add_argument("--N_rand", type=int, default=32*32*4,
                         help='batch size (number of random rays per gradient step)')
