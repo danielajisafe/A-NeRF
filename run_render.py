@@ -154,8 +154,6 @@ def load_render_data(args, nerf_args, poseopt_layer=None, opt_framecode=True):
     catalog = init_catalog(args)[args.dataset][args.entry]
     render_data = catalog.get(args.render_type, {})
     data_h5 = catalog['data_h5']
-
-    render_data['args'] = args
     #import ipdb; ipdb.set_trace()
 
     if args.use_mirr or args.switch_cam:
@@ -280,7 +278,6 @@ def load_render_data(args, nerf_args, poseopt_layer=None, opt_framecode=True):
             if args.switch_cam:
                 '''only c2ws changes'''
                 v_focals = focals.copy()
-                #ipdb.set_trace()
                 kps, skts, c2ws, cam_idxs, focals, bones, root = load_bullettime(data_h5, c2ws, focals,
                                                                         rest_pose, pose_keys,
                                                                         #centers=centers_n,
@@ -1050,10 +1047,9 @@ def load_bullettime(pose_h5, c2ws, focals, rest_pose, pose_keys,
     if refined is None:
         kps, bones = dd.io.load(pose_h5, pose_keys, sel=dd.aslice[selected_idxs, ...])
         selected_idxs = find_idxs_with_map(selected_idxs, idx_map)
-        #ipdb.set_trace()
         if args.switch_cam:
-            print(f"using the initial pose from {pose_h5}")
-            #ipdb.set_trace()
+            print("are you using the right data path for pose_h5?")
+            ipdb.set_trace()
     else:
         selected_idxs = find_idxs_with_map(selected_idxs, idx_map)
         kps, bones = refined
