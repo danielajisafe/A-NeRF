@@ -19,7 +19,7 @@ from core.raycasters import create_raycaster
 
 from core.utils.evaluation_helpers import txt_to_argstring
 from core.utils.skeleton_utils import CMUSkeleton, smpl_rest_pose, get_smpl_l2ws, nerf_c2w_to_extrinsic, swap_mat, get_per_joint_coords
-from core.utils.skeleton_utils import draw_skeletons_3d, rotate_x, rotate_y, axisang_to_rot, rot_to_axisang
+from core.utils.skeleton_utils import draw_skeletons_3d, rotate_x, rotate_y, skeleton3d_to_2d, axisang_to_rot, rot_to_axisang
 from pytorch_msssim import SSIM
 
 import sys
@@ -245,7 +245,7 @@ def load_render_data(args, nerf_args, poseopt_layer=None, opt_framecode=True):
     _, H, W, _ = dd.io.load(data_h5, ['/img_shape'])[0]
     
     #import ipdb; ipdb.set_trace()
-    # handel resolution
+    # handle resolution
     if args.render_res is not None:
         assert len(args.render_res) == 2, "Image resolution should be in (H, W)"
         H_r, W_r = args.render_res

@@ -378,6 +378,7 @@ def config_parser():
                         help='layers in network')
     parser.add_argument("--netwidth", type=int, default=256,
                         help='channels per layer')
+    
     parser.add_argument("--netdepth_fine", type=int, default=8,
                         help='layers in fine network')
     parser.add_argument("--netwidth_fine", type=int, default=256,

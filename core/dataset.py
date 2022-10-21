@@ -30,7 +30,7 @@ dataset_catalog = {
 class BaseH5Dataset(Dataset):
     # TODO: poor naming
     def __init__(self, h5_path, h5_path_v, N_samples=96, patch_size=1, split='full',
-                 N_nms=0,N_nms_v=0, subject=None, mask_img=False, multiview=False, overlap_rays=False):
+                 N_nms=0, N_nms_v=0, subject=None, mask_img=False, multiview=False, overlap_rays=False):
         '''
         Base class for multi-proc h5 dataset
 
@@ -71,16 +71,21 @@ class BaseH5Dataset(Dataset):
         self.box2d = None
         self.box2d_v = None
 
+        self.box2d_overlap = None
+        self.box2d_v_overlap = None
+
         self.overlap_rays = overlap_rays
 
-        if self.N_nms > 0.0:
-            self.init_box2d()
-        if self.N_nms_v > 0.0:
-            self.init_box2d_v()
+        if True: #self.N_nms > 0.0:
+            self.init_box2d(scale=1.0)
+        if True: #self.N_nms_v > 0.0:
+            self.init_box2d_v(scale=1.0)
 
         if self.overlap_rays:
             self.init_box2d(scale=1.0, box2d_overlap=True)
             self.init_box2d_v(scale=1.0, box2d_overlap=True)
+
+        #import ipdb; ipdb.set_trace()
 
     def __getitem__(self, q_idx):
         '''
@@ -137,7 +142,7 @@ class BaseH5Dataset(Dataset):
                 N_rand_ratio = 0.7 # 70% for fogs, 30% for overlap_rays areas
            
 
-        '''all frames assessment'''        
+        '''all frames debug overlap_rays assessment'''        
         # iou_vals = np.array(list(map(lambda x,y:simple_container(x,y), self.box2d_overlap, self.box2d_v_overlap)))
         # bools = iou_vals>ov_thshd
         # n_overlaps = np.sum(bools)
@@ -434,7 +439,7 @@ class BaseH5Dataset(Dataset):
         '''
         return dataset['focals'][:], dataset['c2ws'][:]
 
-    def init_box2d(self, scale=1.3, box2d_overlap=True):
+    def init_box2d(self, scale=1.3, box2d_overlap=False):
         '''
         pre-compute box2d
         '''
@@ -462,14 +467,14 @@ class BaseH5Dataset(Dataset):
             temp.append((tl, br))
 
         if box2d_overlap:
-            self.box2d_overlap = np.array(temp)
+            self.box2d_overlap = np.array(temp.copy())
         else:
-            self.box2d = np.array(temp)
-            import ipdb; ipdb.set_trace()
+            self.box2d = np.array(temp.copy())
+            #import ipdb; ipdb.set_trace()
 
         dataset.close()
 
-    def init_box2d_v(self, scale=1.3, box2d_overlap=True):
+    def init_box2d_v(self, scale=1.3, box2d_overlap=False):
         '''
         pre-compute box2d
         '''
@@ -500,10 +505,10 @@ class BaseH5Dataset(Dataset):
             temp_v.append((tl, br))
 
         if box2d_overlap:
-            self.box2d_v_overlap = np.array(temp_v)
+            self.box2d_v_overlap = np.array(temp_v.copy())
         else:
-            self.box2d_v = np.array(temp_v)
-            import ipdb; ipdb.set_trace()
+            self.box2d_v = np.array(temp_v.copy())
+            #import ipdb; ipdb.set_trace()
 
         dataset.close()
 
