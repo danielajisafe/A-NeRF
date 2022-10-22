@@ -2,6 +2,7 @@
 
 import os
 import h5py
+import ipdb
 import numpy as np
 from glob import glob
 from tqdm import tqdm, trange
@@ -55,6 +56,9 @@ def mask_chunking(h5_key,data_path,p_type,chunk_factor=24,split="train", args=No
         chunk_size = (1, int(H/chunk_factor) * int(W/chunk_factor)) + (C,)
         flatten_shape = (1,H*W,C)
         #import ipdb; ipdb.set_trace()
+
+        ipdb.set_trace()
+        print("did you add new updates e.g binary masking?")
 
         # Data to be appended
         new_data = real_mask.reshape(flatten_shape)

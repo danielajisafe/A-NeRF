@@ -16,7 +16,7 @@ from .utils.ray_utils import get_rays_np
 # a fixed scale that roughly make skeleton of all datasets
 # to be of similar range
 dataset_ext_scale = 0.25 / 0.00035
-
+# 
 def generate_camera_path(amp_wubble=15, amp_dist=0.5, dist=3.0, center=np.array([0., 0., 0.]), n_cams=60):
 
     y_angles = np.linspace(0, math.radians(360), n_cams+1)[:-1]
@@ -311,7 +311,7 @@ class MirrorDataset(BaseH5Dataset):
     #render_skip = 1
     #N_render = 9
     render_skip = 1
-    N_render =  1 #1344
+    N_render =  1 
 
     rand_kps = {'230': 'data/mirror/mirror_rand_230.npy',
                 '400': 'data/mirror/mirror_rand_400.npy',

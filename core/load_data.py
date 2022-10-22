@@ -19,7 +19,8 @@ DATASET_SKELETON_MAP = {"3dhp": SMPLSkeleton,
                         "zju": SMPLSkeleton,
                         "mixamo": SMPLSkeleton,
                         "mirror": SMPLSkeleton,
-                        "perfcap": SMPLSkeleton,}
+                        "perfcap": SMPLSkeleton,
+                        }
 
 DATASET_CATALOG = {
     'h36m': {
@@ -135,7 +136,7 @@ def get_dataset_from_catalog(args, N_samples, dataset_type, subject=None, N_nms=
                      'subject': subject,
                      'N_nms': N_nms,
                      'N_nms_v': N_nms_v,
-                     'multiview': args.multiview,}
+                     'multiview': args.multiview}
     refined_kwargs = {'load_refined': args.load_refined}
 
     path = DATASET_CATALOG[dataset_type][subject]

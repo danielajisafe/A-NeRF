@@ -82,7 +82,7 @@ def create_raycaster(args, data_attrs, device=None):
             view_cutoff_kwargs = {"cutoff": False}
         view_cutoff_kwargs["cutoff_dim"] = len(skel_type.joint_trees)
         embeddirs_fn, input_ch_views = get_embedder(args.multires_views, args.i_embed,
-                                                    input_dims=view_dims ,
+                                                    input_dims=view_dims,
                                                     skel_type=skel_type,
                                                     cutoff_kwargs=view_cutoff_kwargs)
 
@@ -457,19 +457,12 @@ class RayCaster(nn.Module):
             plt.plot(*pixel_loc, color, markersize=2)
             #return plt
             plt.savefig(f"/scratch/dajisafe/smpl/A_temp_folder/A-NeRF/checkers/imgs/pixel_loc.jpg", dpi=300, bbox_inches='tight', pad_inches = 0)
-
         
         del_folder = "/scratch/dajisafe/smpl/mirror_project_dir/authors_eval_data/temp_dir/to_be_deleted_pickles"
         #h5_path = './data/mirror/3/23df3bb4-272d-4fba-b7a6-514119ca8d21_cam_3/2022-05-14-13/mirror_train_h5py.h5'
 
-        #import ipdb; ipdb.set_trace()
-        # Use virt z_vals  directly 
         if use_mirr:
-            #print("using mirror in a-nerf...")
-            #use_z_direct = True 
-
             N_rays = ray_batch.shape[0]
-            #import ipdb; ipdb.set_trace()
             #print(f" *** ray_batch: {ray_batch.shape} | ray_batch_v: {ray_batch_v.shape} **** ")
 
             #div_factor = 2
@@ -480,14 +473,14 @@ class RayCaster(nn.Module):
             '''rough initialization: virt looking at real and real looking at virt should have similar near and far'''
             near_v, far_v = bounds_v[...,0], bounds_v[...,1] # [-1,1]
 
+            init_near, init_far = near, far
+            init_near_v, init_far_v = near_v, far_v
+
             # Step 2: Sample 'coarse' sample from the ray segment within the bounding cylinder
             near, far =  get_near_far_in_cylinder(rays_o=rays_o, rays_d=rays_d, cyl=cyls, near=near, far=far)
             pts, z_vals = self.sample_pts(rays_o=rays_o, rays_d=rays_d, near=near, far=far, N_rays=N_rays,
                                          N_samples=N_samples, perturb=perturb, lindisp=lindisp, pytest=pytest, 
                                          ray_noise_std=ray_noise_std)
-
-            init_near, init_far = near, far
-            init_near_v, init_far_v = near_v, far_v
             
             # Get line of intersection 
             n_m = normalize_batch_normal(m_normal) # same
@@ -499,7 +492,8 @@ class RayCaster(nn.Module):
             #intersect_pts = torch.Tensor(intersect_pts)
         
             '''reflect the virtual points to real space - drop trans part in A matrix 
-            (aligns with shiyang comment on transforming the mirr matrix coodinate system provided it contains the trans part)'''
+            (aligns with shiyang comment on transforming the mirr matrix coodinate system to nerf space 
+            provided it contains the trans part but no it does not)'''
             rays_ref = (A_dash[0][:3,:3] @ rays_d_v.permute(1,0)).permute(1,0)
 
             # rays_d_v_homo = torch.cat((rays_d_v, rays_d_v.new_ones(1).expand(*rays_d_v.shape[:-1], 1)), 1)
@@ -509,8 +503,8 @@ class RayCaster(nn.Module):
             v_cam_pos = A_mirr[:,:3,3:4].reshape(-1,3) # no negative addition (already inhibit)
 
             #import ipdb; ipdb.set_trace()
-            # get near and far based on reflected points but real cyls 
-            near_ref, far_ref =  get_near_far_in_cylinder(rays_o=v_cam_pos, rays_d=rays_ref, cyl=cyls, near=init_near_v,
+            # get near and far based on reflected points to real kp/cyls but from virtual cam position
+            near_ref, far_ref = get_near_far_in_cylinder(rays_o=v_cam_pos, rays_d=rays_ref, cyl=cyls, near=init_near_v,
                                                 far=init_far_v)
 
             pts_ref, z_vals_ref = self.sample_pts(rays_o=v_cam_pos, rays_d=rays_ref, near=near_ref, 
@@ -587,7 +581,7 @@ class RayCaster(nn.Module):
                                         **preproc_kwargs)
 
             # though rays_o_ref not used
-            encoded_ref = self.encode_inputs(pts_ref, [intersect_pts[:, None, :], rays_ref[:, None, :]], kp_batch,
+            encoded_ref = self.encode_inputs(pts_ref, [v_cam_pos[:, None, :], rays_ref[:, None, :]], kp_batch,
                                         skts, bones, cam_idxs=cams, subject_idxs=subject_idxs,
                                         joint_coords=joint_coords, network=self.network,
                                         **preproc_kwargs)
@@ -622,7 +616,7 @@ class RayCaster(nn.Module):
                                                                             is_only=self.single_net, ray_noise_std=ray_noise_std)
                 
                 # get the importance samples (z_samples), as well as sorted_idx
-                pts_is_ref, z_vals_ref, z_samples_ref, sorted_idxs_ref = self.sample_pts_is(intersect_pts, rays_ref, z_vals_ref, ret_dict0_ref['weights'],
+                pts_is_ref, z_vals_ref, z_samples_ref, sorted_idxs_ref = self.sample_pts_is(v_cam_pos, rays_ref, z_vals_ref, ret_dict0_ref['weights'],
                                                                             N_importance, det=(perturb==0.), pytest=pytest,
                                                                             is_only=self.single_net, ray_noise_std=ray_noise_std)
 
@@ -634,7 +628,7 @@ class RayCaster(nn.Module):
                                                 joint_coords=joint_coords, network=self.network_fine,
                                                 **preproc_kwargs)
 
-                encoded_is_ref = self.encode_inputs(pts_is_ref, [intersect_pts[:, None, :], rays_ref[:, None, :]], kp_batch,
+                encoded_is_ref = self.encode_inputs(pts_is_ref, [v_cam_pos[:, None, :], rays_ref[:, None, :]], kp_batch,
                                                 skts, bones, cam_idxs=cams, subject_idxs=subject_idxs,
                                                 joint_coords=joint_coords, network=self.network_fine,
                                                 **preproc_kwargs)
@@ -710,7 +704,7 @@ class RayCaster(nn.Module):
             return self._collect_outputs(ret_dict, ret_dict0, ret_dict_ref, ret_dict0_ref, use_mirr=use_mirr)
         
         else:
-            '''Rendering Time Without Mirrors'''
+            '''Rendering time without mirrors'''
             #print("No mirror")
             N_rays = ray_batch.shape[0]
             #print(f"N_rays {N_rays}")

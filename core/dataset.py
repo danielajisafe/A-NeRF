@@ -129,7 +129,7 @@ class BaseH5Dataset(Dataset):
         N_rand_ratio = 1.0
         self.overlap_found = False
         inter_box = None
-        
+
         if self.overlap_rays:
             overlap_thshd = 0.2 # 20%
             
@@ -144,13 +144,14 @@ class BaseH5Dataset(Dataset):
                 N_rand_ratio = 0.7 # 70% for fogs, 30% for overlap_rays areas
            
 
-        # '''all frames debug overlap_rays assessment'''        
+        '''all frames debug overlap_rays assessment'''        
         # iou_vals = np.array(list(map(lambda x,y:simple_container(x,y), self.box2d_overlap, self.box2d_v_overlap)))
         # bools = iou_vals>overlap_thshd
         # n_overlaps = np.sum(bools)
         # ov_ratio = n_overlaps/len(iou_vals)
         # print(f"n_overlaps:{n_overlaps} ov_ratio:{ov_ratio}")
         # ov_idxs = np.where(bools)[0]; 
+        # ov_idxs, = np.where(bools); 
         
         # '''check the boxes'''
         # box2D_real = self.box2d_overlap[idx]
@@ -368,6 +369,8 @@ class BaseH5Dataset(Dataset):
         
 
         self.focals, self.c2ws = self._load_camera_data(dataset)
+
+        # TODO: can we use the choosen frames from 3D step?
         self.temp_validity = self.init_temporal_validity()
 
         if self.has_bg:
@@ -449,7 +452,6 @@ class BaseH5Dataset(Dataset):
         dataset = h5py.File(self.h5_path, 'r', swmr=True)
 
         l = len(self)
-
         H, W = self.HW
         
         temp = []
@@ -485,10 +487,9 @@ class BaseH5Dataset(Dataset):
         dataset = h5py.File(self.h5_path, 'r', swmr=True)
 
         l = len(self)
-
         H, W = self.HW
+        
         temp_v = []
-
         # use images from real data
         for i in range(len(dataset['imgs'])):
             q_idx = i
@@ -544,8 +545,6 @@ class BaseH5Dataset(Dataset):
         get image data (in np.uint8)
         '''
 
-        #idx = 676
-        #ipdb.set_trace()
         fg = self.dataset['masks'][idx][pixel_idxs].astype(np.float32)
         '''Binarize the mask'''
         fg = (fg > 0.5).astype(np.int_)
@@ -612,7 +611,7 @@ class BaseH5Dataset(Dataset):
                 # pick foreground out from original image using foreground mask + create blank space for that spot in background
                 ''' set the fg in the left to 1, everything else to 0
                     set the fg in the right to 0, everything else to 1
-                hence, get the foreground from the left and place it in the right'''
+                hence, get the foreground from the left and place it in the right background'''
                 # update: result is of size pixel_idxs
                 img = img * fg + (1. - fg) * bg
 
@@ -632,7 +631,6 @@ class BaseH5Dataset(Dataset):
 
         #ipdb.set_trace()
         return img, fg, bg
-
 
 
     def sample_overlap_pixels(self, idx, q_idx, pixel_idxs, pixel_idxs_v, box2D_real, box2D_virt, N_rand_ratio):
@@ -699,10 +697,13 @@ class BaseH5Dataset(Dataset):
         '''Binarize mask'''
         sampling_mask = (sampling_mask > 0.5).astype(np.int_)
 
-        valid_idxs = np.where(sampling_mask>0)[0]
-        
+        #valid_idxs = np.where(sampling_mask>0)[0]
         """the comma unrolls the single-element tuple"""
-        #valid_idxs, = np.where(sampling_mask>0)
+        valid_idxs, = np.where(sampling_mask>0)
+
+        # when there is no segmentation detected in real mask
+        if len(valid_idxs) == 0 or len(valid_idxs) < N_rand:
+            valid_idxs = np.arange(len(sampling_mask))
         
         sampled_idxs = np.random.choice(valid_idxs,
                                         N_rand,
@@ -710,7 +711,6 @@ class BaseH5Dataset(Dataset):
 
         #import ipdb; ipdb.set_trace()
         if self.patch_size > 1:
-            #import ipdb; ipdb.set_trace()
 
             H, W = self.HW
             hs, ws = sampled_idxs // W, sampled_idxs % W
@@ -759,23 +759,26 @@ class BaseH5Dataset(Dataset):
         # assume sampling masks are of shape (N, H, W, 1)
         sampling_mask_v = self.dataset_v['sampling_masks'][idx].reshape(-1)
         sampling_mask_v = (sampling_mask_v > 0.5).astype(np.int_)
-
-        valid_idxs_v = np.where(sampling_mask_v>0)[0]
+        #valid_idxs_v = np.where(sampling_mask_v>0)[0]
 
         """the comma unrolls the single-element tuple"""
-        #valid_idxs_v, = np.where(sampling_mask_v>0)
+        valid_idxs_v, = np.where(sampling_mask_v>0)
 
         # ipdb.set_trace()
         # plt.imshow(sampling_mask_v.reshape(*self.HW,1)); plt.axis("off")
         # plt.savefig(f"/scratch/dajisafe/smpl/A_temp_folder/A-NeRF/checkers/imgs/sampling_mask_v.jpg", dpi=300, bbox_inches='tight', pad_inches = 0)
 
-        if len(valid_idxs_v)<1:
+        if len(valid_idxs_v)==0 or len(valid_idxs_v) < N_rand:
             '''blank or no segmentation for virtual?, then sample real mask randomly'''
-            
+
             sampling_mask = self.dataset['sampling_masks'][idx].reshape(-1)
             sampling_mask = (sampling_mask > 0.5).astype(np.int_)
-            valid_idxs = np.where(sampling_mask>0)
-            valid_idxs_v = valid_idxs.copy()
+            valid_idxs_v, = np.where(sampling_mask>0)
+            
+
+        # # when there is no segmentation detected
+        # if len(valid_idxs_v) == 0 or len(valid_idxs_v) < N_rand:
+        #     valid_idxs_v = np.arange(len(sampling_mask_v))
 
         sampled_idxs_v = np.random.choice(valid_idxs_v,
                                         N_rand,
@@ -862,7 +865,6 @@ class BaseH5Dataset(Dataset):
 
         return selected_idxs_v
 
-    # TODO: any difference between get_rays and get_rays_v functions? Not really for now
     def get_rays(self, c2w, focal, pixel_idxs, center=None):
 
         dirs = self._dirs[pixel_idxs].copy()
@@ -895,7 +897,7 @@ class BaseH5Dataset(Dataset):
             center[1] *= -1
             dirs[..., :2] -= center
 
-        # goes from 2d pixel location to 3d point with direction (with origin at the cam position).
+        # goes from 2d pixel location to 3d point with initial direction (with origin at the cam position).
         dirs[:, :2] /= focal
 
         I = np.eye(3)
@@ -965,7 +967,6 @@ class BaseH5Dataset(Dataset):
         q_idx: the 'queried' index(s) received from the sampler,
                may not coincide with idx.
         '''
-        # TODO: check if it considers gap in frames for videos with unequal length
         return idx, q_idx
 
     def get_cam_idx(self, idx, q_idx):
@@ -1059,7 +1060,7 @@ class BaseH5Dataset(Dataset):
 
         '''virtual data starts here'''
 
-        data_attrs['gt_kp3d_v'] = self.gt_kp3d_v[k_idxs] if self.gt_kp3d_v is not None else None,
+        data_attrs['gt_kp3d_v'] = self.gt_kp3d_v[k_idxs] if self.gt_kp3d_v is not None else None
         data_attrs['kp3d_v'] = self.kp3d_v[k_idxs]
         data_attrs['A_dash'] = self.A_dash[k_idxs]
         data_attrs['m_normal'] = self.m_normal[k_idxs]
@@ -1167,7 +1168,7 @@ class PoseRefinedDataset(BaseH5Dataset):
             return self._load_multiview_pose(dataset, kp3d, bones, skts, cyls)
         return kp3d, bones, skts, cyls
 
-# # Do we use ConcatH5Dataset?
+# Do we use ConcatH5Dataset?
 
 # class ConcatH5Dataset(ConcatDataset):
 #     # TODO: poor naming
@@ -1245,7 +1246,6 @@ class PoseRefinedDataset(BaseH5Dataset):
 #     def get_render_data(self):
 
 #         render_data = [d.get_render_data() for d in self.datasets]
-#         import ipdb; ipdb.set_trace()
 #         merged_data = {}
 
 #         # TODO: TEMPORARY HACK, TO ONLY RENDER ONE DATASET IF IMAGE SHAPES
@@ -1402,10 +1402,10 @@ def ray_collate_fn(batch):
     # flatten the first two dimensions.
 
     #import ipdb; ipdb.set_trace()
-    
     batch = {k: batch[k].flatten(end_dim=1) for k in batch}
     batch['rays'] = torch.stack([batch['rays_o'], batch['rays_d'], 
                                 batch['rays_o_v'], batch['rays_d_v']], dim=0)
+
     #batch['rays'] = torch.stack([batch['rays_o'], batch['rays_d']], dim=0)
     return batch
 

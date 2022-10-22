@@ -304,6 +304,7 @@ class PoseOptLayer(nn.Module):
         N = len(self.pelvis)
         idxs = np.arange(N)
 
+        # calculating takes time, calculate once and re-use
         kps, bones, skts, l2ws, rots = self.calculate_kinematic(idxs)
 
         self.cache_kps = kps
@@ -404,7 +405,6 @@ class PoseOptLayer(nn.Module):
         l2ws = []
         root_l2w = mat_to_hom(torch.cat([rots[:, root_id], rest_pose[:, root_id, :, None]], dim=-1))
         l2ws.append(root_l2w)
-
 
         # create joint-to-joint transformation
         children_rots = torch.cat([rots[:, :root_id], rots[:, root_id+1:]], dim=1)

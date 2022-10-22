@@ -225,9 +225,9 @@ class create_data():
 
             # access data
             virt_sm = self.get_sampling_mask(self.img_urls[i], self.sorted_imgs_fogs[i],self.proj2d_virt[i].detach().cpu())
-           if not os.path.isfile(load_filename):
-                tuples  = [(f"v_samp_mask_{i}",virt_sm)]
-                save2pickle(load_filename, tuples)
+            if not os.path.isfile(load_filename):
+                    tuples  = [(f"v_samp_mask_{i}",virt_sm)]
+                    save2pickle(load_filename, tuples)
 
 
                             # close the file
