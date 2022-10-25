@@ -141,7 +141,7 @@ def kp_to_valid_rays(poses, H, W, focal, kps=None, cylinder_params=None,
             '''c2w to extrinsic matrix'''
             w2c = nerf_c2w_to_extrinsic(c2w.cpu().numpy())
 
-            # get bbox, and top left and bottom right pixel values 
+            # get bbox - top left and bottom right pixel values 
             tl, br, _ = cylinder_to_box_2d(cyl_param.cpu().numpy(), [h, w, f], w2c,
                                         center=center)
 
@@ -161,7 +161,7 @@ def kp_to_valid_rays(poses, H, W, focal, kps=None, cylinder_params=None,
             bboxes.append((tl, br))
         return rays, valid_idxs, bboxes
 
-    # mini-container function
+    # mini-container functions
     rays, valid_idxs, bboxes = sub_function(poses, valid_idxs, rays, bboxes)
     if args.switch_cam:
         rays, valid_idxs, bboxes = sub_function(v_poses, valid_idxs, rays, bboxes)

@@ -67,7 +67,6 @@ def batchify_rays(rays_flat, rays_flat_v=None, chunk=1024*32, ray_caster=None, u
     """
     all_ret = {}
 
-    
     for i in range(0, rays_flat.shape[0], chunk):
         batch_kwargs = {k: kwargs[k][i:i+chunk] if torch.is_tensor(kwargs[k]) else kwargs[k]
                         for k in kwargs}
@@ -77,6 +76,7 @@ def batchify_rays(rays_flat, rays_flat_v=None, chunk=1024*32, ray_caster=None, u
         else:
             #print("batch_kwargs", batch_kwargs.keys())
             ret = ray_caster(rays_flat[i:i+chunk], use_mirr=use_mirr, **batch_kwargs)
+        
         for k in ret:
             if k not in all_ret:
                 all_ret[k] = []
@@ -161,7 +161,7 @@ def render(H, W, focal, chunk=1024*32, rays=None, c2w=None,
         viewdirs = torch.reshape(viewdirs, [-1,3]).float()
 
         if use_mirr:
-            # normalize ray length (virt)
+            # normalize ray length (virt) to ensure unit norm
             viewdirs_v = viewdirs_v / torch.norm(viewdirs_v, dim=-1, keepdim=True)
             viewdirs_v = torch.reshape(viewdirs_v, [-1,3]).float()
 
@@ -273,6 +273,7 @@ def decay_optimizer_lrate(lrate, lrate_decay, decay_rate, optimizer,
     #decay_steps = lrate_decay * decay_unit
     decay_steps = lrate_decay
     optim_step = optimizer.state[optimizer.param_groups[0]['params'][0]]['step'] // decay_unit
+    
     #new_lrate = lrate * (decay_rate ** (global_step / decay_steps))
     new_lrate = lrate * (decay_rate ** (optim_step / decay_steps))
     for param_group in optimizer.param_groups:
@@ -448,6 +449,7 @@ class Trainer:
                 'idx_repeat':idx_repeat, 'pixel_loc_repeat':pixel_loc_repeat,
                 'pixel_loc_v_repeat':pixel_loc_v_repeat}
 
+
     def compute_loss(self, batch, preds,
                      kp_opts=None, popt_detach=False, use_mirr=False):
         '''
@@ -487,8 +489,8 @@ class Trainer:
 
             #import ipdb; ipdb.set_trace()
             results.append(self._compute_nerf_loss(batch, rgb_pred=preds['rgb0'], acc_pred=preds['acc0'], 
-                                                rgb_pred_ref=rgb0_ref, acc_pred_ref=acc0_ref
-                                                , coarse=True, use_mirr=use_mirr))
+                                                    rgb_pred_ref=rgb0_ref, acc_pred_ref=acc0_ref,
+                                                    coarse=True, use_mirr=use_mirr))
             # if 'rgb0_ref' in preds and 'acc0_ref' in preds:
             #     results.append(self._compute_nerf_loss(batch, preds['rgb0_ref'], preds['acc0_ref'], coarse=True, use_mirr=True))
          
@@ -524,7 +526,6 @@ class Trainer:
         bgs = batch['bgs'] if 'bgs' in batch else base_bg
         bgs_v = batch['bgs_v'] if 'bgs_v' in batch else base_bg
 
-        
         if args.use_background:
             if use_mirr:
                 rgb_pred_ref = rgb_pred_ref + (1. - acc_pred_ref)[..., None] * bgs_v
@@ -533,7 +534,7 @@ class Trainer:
                 n_rays = batch['n_rays_per_img_dups'][0].item()
                 n_overlap_pixels = batch['n_overlap_pixels_dups'][0].item()
 
-                #import ipdb; ipdb.set_trace()
+                # use layered background
                 if args.overlap_rays and n_rays != -1 and args.layered_bkgd: 
                     # use mask for differentiability purpose
                     
@@ -552,25 +553,16 @@ class Trainer:
                     bgs = bgs.reshape(-1, 3)
 
             rgb_pred = rgb_pred + (1. - acc_pred)[..., None] * bgs
-            #import ipdb; ipdb.set_trace()
-            
-            # double-check (do this only when there is (and for only) overlapping pixels)
-            # rgb_pred = rgb_pred + (1. - acc_pred)[..., None] * rgb_pred_ref
-            
-            # overlapping pixels, bgs==bgs_v
-            # render real, then virtual
-            # two loss fn
-            # keept track of rays and calling the right fn.
 
-        # TODOS:
+        # TODO:
         # 1. comfirm visually reflected rays in the 3D makes sense (No for inference, ? at train time)
         # 2. confirm visually that the right real and virtual mask is being used in loss computation. Plot a large dot
         # on both masks and visually confirm they are aligned with the rays in 3D space?
-        # 3. confirm that there is no place where the reprojection of virtual pose is not required and the real pose is sufficient.
+        # 3. confirm that there is no place where the reprojection of virtual pose is required and the real pose is sufficient.
         # 4. basically, test that each part of the code is working properly.
         # 5. run code, and monitor early issues, image quality, loss or improvements.
 
-        # mask loss
+        # target rgb loss
         rgb_loss = loss_fn(rgb_pred, batch['target_s'], reduction='mean')
         if use_mirr:
             rgb_loss_v = loss_fn(rgb_pred_ref, batch['target_s_v'], reduction='mean')
@@ -585,23 +577,32 @@ class Trainer:
         psnr = img2psnr(rgb_pred.detach(), batch['target_s'])
         if use_mirr:
             psnr_v = img2psnr(rgb_pred_ref.detach(), batch['target_s_v'])
-            psnr = psnr*args.r_weight + psnr_v*args.v_weight
+            #psnr = psnr*args.r_weight + psnr_v*args.v_weight
+        loss_dict = {}
+        stat_dict = {}
 
         loss_tag = set_tag_name(f'rgb_loss', coarse)
         stat_tag = set_tag_name(f'psnr', coarse)
 
-        loss_dict = {loss_tag: rgb_loss}
+        stat_dict[stat_tag] = psnr
+        if use_mirr:
+            stat_tag_v = set_tag_name(f'psnr_v', coarse)
+            stat_dict[stat_tag_v] = psnr_v
+
+        loss_dict[loss_tag] = rgb_loss
 
         if reg_fn is not None:
-            reg_loss = reg_fn(acc_pred, batch['fgs'][..., 0], reduction='off') * args.reg_coef
+            reg_loss = reg_fn(acc_pred, batch['fgs'][..., 0], reduction='off') #* args.reg_coef
             if use_mirr:
-                reg_loss_v = reg_fn(acc_pred_ref , batch['fgs_v'][..., 0], reduction='off') * args.reg_coef
-                reg_loss = reg_loss.r_weight + reg_loss_v*args.v_weight
-            
+                reg_loss_v = reg_fn(acc_pred_ref , batch['fgs_v'][..., 0], reduction='off') #* args.reg_coef
+                reg_loss = reg_loss*args.r_weight + reg_loss_v*args.v_weight
+
+            reg_loss = reg_loss * args.reg_coef
+
             reg_tag = set_tag_name('reg_loss', coarse)
             loss_dict[reg_tag] = reg_loss
 
-        return loss_dict, {stat_tag: psnr}
+        return loss_dict, stat_dict
 
     def _compute_kp_loss(self, batch, kp_opts):
 

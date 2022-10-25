@@ -10,9 +10,9 @@ import itertools
 
 # Standard NeRF
 class NeRF(nn.Module):
-    def __init__(self, D=8, W=256, input_ch=3, input_ch_bones=0, input_ch_views=3,
+    def __init__(self,D=8, W=256, input_ch=3, input_ch_bones=0, input_ch_views=3,
                  output_ch=4, skips=[4], use_viewdirs=False, use_framecode=False,
-                 framecode_ch=16, n_framecodes=0, skel_type=None, density_scale=1.0):
+                 framecode_ch=16, n_framecodes=0,skel_type=None,density_scale=1.0):
         """
         idx_maps: for mapping framecode_idx
         """
@@ -161,6 +161,7 @@ class NeRF(nn.Module):
             weights: [num_rays, num_samples]. Weights assigned to each sampled color.
             depth_map: [num_rays]. Estimated distance to object.
         """
+
         raw2alpha = lambda raw, dists, noise, act_fn=act_fn: 1.-torch.exp(-(act_fn(raw/B + noise))*dists)
 
         dists = z_vals[...,1:] - z_vals[...,:-1]

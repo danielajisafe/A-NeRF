@@ -198,6 +198,7 @@ def load_render_data(args, nerf_args, poseopt_layer=None, opt_framecode=True):
     else:
         render_data['idx_map'] = catalog.get('idx_map', None)
 
+    render_data['args'] = args
     pose_keys = ['/kp3d', '/bones']
     cam_keys = ['/c2ws', '/focals', '/centers']
     # Do partial load here!

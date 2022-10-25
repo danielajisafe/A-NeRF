@@ -25,7 +25,7 @@ def filter_state_dict(current_state_dict, state_dict):
         if local_val.shape != loaded_val.shape:
             print(f'!!!WARNING!!!: size mismatch for {local_key}: current model is {local_val.shape} '+
                   f'while the size in ckpt is {loaded_val.shape}')
-            print(f'!!!WARNING!!!: Automatically omit loading {local_key}. If this is not intented, stop the program now!')
+            print(f'!!!WARNING!!!: Automatically omit loading {local_key}. If this is not intended, stop the program now!')
         else:
             filtered_state_dict[local_key] = loaded_val
 

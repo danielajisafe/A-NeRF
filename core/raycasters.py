@@ -161,7 +161,7 @@ def create_raycaster(args, data_attrs, device=None):
         'density_scale': args.density_scale,
         'density_fn': get_density_fn(args),
     }
-    # copy preproc kwargs and disable peturbation  for test-time rendering
+    # copy preproc kwargs and disable peturbation for test-time rendering
     preproc_kwargs_test = {k: preproc_kwargs[k] for k in preproc_kwargs}
 
     render_kwargs_train = {
@@ -355,8 +355,8 @@ class RayCaster(nn.Module):
 
     @torch.no_grad()
     def forward_eval(self, *args, **kwargs):
-        #import ipdb; ipdb.set_trace()
         return self.render_rays(*args, **kwargs)
+
 
     def forward(self, *args, fwd_type='', **kwargs):
         if fwd_type == 'density':
@@ -486,7 +486,7 @@ class RayCaster(nn.Module):
             n_m = normalize_batch_normal(m_normal) # same
             pt_on_ray_v = near_v*rays_d_v
 
-            
+            '''for visualization only'''
             intersect_pts=line_intersect(n_m[0].repeat(N_rays).view(N_rays,1,-1), avg_D[0:1].repeat(N_rays,1),\
                         rays_d_v.view(N_rays,-1,1), pt_on_ray_v.view(N_rays,-1))
             #intersect_pts = torch.Tensor(intersect_pts)
@@ -511,8 +511,8 @@ class RayCaster(nn.Module):
                                             far=far_ref, N_rays=N_rays, N_samples=N_samples,
                                             perturb=perturb, lindisp=lindisp, pytest=pytest, ray_noise_std=ray_noise_std)
 
-            #ref_z_vals = sample_from_lineseg(near=near, far=far, N_lines=N_rays, N_samples=64)
-            #mirr2real_z_vals = sample_from_lineseg(near=torch.zeros_like(near), far=far, N_lines=n_rays, N_samples=64)
+            # ref_z_vals = sample_from_lineseg(near=near, far=far, N_lines=N_rays, N_samples=64)
+            # mirr2real_z_vals = sample_from_lineseg(near=torch.zeros_like(near), far=far, N_lines=n_rays, N_samples=64)
 
             # h5_path = './data/mirror/7/261970f0-e705-4546-a957-b719526cbc4a_cam_7/2022-05-14-13/mirror_train_h5py.h5'
             # dataset = h5py.File(h5_path, 'r')
@@ -553,6 +553,7 @@ class RayCaster(nn.Module):
                         ]
 
             #save2pickle(filename, to_pickle)
+            del intersect_pts
             #import ipdb; ipdb.set_trace()
 
             # '''z_vals gives amt of change/distance'''
@@ -571,7 +572,7 @@ class RayCaster(nn.Module):
             # prepare local coordinate system
             joint_coords = self.get_subject_joint_coords(subject_idxs, pts.device) # is None
 
-            '''Diff directions but single kp'''
+            '''Diff directions but same kp'''
             # Step 3: encode
             # we map the sample pts q to local space
             # dan: we maintain and also map the real (view direction) to local space
@@ -634,7 +635,7 @@ class RayCaster(nn.Module):
                                                 **preproc_kwargs)
 
                 if not self.single_net:
-                    # take the union of both samples:
+                    # take the union of both samples
                     N_total_samples = N_importance + N_samples
                     # for real pts
                     encoded_is = self._merge_encodings(encoded, encoded_is, sorted_idxs,
@@ -1032,6 +1033,9 @@ class RayCaster(nn.Module):
         #import ipdb; ipdb.set_trace()
 
         if use_mirr:
+            print(" we decided to solve this seperately instead")
+            import ipdb; ipdb.set_trace() 
+
             n_sub_samples=N_total_samples//2
             gather_idxs = torch.arange(N_rays * (n_sub_samples)).view(N_rays, -1)
 
@@ -1052,12 +1056,14 @@ class RayCaster(nn.Module):
             if k != 'pts':
             
                 if use_mirr:
+                    import ipdb; ipdb.set_trace() 
+
                     n_sample_pts, n_is_sample_pts = encoded[k].shape[1]//2, encoded_is[k].shape[1]//2
                     '''v, r and d (merge for each each half - 1st is real, 2nd is virt)'''
                     k_real = merge_samples(encoded[k][:,:n_sample_pts,:], encoded_is[k][:,:n_is_sample_pts,:], gather_idxs, n_sub_samples)
                     k_virt = merge_samples(encoded[k][:,n_sample_pts:,:], encoded_is[k][:,n_is_sample_pts:,:], gather_idxs_v, n_sub_samples)
 
-                    merged[k] = torch.cat([k_real,k_virt],dim=1)
+                    merged[k] = torch.cat([k_real,k_virt],dim=1)use_mirr=False,
 
                 else:
                     #import ipdb; ipdb.set_trace() 
@@ -1096,7 +1102,7 @@ class RayCaster(nn.Module):
             collected['alpha0'] = ret0['alpha']
 
         if ret_ref is not None and use_mirr:
-            # use mirror
+            # use mirror (base)
             collected['rgb_map_ref'] = ret_ref['rgb_map']
             collected['disp_map_ref'] = ret_ref['disp_map']
             collected['acc_map_ref'] = ret_ref['acc_map']

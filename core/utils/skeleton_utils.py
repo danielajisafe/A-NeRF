@@ -95,6 +95,7 @@ def create_plane_updated(x=None, y=None, z=None, normal=None, any_point=None, pl
     #import ipdb; ipdb.set_trace()
     return plane.astype(np.float32), plane_d
 
+
 def rotate_x(phi):
     cos = np.cos(phi)
     sin = np.sin(phi)
@@ -152,6 +153,7 @@ joint_names= ['pelvis', 'right_hip', 'right_knee', 'right_ankle',
         'left_shoulder', 'left_elbow', 'left_wrist', 'right_shoulder', 
         #24-25
         'right_elbow', 'right_wrist']
+        
 joint_parents = ['pelvis', 'pelvis', 'right_hip', 'right_knee', 
                     'right_ankle', 'right_heel', 'right_heel', 'pelvis', 
                     'left_hip', 'left_knee', 'left_ankle', 'left_heel', 
