@@ -1063,7 +1063,7 @@ class RayCaster(nn.Module):
                     k_real = merge_samples(encoded[k][:,:n_sample_pts,:], encoded_is[k][:,:n_is_sample_pts,:], gather_idxs, n_sub_samples)
                     k_virt = merge_samples(encoded[k][:,n_sample_pts:,:], encoded_is[k][:,n_is_sample_pts:,:], gather_idxs_v, n_sub_samples)
 
-                    merged[k] = torch.cat([k_real,k_virt],dim=1)use_mirr=False,
+                    merged[k] = torch.cat([k_real,k_virt],dim=1)
 
                 else:
                     #import ipdb; ipdb.set_trace() 
