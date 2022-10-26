@@ -134,7 +134,7 @@ def render(H, W, focal, chunk=1024*32, rays=None, c2w=None,
         # train time (then 4)
         elif not use_mirr:
             rays_o, rays_d, _, _ = rays
-            import ipdb; ipdb.set_trace()
+            #import ipdb; ipdb.set_trace()
         else:   
             rays_o, rays_d, rays_o_v, rays_d_v  = rays
 

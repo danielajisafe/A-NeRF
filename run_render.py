@@ -18,6 +18,7 @@ from core.load_data import generate_bullet_time, get_dataset
 from core.raycasters import create_raycaster
 
 from core.utils.evaluation_helpers import txt_to_argstring
+from core.utils.dan_compute_eval import eval_opt_kp
 from core.utils.skeleton_utils import CMUSkeleton, smpl_rest_pose, get_smpl_l2ws, nerf_c2w_to_extrinsic, swap_mat, get_per_joint_coords
 from core.utils.skeleton_utils import draw_skeletons_3d, rotate_x, rotate_y, skeleton3d_to_2d, axisang_to_rot, rot_to_axisang
 from pytorch_msssim import SSIM
@@ -925,10 +926,10 @@ def load_interpolate(pose_h5, c2ws, focals, rest_pose, pose_keys,
 
 
 def eval_bullettime_kps(pose_h5, c2ws, focals, rest_pose, pose_keys,
-                    selected_idxs, refined=None, n_bullet=30, 
+                    selected_idxs, refined=None, n_bullet=30, bullet_ang=360,
                     #centers=None,
                     undo_rot=False, center_cam=True, center_kps=True,
-                    idx_map=None):
+                    idx_map=None, args=None):
 
     undo_rot=False; center_cam=True; center_kps=True
     #import ipdb; ipdb.set_trace()
@@ -954,73 +955,55 @@ def eval_bullettime_kps(pose_h5, c2ws, focals, rest_pose, pose_keys,
         bones = bones[selected_idxs]
     cam_idxs = selected_idxs[:, None].repeat(n_bullet, 1).reshape(-1)
     
+    cam_id = int(args.data_path.split("_cam_")[1][0])
 
     #import ipdb; ipdb.set_trace()
-    from dan_compute_eval import eval_opt_kp
+    resp = input("do you have the choosen frames, y/n?")
+    if resp == "n":
+        print("using hard-coded indices for evaluation")
+        print()
 
 
-    # 3
-    # python run_render.py --nerf_args logs/mirror/pose_opt_model/-2022-09-25-16-43-12/args.txt --ckptpath logs/mirror/pose_opt_model/-2022-09-25-16-43-12/070000.tar --dataset mirror --entry easy --render_type bullet --runname mirror_bullet --selected_framecode 0 --white_bkgd --selected_idxs 0 --render_refined --data_path ./data/mirror/3/23df3bb4-272d-4fba-b7a6-514119ca8d21_cam_3/2022-05-14-13 --n_bullet 1 --train_len 1620
-    # python run_render.py --nerf_args logs/mirror/pose_opt_model/-2022-05-16-02-01-28/args.txt --ckptpath logs/mirror/pose_opt_model/-2022-05-16-02-01-28/107000.tar --dataset mirror --entry easy --render_type bullet --runname mirror_bullet --selected_framecode 0 --white_bkgd --selected_idxs 0 --render_refined --data_path ./data/mirror/3/23df3bb4-272d-4fba-b7a6-514119ca8d21_cam_3/2022-05-14-13 --n_bullet 10
-    # python run_render.py --nerf_args logs/mirror/pose_opt_model/-2022-05-16-02-01-28/args.txt --ckptpath logs/mirror/pose_opt_model/-2022-05-16-02-01-28/107000.tar --dataset mirror --entry easy --render_type bullet --runname mirror_bullet --selected_framecode 0 --white_bkgd --selected_idxs 0 --render_refined --data_path ./data/mirror/3/23df3bb4-272d-4fba-b7a6-514119ca8d21_cam_3/2022-05-14-13 --n_bullet 1 --train_len 1620
-    comb="23df3bb4-272d-4fba-b7a6-514119ca8d21_cam_3" # 2022-05-16-02-01-28
-    rec_eval_pts = [0, 100, 200, 300, 400, 500, 600, 700, 800, 900, 1000, 1100, 1200, 1300, 1400, 1500, 1600, 1700]
-    gt_eval_pts = [0, 100, 200, 300, 400, 500, 600, 700, 800, 900, 1000, 1100, 1200, 1300, 1400, 1500, 1600, 1700]
-    # # 'mpjpe_in_mm': 105.09, 'n_mpjpe_in_mm': 60.33, 'pmpjpe_in_mm': 41.74
-    # short
-    # {'mpjpe_in_mm': 105.09, 'n_mpjpe_in_mm': 60.16, 'pmpjpe_in_mm': 41.67, 'No_of_evaluations': '11/18', 'rec_eval_pts': array([   0,  100,  200,  300,  400,  500,  600,  700,  800,  900, 1000]), 'gt_eval_pts': array([   0,  100,  200,  300,  400,  500,  600,  700,  800,  900, 1000])}
+    if cam_id==2:
+        comb = args.data_path.split("/")[-2]
+        #comb="fc4f46b9-1f80-4498-8949-ca1b52864d0c_cam_2" # 2022-05-16-02-10-36
+        rec_eval_pts = [0, 100, 200, 300, 400, 493, 593, 693, 793, 893, 993, 1093, 1193, 1293, 1393]
+        gt_eval_pts =  [0, 100, 200, 300, 400, 500, 600, 700, 800, 900, 1000, 1100, 1200, 1300, 1400]
 
-    # # 6
-    # python run_render.py --nerf_args logs/mirror/pose_opt_model/-2022-05-16-02-23-39/args.txt --ckptpath logs/mirror/pose_opt_model/-2022-05-16-02-23-39/102000.tar --dataset mirror --entry easy --render_type bullet --runname mirror_bullet --selected_framecode 0 --white_bkgd --selected_idxs 0 --render_refined --data_path ./data/mirror/6/ea8ddac0-6837-4434-b03a-09316277a4aa_cam_6/2022-05-14-13 --n_bullet 4
-    # # python run_render.py --nerf_args logs/mirror/pose_opt_model/-2022-05-16-02-23-39/args.txt --ckptpath logs/mirror/pose_opt_model/-2022-05-16-02-23-39/102000.tar --dataset mirror --entry easy --render_type bullet --runname mirror_bullet --selected_framecode 0 --white_bkgd --selected_idxs 0 --render_refined --data_path ./data/mirror/6/ea8ddac0-6837-4434-b03a-09316277a4aa_cam_6/2022-05-14-13 --n_bullet 1 --train_len 1620
-    # comb="ea8ddac0-6837-4434-b03a-09316277a4aa_cam_6" # 2022-05-16-02-23-39
-    # rec_eval_pts = [0, 100, 200, 300, 400, 500, 599, 699, 799, 899, 999, 1099, 1199, 1299, 1399, 1499, 1599, 1699]
-    # gt_eval_pts = [0, 100, 200, 300, 400, 500, 600, 700, 800, 900, 1000, 1100, 1200, 1300, 1400, 1500, 1600, 1700]
-    # # 'mpjpe_in_mm': 70.0, 'n_mpjpe_in_mm': 56.43, 'pmpjpe_in_mm': 40.18
-    # # short
-    # # {'mpjpe_in_mm': 70.25, 'n_mpjpe_in_mm': 56.58, 'pmpjpe_in_mm': 40.21, 'No_of_evaluations': '11/18', 'rec_eval_pts': array([  0, 100, 200, 300, 400, 500, 599, 699, 799, 899, 999]), 'gt_eval_pts': array([   0,  100,  200,  300,  400,  500,  600,  700,  800,  900, 1000])}
+    elif cam_id==3:
+        comb = args.data_path.split("/")[-2]
+        #comb="23df3bb4-272d-4fba-b7a6-514119ca8d21_cam_3" # 2022-05-16-02-01-28
+        rec_eval_pts = [0, 100, 200, 300, 400, 500, 600, 700, 800, 900, 1000, 1100, 1200, 1300, 1400, 1500, 1600, 1700]
+        gt_eval_pts = [0, 100, 200, 300, 400, 500, 600, 700, 800, 900, 1000, 1100, 1200, 1300, 1400, 1500, 1600, 1700]
 
+    elif cam_id==5:
+        comb = args.data_path.split("/")[-2]
+        #comb="c28e8104-b416-474c-914c-c911baa8540b_cam_5" # 2022-05-16-14-42-42
+        rec_eval_pts = [0, 100, 200, 288, 388, 488, 588, 688, 788, 888, 988, 1088]
+        gt_eval_pts = [0, 100, 200, 500, 600, 700, 800, 900, 1000, 1100, 1200, 1300]
     
-
+    elif cam_id==6:
+        comb = args.data_path.split("/")[-2]
+        #comb="ea8ddac0-6837-4434-b03a-09316277a4aa_cam_6" # 2022-05-16-02-23-39
+        rec_eval_pts = [0, 100, 200, 300, 400, 500, 599, 699, 799, 899, 999, 1099, 1199, 1299, 1399, 1499, 1599, 1699]
+        gt_eval_pts = [0, 100, 200, 300, 400, 500, 600, 700, 800, 900, 1000, 1100, 1200, 1300, 1400, 1500, 1600, 1700]
     
-    # # 2
-    # python run_render.py --nerf_args logs/mirror/pose_opt_model/-2022-05-16-02-10-36/args.txt --ckptpath logs/mirror/pose_opt_model/-2022-05-16-02-10-36/133000.tar --dataset mirror --entry easy --render_type bullet --runname mirror_bullet --selected_framecode 0 --white_bkgd --selected_idxs 0 --render_refined --data_path ./data/mirror/2/fc4f46b9-1f80-4498-8949-ca1b52864d0c_cam_2/2022-05-14-13 --n_bullet 10
-    # # python run_render.py --nerf_args logs/mirror/pose_opt_model/-2022-05-16-02-10-36/args.txt --ckptpath logs/mirror/pose_opt_model/-2022-05-16-02-10-36/133000.tar --dataset mirror --entry easy --render_type bullet --runname mirror_bullet --selected_framecode 0 --white_bkgd --selected_idxs 0 --render_refined --data_path ./data/mirror/2/fc4f46b9-1f80-4498-8949-ca1b52864d0c_cam_2/2022-05-14-13 --n_bullet 1 --train_len 1414
-    # comb="fc4f46b9-1f80-4498-8949-ca1b52864d0c_cam_2" # 2022-05-16-02-10-36
-    # rec_eval_pts = [0, 100, 200, 300, 400, 493, 593, 693, 793, 893, 993, 1093, 1193, 1293, 1393]
-    # gt_eval_pts =  [0, 100, 200, 300, 400, 500, 600, 700, 800, 900, 1000, 1100, 1200, 1300, 1400]
-    # # 'mpjpe_in_mm': 125.36, 'n_mpjpe_in_mm': 110.19, 'pmpjpe_in_mm': 78.72
-    # # # short
-    # # {'mpjpe_in_mm': 125.36, 'n_mpjpe_in_mm': 110.19, 'pmpjpe_in_mm': 78.72, 'No_of_evaluations': '11/18', 'rec_eval_pts': array([  0, 100, 200, 300, 400, 493, 593, 693, 793, 893, 993]), 'gt_eval_pts': array([   0,  100,  200,  300,  400,  500,  600,  700,  800,  900, 1000])}
+    elif cam_id==7:
+        comb = args.data_path.split("/")[-2]    
+        #comb="261970f0-e705-4546-a957-b719526cbc4a_cam_7" # 2022-05-16-14-12-18
+        rec_eval_pts = [0, 100, 200, 300, 400, 500, 600, 700, 800, 900, 1000, 1100, 1200, 1300, 1400, 1500, 1636]
+        gt_eval_pts = [0, 100, 200, 300, 400, 500, 600, 700, 800, 900, 1000, 1100, 1200, 1300, 1400, 1500, 1700]
+ 
+    else:
+        print("what are your eval idx?")
+        ipdb.set_trace()
 
-
-    # # 5
-    # python run_render.py --nerf_args logs/mirror/pose_opt_model/-2022-05-16-14-42-42/args.txt --ckptpath logs/mirror/pose_opt_model/-2022-05-16-14-42-42/115000.tar --dataset mirror --entry easy --render_type bullet --runname mirror_bullet --selected_framecode 0 --white_bkgd --selected_idxs 0 --render_refined --data_path ./data/mirror/5/c28e8104-b416-474c-914c-c911baa8540b_cam_5/2022-05-14-13 --n_bullet 10
-    # # python run_render.py --nerf_args logs/mirror/pose_opt_model/-2022-05-16-14-42-42/args.txt --ckptpath logs/mirror/pose_opt_model/-2022-05-16-14-42-42/115000.tar --dataset mirror --entry easy --render_type bullet --runname mirror_bullet --selected_framecode 0 --white_bkgd --selected_idxs 0 --render_refined --data_path ./data/mirror/5/c28e8104-b416-474c-914c-c911baa8540b_cam_5/2022-05-14-13 --n_bullet 1 --train_len 1240
-    # comb="c28e8104-b416-474c-914c-c911baa8540b_cam_5" # 2022-05-16-14-42-42
-    # rec_eval_pts = [0, 100, 200, 288, 388, 488, 588, 688, 788, 888, 988, 1088]
-    # gt_eval_pts = [0, 100, 200, 500, 600, 700, 800, 900, 1000, 1100, 1200, 1300]
-    # # 'mpjpe_in_mm': 117.82, 'n_mpjpe_in_mm': 93.67, 'pmpjpe_in_mm': 72.49
-    # # short
-    # # {'mpjpe_in_mm': 118.05, 'n_mpjpe_in_mm': 93.97, 'pmpjpe_in_mm': 72.56, 'No_of_evaluations': '11/18', 'rec_eval_pts': array([  0, 100, 200, 288, 388, 488, 588, 688, 788, 888, 988]), 'gt_eval_pts': array([   0,  100,  200,  500,  600,  700,  800,  900, 1000, 1100, 1200])}
-    
-
-    
-    # ## 7
-    # ## python run_render.py --nerf_args logs/mirror/pose_opt_model/-2022-05-16-14-12-18/args.txt --ckptpath logs/mirror/pose_opt_model/-2022-05-16-14-12-18/092000.tar --dataset mirror --entry easy --render_type bullet --runname mirror_bullet --selected_framecode 0 --white_bkgd --selected_idxs 0 --render_refined --data_path ./data/mirror/7/261970f0-e705-4546-a957-b719526cbc4a_cam_7/2022-05-14-13 --n_bullet 1 --train_len 1563
-    # comb="261970f0-e705-4546-a957-b719526cbc4a_cam_7" # 2022-05-16-14-12-18
-    # rec_eval_pts = [0, 100, 200, 300, 400, 500, 600, 700, 800, 900, 1000, 1100, 1200, 1300, 1400, 1500, 1636]
-    # gt_eval_pts = [0, 100, 200, 300, 400, 500, 600, 700, 800, 900, 1000, 1100, 1200, 1300, 1400, 1500, 1700]
-    # # 'mpjpe_in_mm': 112.61, 'n_mpjpe_in_mm': 78.08, 'pmpjpe_in_mm': 55.36
-    # # short
-    # # {'mpjpe_in_mm': 112.81, 'n_mpjpe_in_mm': 78.13, 'pmpjpe_in_mm': 55.48, 'No_of_evaluations': '11/18', 'rec_eval_pts': array([   0,  100,  200,  300,  400,  500,  600,  700,  800,  900, 1000]), 'gt_eval_pts': array([   0,  100,  200,  300,  400,  500,  600,  700,  800,  900, 1000])}
-
-    #import ipdb; ipdb.set_trace()
     eval_opt_kp(kps, comb, rec_eval_pts, gt_eval_pts)
     #name = "pose_opt_eval_may16"
     #np.save(f"/scratch/dajisafe/smpl/mirror_project_dir/authors_eval_data/temp_dir/cam_trajectory_{name}.npy", np.array(c2ws))
     #np.save(f"/scratch/dajisafe/smpl/mirror_project_dir/authors_eval_data/temp_dir/kps_{name}.npy", np.array(kps))
 
+    print("pose evaluation complete...")
     import ipdb; ipdb.set_trace()
 
 

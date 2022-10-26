@@ -8,6 +8,7 @@ import numpy as np
 from glob import glob
 #import argparse
 import sys
+import platform
 from tqdm import tqdm, trange
 sys.path.append("../")
 sys.path.append("/scratch/dajisafe/smpl/")
@@ -19,13 +20,18 @@ import matplotlib.pyplot as plt
 #---------------------------------------
 
 import sys
-local_dir = "/home/dajisafe/scratch/anerf_mirr/A-NeRF/core/utils"
-sys.path.append(local_dir)
+
+naye_local_dir = "/scratch/dajisafe/smpl/A_temp_folder/A-NeRF"
+cc_local_dir = "/home/dajisafe/scratch/anerf_mirr/A-NeRF/core/utils"
+sockeye_local_dir = "/scratch/st-rhodin-1/users/dajisafe/anerf_mirr/A-NeRF"
+sys.path.append(cc_local_dir)
+sys.path.append(sockeye_local_dir)
+sys.path.append(naye_local_dir)
 
 #ipdb.set_trace()
 
 # custom imports
-import dan_util_skel as skel
+import core.utils.dan_util_skel as skel
 from core.utils.dan_pmpjpe import pmpjpe, procrustes
 from core.utils.dan_evaluation import MPJPE, NMPJPE
 from core.utils.extras import load_pickle, save2pickle
@@ -61,8 +67,21 @@ def eval_opt_kp(kps,comb, rec_eval_pts, gt_eval_pts):
     print(f"rec_eval_pts: {rec_eval_pts}")
     print(f"gt_eval_pts: {gt_eval_pts}")
     
-    #project_dir = "/home/dajisafe/scratch/anerf_mirr"
-    project_dir = "/scratch/dajisafe/smpl/mirror_project_dir"
+    cluster = platform.node()
+    if cluster.startswith('se'):
+        project_dir = "/scratch/st-rhodin-1/users/dajisafe/anerf_mirr"
+        extri_file = project_dir + '/extri.yml'
+        filename = project_dir + f"/mirror_GT3D.pickle"
+
+    elif cluster.startswith('naye'):
+        project_dir = "/scratch/dajisafe/smpl/mirror_project_dir"
+        extri_file = project_dir + '/authors_eval_data/extri.yml'
+        filename = project_dir + f"/authors_eval_data/mirror_GT3D.pickle"
+
+    else:
+        print("where are we?")
+        ipdb.set_trace()
+
     skel_type = "alpha"
 
     #import ipdb; ipdb.set_trace()
@@ -109,7 +128,6 @@ def eval_opt_kp(kps,comb, rec_eval_pts, gt_eval_pts):
     '''read GT 3D data'''
     sequence_length = 1800
     #read extri file
-    extri_file = project_dir + '/authors_eval_data/extri.yml'
     gt3d_real_all = []
     #gt3d_virt_all = []
     #imgs_gt = []
@@ -133,7 +151,7 @@ def eval_opt_kp(kps,comb, rec_eval_pts, gt_eval_pts):
     # gt3d_real_all = torch.stack(gt3d_real_all, dim=0).detach().cpu()
 
 
-    filename = project_dir + f"/authors_eval_data/mirror_GT3D.pickle"
+    
     from_pickle = load_pickle(filename)
     gt3d_real_all = from_pickle["gt3d_real_all"]
 
