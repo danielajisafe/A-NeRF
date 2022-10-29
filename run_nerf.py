@@ -700,7 +700,11 @@ def train():
 
     if args.no_reload:
         #update with new timestmap
-        args.expname = args_to_str(args)
+        name = args_to_str(args)
+        comb = args.data_path.split("/")[-2]
+        view = comb.split("_cam_")[1]
+
+        args.expname = name + f"-c{view}"
     else:
         # use timestamp added from terminal
         if args.finetune:
