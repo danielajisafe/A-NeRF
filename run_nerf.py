@@ -517,7 +517,10 @@ def train():
         args.expname = name + f"-c{view}"
     else:
         # use timestamp added from terminal
-        pass
+        if args.finetune:
+            args.expname = args.expname+'/finetune'
+        else:
+            pass
 
     expname = args.expname
     print(f"Current timestamp: {expname.split('/')[-1]}")
