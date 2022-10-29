@@ -97,21 +97,23 @@ class BaseH5Dataset(Dataset):
 
 
         #-------------------------------------------
-        first = 0
-        chk_img = self.dataset['imgs'][first].reshape(1080,1920,3)
-        c2ws_expanded = c2w[None, ...]
+        # first = 0
+        # chk_img = self.dataset['imgs'][first].reshape(1080,1920,3)
+        # c2ws_expanded = c2w[None, ...]
 
         # ipdb.set_trace()
 
-        # # debugging
-        # _= input("debugging?")
-        # focal = np.array([1.2803090021884900e+03, 1.3033885156746885e+03]).reshape(-1,2)
+        # # # debugging
+        # # _= input("debugging?")
+        # # focal = np.array([1.2803090021884900e+03, 1.3033885156746885e+03]).reshape(-1,2)
 
-        kp2d = skeleton3d_to_2d(kps, c2ws_expanded, int(self.HW[0]), int(self.HW[1]), float(focal), center[None, ...])
-        plot_skeleton2d(kp2d[first], img=chk_img)
-        plt.savefig(f"/scratch/dajisafe/smpl/Rebuttal/A-NeRF/checkers/imgs/kp_3d_to_2d.jpg", dpi=150, bbox_inches='tight', pad_inches = 0)
+        # #focal = float(focal) if isinstance(focal, float) else focal
 
-        ipdb.set_trace()
+        # kp2d = skeleton3d_to_2d(kps, c2ws_expanded, int(self.HW[0]), int(self.HW[1]), focal , center[None, ...])
+        # plot_skeleton2d(kp2d[first], img=chk_img)
+        # plt.savefig(f"/scratch/st-rhodin-1/users/dajisafe/anerf_mirr/A-NeRF/checkers/imgs/kp_3d_to_2d.jpg", dpi=150, bbox_inches='tight', pad_inches = 0)
+
+        #ipdb.set_trace()
         return_dict = {'rays_o': rays_o,
                        'rays_d': rays_d,
                        'target_s': rays_rgb,
@@ -162,6 +164,11 @@ class BaseH5Dataset(Dataset):
 
         if 'centers' in dataset:
             self.centers = dataset['centers'][:]
+            
+            """special case"""
+            if self.centers.shape[0] != dataset['kp3d'][:].shape[0]:
+                # (please ignore and re-compute center in codebase)
+                self.centers = None
 
         # precompute mesh (for ray generation) to reduce computational cost
         img_shape = dataset['img_shape'][:]
@@ -193,6 +200,12 @@ class BaseH5Dataset(Dataset):
 
         # store pose and camera data directly in memory (they are small)
         self.gt_kp3d = dataset['gt_kp3d'][:] if 'gt_kp3d' in self.dataset_keys else None
+
+        """special case""" 
+        if self.gt_kp3d.shape[0] != dataset['kp3d'][:].shape[0]:
+            # (please ignore in codebase)
+            self.gt_kp3d = None
+
         self.kp_map, self.kp_uidxs = None, None # only not None when self.multiview = True
         self.kp3d, self.bones, self.skts, self.cyls = self._load_pose_data(dataset)
 
@@ -203,6 +216,14 @@ class BaseH5Dataset(Dataset):
             self.bgs = dataset['bkgds'][:].reshape(-1, np.prod(self.HW), 3)
             self.bg_idxs = dataset['bkgd_idxs'][:].astype(np.int64)
 
+
+            """special case"""
+            n_size = dataset['kp3d'][:].shape[0]
+            if self.bg_idxs.shape[0] != n_size:
+                # (please ignore and re-compute bg_idxs in codebase)
+                self.bg_idxs = dataset['bkgd_idxs'][0].repeat(n_size).astype(np.int64)
+
+        #ipdb.set_trace()
         # TODO: maybe automatically figure this out
         self.skel_type = SMPLSkeleton
 
@@ -469,6 +490,7 @@ class BaseH5Dataset(Dataset):
 
         dataset = h5py.File(self.h5_path, 'r', swmr=True)
         rest_pose = dataset['rest_pose'][:]
+        # ipdb.set_trace()
 
         # get idxs to retrieve the correct subset of meta-data
 
