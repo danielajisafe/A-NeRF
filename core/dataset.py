@@ -1,5 +1,6 @@
 import io
 import ipdb
+import time
 import imageio
 import bisect
 # from regex import B
@@ -94,6 +95,7 @@ class BaseH5Dataset(Dataset):
                therefore, self._idx_map[q_idx] may not lie within [0, len(dataset)]
         '''
 
+        # time0 = time.time()
         if self._idx_map is not None:
             idx = self._idx_map[q_idx]
         else:
@@ -167,6 +169,8 @@ class BaseH5Dataset(Dataset):
         # plt.savefig(f"/scratch/dajisafe/smpl/A_temp_folder/A-NeRF/checkers/imgs/bbox2D.jpg", dpi=150, bbox_inches='tight', pad_inches = 0)
         # import ipdb; ipdb.set_trace()
 
+        # time1 = time.time()
+        # print(f"time taken - before sample pixels {time1-time0}")
         # sample pixels
         pixel_idxs = self.sample_pixels(idx, q_idx, N_rand_ratio)
 
@@ -194,11 +198,6 @@ class BaseH5Dataset(Dataset):
         n_overlap_pixels_dups = n_overlap_pixels_dups.repeat(self.N_samples, 0)
         n_rays_per_img_dups = n_rays_per_img_dups.repeat(self.N_samples, 0)
 
-        # pixel_idxs = np.sort(pixel_idxs_unsorted)
-        # pixel_idxs_v = np.sort(pixel_idxs_v_unsorted)
-
-        # overlap_indices = np.argsort(pixel_idxs_unsorted)
-        # overlap_indices_v = np.argsort(pixel_idxs_v_unsorted)
 
         #import ipdb; ipdb.set_trace()
         # maybe get a version that computes only sampled points?
@@ -208,9 +207,11 @@ class BaseH5Dataset(Dataset):
 
         # load the image, foreground and background,
         # and get values from sampled pixels
-        rays_rgb, fg, bg = self.get_img_data(idx, pixel_idxs, inter_box=inter_box)
+        rays_rgb, fg, bg = self.get_img_data(idx, pixel_idxs, inter_box=inter_box, 
+                                            n_overlap_pixel_ids=n_overlap_pixels_dups)
         if not v_empty:
-            rays_rgb_v, fg_v, bg_v = self.get_img_data_v(idx, pixel_idxs_v)
+            rays_rgb_v, fg_v, bg_v = self.get_img_data_v(idx, pixel_idxs_v,
+                                          n_overlap_pixel_ids=n_overlap_pixels_dups)
 
         #import ipdb; ipdb.set_trace()
         # #-------------------------------------------
@@ -250,6 +251,9 @@ class BaseH5Dataset(Dataset):
         # print("idx", idx)
         #ipdb.set_trace()
 
+        #time2 = time.time()
+        #print(f"time taken - after normal sample pixels {time2-time1}")
+        #ipdb.set_trace()
         return_dict = {'rays_o': rays_o,
                        'rays_d': rays_d,
                        
@@ -540,16 +544,31 @@ class BaseH5Dataset(Dataset):
         return c2w, focal, center, cam_idx
 
     
-    def get_img_data(self, idx, pixel_idxs, inter_box=None):
+    def get_img_data(self, idx, pixel_idxs, inter_box=None, n_overlap_pixel_ids=None):
         '''
         get image data (in np.uint8)
         '''
 
-        fg = self.dataset['masks'][idx][pixel_idxs].astype(np.float32)
+
+        if n_overlap_pixel_ids[0] == -1:
+            n_overlap_p_ids = len(pixel_idxs)
+        else:
+            n_overlap_p_ids = n_overlap_pixel_ids[0]
+
+        #ipdb.set_trace()
+        # fg = self.dataset['masks'][idx, pixel_idxs].astype(np.float32)
+        a = self.dataset['masks'][idx, pixel_idxs[:-n_overlap_p_ids]]
+        b = self.dataset['masks'][idx, pixel_idxs[-n_overlap_p_ids:]]
+        fg = np.concatenate([a, b]).astype(np.float32)
+
+
         '''Binarize the mask'''
         fg = (fg > 0.5).astype(np.int_)
 
-        img = self.dataset['imgs'][idx][pixel_idxs].astype(np.float32) / 255.
+        #img = self.dataset['imgs'][idx, pixel_idxs].astype(np.float32) / 255.
+        a = self.dataset['imgs'][idx, pixel_idxs[:-n_overlap_p_ids]]
+        b = self.dataset['imgs'][idx, pixel_idxs[-n_overlap_p_ids:]]
+        img = np.concatenate([a, b]).astype(np.float32) / 255.
 
         ## debug -----------------------------------------
         # raw_img = self.dataset['imgs'][idx].reshape(*self.HW,3).astype(np.float32) / 255.
@@ -562,10 +581,15 @@ class BaseH5Dataset(Dataset):
         # plt.savefig(f"/scratch/dajisafe/smpl/A_temp_folder/A-NeRF/checkers/imgs/pixel_loc_real.jpg", dpi=300, bbox_inches='tight', pad_inches = 0)
         # #ipdb.set_trace()
 
+
         bg = None
         if self.has_bg:
             bg_idx = self.bg_idxs[idx]
-            bg = self.bgs[bg_idx][pixel_idxs].astype(np.float32) / 255.
+            #bg = self.bgs[bg_idx, pixel_idxs].astype(np.float32) / 255.
+            a = self.bgs[bg_idx, pixel_idxs[:-n_overlap_p_ids]]
+            b = self.bgs[bg_idx, pixel_idxs[-n_overlap_p_ids:]]
+            bg = np.concatenate([a, b]).astype(np.float32) / 255.
+
 
             if self.mask_img:
                 img = img * fg + (1. - fg) * bg
@@ -589,23 +613,40 @@ class BaseH5Dataset(Dataset):
         # ipdb.set_trace()
         return img, fg, bg
 
-    def get_img_data_v(self, idx, pixel_idxs):
+    def get_img_data_v(self, idx, pixel_idxs, n_overlap_pixel_ids=None):
         '''
         get image data (in np.uint8)
         '''
 
+        if n_overlap_pixel_ids[0] == -1:
+            n_overlap_p_ids = len(pixel_idxs)
+        else:
+            n_overlap_p_ids = n_overlap_pixel_ids[0]
+
         #idx = 676 # [idx, pixel_idxs]
-        fg = self.dataset_v['masks'][idx][pixel_idxs].astype(np.float32)
+        #fg = self.dataset_v['masks'][idx][pixel_idxs].astype(np.float32)
+        a = self.dataset_v['masks'][idx, pixel_idxs[:-n_overlap_p_ids]]
+        b = self.dataset_v['masks'][idx, pixel_idxs[-n_overlap_p_ids:]]
+        fg = np.concatenate([a, b]).astype(np.float32)
+
+
         '''Binarize the mask'''
         fg = (fg > 0.5).astype(np.int_)
 
-        # reuse image from real data
-        img = self.dataset['imgs'][idx][pixel_idxs].astype(np.float32) / 255.
+        '''reuse image from real data'''
+        # img = self.dataset['imgs'][idx][pixel_idxs].astype(np.float32) / 255.
+        a = self.dataset['imgs'][idx, pixel_idxs[:-n_overlap_p_ids]]
+        b = self.dataset['imgs'][idx, pixel_idxs[-n_overlap_p_ids:]]
+        img = np.concatenate([a, b]).astype(np.float32) / 255.
+
 
         bg = None
         if self.has_bg:
             bg_idx = self.bg_idxs[idx]
-            bg = self.bgs[bg_idx][pixel_idxs].astype(np.float32) / 255.
+            #bg = self.bgs[bg_idx][pixel_idxs].astype(np.float32) / 255.
+            a = self.bgs[bg_idx, pixel_idxs[:-n_overlap_p_ids]]
+            b = self.bgs[bg_idx, pixel_idxs[-n_overlap_p_ids:]]
+            bg = np.concatenate([a, b]).astype(np.float32) / 255.
 
             if self.mask_img:
                 # pick foreground out from original image using foreground mask + create blank space for that spot in background

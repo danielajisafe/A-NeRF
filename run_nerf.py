@@ -752,12 +752,17 @@ def train():
     #import ipdb; ipdb.set_trace()
     train_iter = iter(train_loader)
     for i in trange(start, N_iters):
-        time0 = time.time()
+        #time0 = time.time()
         batch = next(train_iter)
-        #import ipdb; ipdb.set_trace()
+        #time1 = time.time()
+
+        #print(f"time taken: batch -  {time1-time0} secs")
+        #ipdb.set_trace()
         loss_dict, stats = trainer.train_batch(batch, i, global_step)
-
-
+        #time2 = time.time()
+        #print(f"time taken: forward - {time2-time1} secs")
+        
+        #ipdb.set_trace()
         # Rest is logging
         if i % args.i_weights == 0:
             #path = os.path.join(basedir, expname, f"%06d_{args.slurm_job_id}.tar"%i)
