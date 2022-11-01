@@ -1,6 +1,7 @@
 import bisect
 import h5py, math
 import ipdb
+import time
 import torch
 import random
 import numpy as np
@@ -67,6 +68,7 @@ class BaseH5Dataset(Dataset):
                therefore, self._idx_map[q_idx] may not lie within [0, len(dataset)]
         '''
 
+        # time0 = time.time()
         if self._idx_map is not None:
             idx = self._idx_map[q_idx]
         else:
@@ -84,6 +86,9 @@ class BaseH5Dataset(Dataset):
 
         # get kp index and kp, skt, bone, cyl
         kp_idxs, kps, bones, skts, cyls = self.get_pose_data(idx, q_idx, self.N_samples)
+
+        # time1 = time.time()
+        # print(f"time taken - before sample pixels {time1-time0}")
 
         # sample pixels
         pixel_idxs = self.sample_pixels(idx, q_idx)
@@ -113,6 +118,9 @@ class BaseH5Dataset(Dataset):
         # plot_skeleton2d(kp2d[first], img=chk_img)
         # plt.savefig(f"/scratch/st-rhodin-1/users/dajisafe/anerf_mirr/A-NeRF/checkers/imgs/kp_3d_to_2d.jpg", dpi=150, bbox_inches='tight', pad_inches = 0)
 
+        #ipdb.set_trace()
+        # time2 = time.time()
+        # print(f"time taken - after normal sample pixels {time2-time1}")
         #ipdb.set_trace()
         return_dict = {'rays_o': rays_o,
                        'rays_d': rays_d,
