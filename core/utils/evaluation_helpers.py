@@ -270,7 +270,7 @@ def evaluate_metric(rgbs, gt_imgs, disps=None, gt_masks=None, valid_idxs=None, p
 
     if vid_base is not None:
         os.makedirs(os.path.dirname(vid_base), exist_ok=True)
-        imageio.mimwrite(vid_base + rgb_vid, to8b(rgbs), fps=14, quality=8)
+        # imageio.mimwrite(vid_base + rgb_vid, to8b(rgbs), fps=14, quality=8)
         if disps is not None:
             disps_nan = np.isnan(disps)
             disps[disps_nan] = 0.
