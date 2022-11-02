@@ -215,7 +215,25 @@ class BaseH5Dataset(Dataset):
 
         #import ipdb; ipdb.set_trace()
         # #-------------------------------------------
-        # '''Choice selection, not current training step'''
+        ''' currrent debug'''
+        # first =  0 #1000 #1177
+        # chk_img = self.dataset['imgs'][idx].reshape(1080,1920,3)
+        # #c2ws_expanded = self.dataset['c2ws'][first:first+1]
+        # c2ws_expanded = c2w[None, ...]
+        # #ipdb.set_trace()
+
+        # # # debugging
+        # # _= input("debugging?")
+        # # focal = np.array([1.2803090021884900e+03, 1.3033885156746885e+03]).reshape(-1,2)
+
+        # #kp2d = skeleton3d_to_2d(self.dataset['kp3d'][first:first+1], c2ws_expanded, int(self.HW[0]), int(self.HW[1]), self.dataset['focals'][first], self.dataset['centers'][first:first+1])
+        # kp2d = skeleton3d_to_2d(kps[first:first+1], c2ws_expanded, int(self.HW[0]), int(self.HW[1]), focal, center[None, ...])
+
+        # plot_skeleton2d(kp2d[first], img=chk_img)
+        # plt.savefig(f"/scratch/dajisafe/smpl/A_temp_folder/A-NeRF/checkers/imgs/kp_3d_to_2d.jpg", dpi=300, bbox_inches='tight', pad_inches = 0)
+    
+
+        '''Choice selection, not current training step - before and after '''
         # for first in trange(1178):
         #     first = 1000 #1177
         #     chk_img = self.dataset['imgs'][first].reshape(1080,1920,3)
