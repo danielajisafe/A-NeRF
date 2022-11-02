@@ -232,7 +232,7 @@ class BaseH5Dataset(Dataset):
 
         #     #plot_skeleton2d(kp2d[first], img=chk_img)
         #     #plt.savefig(f"/scratch/dajisafe/smpl/A_temp_folder/A-NeRF/checkers/imgs/kp_3d_to_2d.jpg", dpi=150, bbox_inches='tight', pad_inches = 0)
-
+        
         #     skel_img = draw_skeleton2d(img=chk_img, skel=kp2d[0], skel_type=None, width=3, flip=False) #(chk_img, kp2d, skel_type, 3, flip=False)
         #     imageio.imwrite(f'/scratch/dajisafe/smpl/A_temp_folder/A-NeRF/checkers/initial_overlay/initial_3d_overlay_{first}.jpg', skel_img)
             
