@@ -274,7 +274,7 @@ def evaluate_metric(rgbs, gt_imgs, disps=None, gt_masks=None, valid_idxs=None, p
         if disps is not None:
             disps_nan = np.isnan(disps)
             disps[disps_nan] = 0.
-            imageio.mimwrite(vid_base + disp_vid, to8b(disps / np.max(disps)), fps=14, quality=8)
+            #imageio.mimwrite(vid_base + disp_vid, to8b(disps / np.max(disps)), fps=14, quality=8)
 
     test_psnr = None
     test_ssim = None
