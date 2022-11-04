@@ -387,6 +387,8 @@ def config_parser():
                         help='shoot more intentional rays in overlap_rays areas')
     parser.add_argument("--layered_bkgd", action='store_true',
                         help='if overlap_rays occurs, render predicted mirror pixel under predicted real pixel instead of bkgd')
+    parser.add_argument("--eval_metrics", action='store_false', #default is true
+                        help='evaluate the testset rendering (subset of train set) at training time (PSNR, SSIM etc)')
                         
 
     parser.add_argument("--N_rand", type=int, default=32*32*4,
@@ -841,7 +843,7 @@ def train():
             metrics, rgbs, disps = render_testset(pose_val, render_data["hwf"], args, render_kwargs_test, cams=cams_val,
                                                   kps=kp_val, skts=skt_val, bones=bone_val, subject_idxs=subject_val,
                                                   gt_imgs=masked_gts, gt_masks=gt_masks, vid_base=moviebase, centers=centers,
-                                                  bg_imgs=bg_imgs, bg_indices=bg_indices, eval_metrics=True, eval_both=True, index=i)
+                                                  bg_imgs=bg_imgs, bg_indices=bg_indices, eval_metrics=args.eval_metrics, eval_both=True, index=i)
 
             fps  = 5
             writer.add_video("Val/ValRGB", torch.tensor(rgbs).permute(0, 3, 1, 2)[None], i, fps=fps)
@@ -855,8 +857,11 @@ def train():
                 skel_imgs = draw_skeletons_3d((rgbs * 255).astype(np.uint8), kp_val.cpu().numpy(), pose_val.cpu().numpy(),
                                               RH, RW, Rfocals)
                 writer.add_video("Val/Skeleton", torch.tensor(skel_imgs).permute(0, 3, 1, 2)[None], i, fps=fps)
-            writer.add_scalar("Val/PSNR", metrics["psnr"], i)
-            writer.add_scalar("Val/SSIM", metrics["ssim"], i)
+            
+            if metrics["psnr"] is not None:
+                writer.add_scalar("Val/PSNR", metrics["psnr"], i)
+            if metrics["ssim"] is not None:
+                writer.add_scalar("Val/SSIM", metrics["ssim"], i)
 
         if i % args.i_print == 0:
             mem = torch.cuda.max_memory_allocated() / 1024. / 1024.
