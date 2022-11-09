@@ -102,26 +102,31 @@ class BaseH5Dataset(Dataset):
 
 
         #-------------------------------------------
-        # first = 0
-        # chk_img = self.dataset['imgs'][first].reshape(1080,1920,3)
-        # c2ws_expanded = c2w[None, ...]
+        """
+        **Debug
 
-        # ipdb.set_trace()
+        first = 0
+        chk_img = self.dataset['imgs'][idx].reshape(int(self.HW[0]), int(self.HW[1]),3)
+        c2ws_expanded = c2w[None, ...]
 
-        # # # debugging
-        # # _= input("debugging?")
-        # # focal = np.array([1.2803090021884900e+03, 1.3033885156746885e+03]).reshape(-1,2)
+        #ipdb.set_trace()
+        # # debugging
+        # _= input("debugging?")
+        # focal = np.array([1.2803090021884900e+03, 1.3033885156746885e+03]).reshape(-1,2)
 
-        # #focal = float(focal) if isinstance(focal, float) else focal
+        #focal = float(focal) if isinstance(focal, float) else focal
 
-        # kp2d = skeleton3d_to_2d(kps, c2ws_expanded, int(self.HW[0]), int(self.HW[1]), focal , center[None, ...])
-        # plot_skeleton2d(kp2d[first], img=chk_img)
-        # plt.savefig(f"/scratch/st-rhodin-1/users/dajisafe/anerf_mirr/A-NeRF/checkers/imgs/kp_3d_to_2d.jpg", dpi=150, bbox_inches='tight', pad_inches = 0)
+        kp2d = skeleton3d_to_2d(kps, c2ws_expanded, int(self.HW[0]), int(self.HW[1]), focal , center[None, ...])
+        plt.axis("off")
+        plot_skeleton2d(kp2d[first], img=chk_img)
+        plt.savefig(f"/scratch/dajisafe/smpl/Rebuttal/A-NeRF/checkers/imgs/kp_3d_to_2d.jpg", dpi=150, bbox_inches='tight', pad_inches = 0)
 
         #ipdb.set_trace()
         # time2 = time.time()
         # print(f"time taken - after normal sample pixels {time2-time1}")
-        #ipdb.set_trace()
+        ipdb.set_trace()
+        """
+
         return_dict = {'rays_o': rays_o,
                        'rays_d': rays_d,
                        'target_s': rays_rgb,
@@ -162,6 +167,7 @@ class BaseH5Dataset(Dataset):
         '''
         print('init meta')
 
+        
         dataset = h5py.File(self.h5_path, 'r', swmr=True)
 
         self.dataset_keys = [k for k in dataset.keys()]
@@ -174,10 +180,15 @@ class BaseH5Dataset(Dataset):
             self.centers = dataset['centers'][:]
             
             """special case"""
-            if self.centers.shape[0] != dataset['kp3d'][:].shape[0]:
+            if len(self.centers.shape) > 2:
+                self.centers = self.centers[0]
+                assert self.centers.shape[0] == dataset['kp3d'][:].shape[0], "centers and kp3d contain different sizes"
+
+            elif self.centers.shape[0] != dataset['kp3d'][:].shape[0]:
                 # (please ignore and re-compute center in codebase)
                 self.centers = None
 
+        #ipdb.set_trace()
         # precompute mesh (for ray generation) to reduce computational cost
         img_shape = dataset['img_shape'][:]
         self._N_total_img = img_shape[0]
@@ -210,9 +221,10 @@ class BaseH5Dataset(Dataset):
         self.gt_kp3d = dataset['gt_kp3d'][:] if 'gt_kp3d' in self.dataset_keys else None
 
         """special case""" 
-        if self.gt_kp3d.shape[0] != dataset['kp3d'][:].shape[0]:
-            # (please ignore in codebase)
-            self.gt_kp3d = None
+        if 'gt_kp3d' in self.dataset_keys:
+            if self.gt_kp3d.shape[0] != dataset['kp3d'][:].shape[0]:
+                # (please ignore in codebase)
+                self.gt_kp3d = None
 
         self.kp_map, self.kp_uidxs = None, None # only not None when self.multiview = True
         self.kp3d, self.bones, self.skts, self.cyls = self._load_pose_data(dataset)

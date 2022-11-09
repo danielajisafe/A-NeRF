@@ -212,6 +212,10 @@ def config_parser():
                         help='layers in fine network')
     parser.add_argument("--netwidth_fine", type=int, default=256,
                         help='channels per layer in fine network')
+    parser.add_argument("--eval_metrics", action='store_false', #default is true
+                        help='evaluate the testset rendering (subset of train set) at training time (PSNR, SSIM etc)')
+                        
+
 
     parser.add_argument("--N_rand", type=int, default=32*32*4,
                         help='batch size (number of random rays per gradient step)')
@@ -365,7 +369,7 @@ def config_parser():
     parser.add_argument("--bgnet_reg", type=float, default=0.01,
                         help='penalize bgnet for deviating from bg values')
     parser.add_argument("--use_bgfill", action='store_true',
-                        help='fill in mean bg image at foreground, while keeping othe the same')
+                        help='fill in mean bg image at foreground, while keeping others the same')
 
     parser.add_argument("--lbsnet_type", type=str, default="default",
                         help='type of LBSNET')
@@ -615,7 +619,7 @@ def train():
             metrics, rgbs, disps = render_testset(pose_val, render_data["hwf"], args, render_kwargs_test, cams=cams_val,
                                                   kps=kp_val, skts=skt_val, bones=bone_val, subject_idxs=subject_val,
                                                   gt_imgs=masked_gts, gt_masks=gt_masks, vid_base=moviebase, centers=centers,
-                                                  bg_imgs=bg_imgs, bg_indices=bg_indices, eval_metrics=True, eval_both=True)
+                                                  bg_imgs=bg_imgs, bg_indices=bg_indices, eval_metrics=args.eval_metrics, eval_both=True)
 
             fps  = 5
             writer.add_video("Val/ValRGB", torch.tensor(rgbs).permute(0, 3, 1, 2)[None], i, fps=fps)
@@ -629,8 +633,11 @@ def train():
                 skel_imgs = draw_skeletons_3d((rgbs * 255).astype(np.uint8), kp_val.cpu().numpy(), pose_val.cpu().numpy(),
                                               RH, RW, Rfocals)
                 writer.add_video("Val/Skeleton", torch.tensor(skel_imgs).permute(0, 3, 1, 2)[None], i, fps=fps)
-            writer.add_scalar("Val/PSNR", metrics["psnr"], i)
-            writer.add_scalar("Val/SSIM", metrics["ssim"], i)
+            
+            if metrics["psnr"] is not None:
+                writer.add_scalar("Val/PSNR", metrics["psnr"], i)
+            if metrics["ssim"] is not None:
+                writer.add_scalar("Val/SSIM", metrics["ssim"], i)
 
         if i % args.i_print == 0:
             mem = torch.cuda.max_memory_allocated() / 1024. / 1024.
