@@ -887,7 +887,7 @@ def load_bullettime(pose_h5, c2ws, focals, rest_pose, pose_keys,
         
         elif args.dataset == "vanilla" and args.runname.split("_")[0] == "vanilla":
             # SMPL
-            rec_eval_pts = [0, 100, 200, 300, 400, 500, 600, 700, 800, 900, 1000, 1100, 1200, 1300, 1400]#, 1500, 1600, 1700]
+            rec_eval_pts = [0, 100, 200, 300, 400, 500, 600, 700, 800, 900, 1000, 1100, 1200, 1300, 1400]#, 1500, 1600, 1700] <- apples-2-apples cut
             gt_eval_pts = [0, 100, 200, 300, 400, 500, 600, 700, 800, 900, 1000, 1100, 1200, 1300, 1400]#, 1500, 1600, 1700]
 
 
@@ -915,7 +915,7 @@ def load_bullettime(pose_h5, c2ws, focals, rest_pose, pose_keys,
 
         elif args.dataset == "vanilla" and args.runname.split("_")[0] == "vanilla":
             # SMPL
-            rec_eval_pts = [0, 100, 198, 298, 398, 498, 598, 698, 798, 898, 998, 1098, 1198, 1298]#, 1398, 1498, 1597, 1697]
+            rec_eval_pts = [0, 100, 198, 298, 398, 498, 598, 698, 798, 898, 998, 1098, 1198, 1298]#, 1398, 1498, 1597, 1697] <- apples-2-apples cut
             gt_eval_pts = [0, 100, 200, 300, 400, 500, 600, 700, 800, 900, 1000, 1100, 1200, 1300]#, 1400, 1500, 1600, 1700]
     
     elif cam_id==6:
