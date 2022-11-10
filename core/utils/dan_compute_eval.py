@@ -59,7 +59,8 @@ def eval_opt_kp(kps,comb, rec_eval_pts, gt_eval_pts,args=None):
     # 
     n_kps = kps.shape[0]
     test_idxs = np.where((rec_eval_pts/n_kps) >1)[0]
-    stp_idx = test_idxs[0]
+    #stp_idx = test_idxs[0]
+    stp_idx = len(rec_eval_pts) if len(test_idxs)==0 else test_idxs[0] 
     rec_eval_pts = rec_eval_pts[:stp_idx]
     gt_eval_pts = gt_eval_pts[:stp_idx]
 
