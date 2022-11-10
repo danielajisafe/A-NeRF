@@ -3,6 +3,7 @@ import cv2
 import json
 import glob
 import torch
+import platform
 import numpy as np
 from glob import glob
 #import argparse
@@ -59,8 +60,16 @@ def eval_opt_kp(kps,comb, rec_eval_pts, gt_eval_pts):
     print(f"rec_eval_pts: {rec_eval_pts}")
     print(f"gt_eval_pts: {gt_eval_pts}")
     
-    #data_dir = "/scratch/st-rhodin-1/users/dajisafe/anerf_mirr/A-NeRF/data"
-    data_dir = "/scratch/dajisafe/smpl/mirror_project_dir/authors_eval_data"
+
+    cluster = platform.node()
+    if cluster.startswith('se'):
+        data_dir = "/scratch/st-rhodin-1/users/dajisafe/anerf_mirr/A-NeRF/data"
+
+    elif cluster.startswith('naye'):
+        data_dir = "/scratch/dajisafe/smpl/mirror_project_dir/authors_eval_data"
+
+    
+    
     skel_type = "alpha"
 
     #import ipdb; ipdb.set_trace()
