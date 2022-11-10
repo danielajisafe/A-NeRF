@@ -47,9 +47,10 @@ def eval_opt_kp(kps,comb, rec_eval_pts, gt_eval_pts):
     rec_eval_pts = np.array(rec_eval_pts)
     gt_eval_pts = np.array(gt_eval_pts)
 
+    
     n_kps = kps.shape[0]
     test_idxs = np.where((rec_eval_pts/n_kps) >1)[0]
-    stp_idx = test_idxs[0]
+    stp_idx = len(rec_eval_pts) if len(test_idxs)==0 else test_idxs[0] 
     rec_eval_pts = rec_eval_pts[:stp_idx]
     gt_eval_pts = gt_eval_pts[:stp_idx]
     #import ipdb; ipdb.set_trace()
@@ -58,7 +59,8 @@ def eval_opt_kp(kps,comb, rec_eval_pts, gt_eval_pts):
     print(f"rec_eval_pts: {rec_eval_pts}")
     print(f"gt_eval_pts: {gt_eval_pts}")
     
-    data_dir = "/scratch/st-rhodin-1/users/dajisafe/anerf_mirr/A-NeRF/data"
+    #data_dir = "/scratch/st-rhodin-1/users/dajisafe/anerf_mirr/A-NeRF/data"
+    data_dir = "/scratch/dajisafe/smpl/mirror_project_dir/authors_eval_data"
     skel_type = "alpha"
 
     #import ipdb; ipdb.set_trace()
@@ -131,7 +133,7 @@ def eval_opt_kp(kps,comb, rec_eval_pts, gt_eval_pts):
 
     #import ipdb; ipdb.set_trace()
     '''read GT 3D data'''
-    sequence_length = 1800
+    #sequence_length = 1800
     #read extri file
     extri_file = data_dir + '/extri.yml'
     gt3d_real_all = []
@@ -141,7 +143,7 @@ def eval_opt_kp(kps,comb, rec_eval_pts, gt_eval_pts):
     #rec_eval_pts, gt_eval_pts = [], []
     #img_recon_names = [img.split("/")[-1] for img in img_recon]
 
-    #import ipdb; ipdb.set_trace()
+    # import ipdb; ipdb.set_trace()
     # for index in trange(sequence_length):
     #     img_id_6 = f"{index:06d}" # 6 leading zeros
     #     #img_id_8 = f"{index:08d}"
