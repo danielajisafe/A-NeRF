@@ -706,10 +706,16 @@ class BaseH5Dataset(Dataset):
         min_y2 = min(br[1], br_v[1])
         inter_box = [[max_x1, max_y1], [min_x2, min_y2]]
 
+        # real_box = [[tl[0], tl[1]], [br[0], br[1]]]
+        # virt_box = [[tl_v[0], tl_v[1]], [br_v[0], br_v[1]]]
+
         # chk_img = self.dataset['imgs'][idx].reshape(1080,1920,3)
         # plt.imshow(chk_img); plt.axis("off")
-        # plot_bbox2D(inter_box, plt=plt, color="cyan")
-        # plt.savefig(f"/scratch/dajisafe/smpl/A_temp_folder/A-NeRF/checkers/imgs/bbox2D.jpg", dpi=150, bbox_inches='tight', pad_inches = 0)
+        
+        # plot_bbox2D(real_box, plt=plt, color="gray", linewidth=0.5)
+        # plot_bbox2D(virt_box, plt=plt, color="gray", linewidth=0.5)
+        # plot_bbox2D(inter_box, plt=plt, color="green", linewidth=1.5)
+        # plt.savefig(f"/scratch/dajisafe/smpl/A_temp_folder/A-NeRF/checkers/imgs/bbox2D.jpg", dpi=600, bbox_inches='tight', pad_inches = 0)
         # ipdb.set_trace()
 
         # h_range = torch.arange(max_y1, min_y2)

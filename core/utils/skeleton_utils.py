@@ -1283,7 +1283,7 @@ def get_iou(bb1, bb2):
 
 
 
-def plot_bbox2D(bbox, plt,color="red"):
+def plot_bbox2D(bbox, plt,color="red", linewidth=1.0):
         # https://stackoverflow.com/a/72793114
 
         tl, br = bbox
@@ -1294,7 +1294,7 @@ def plot_bbox2D(bbox, plt,color="red"):
         # in clockwise order
         xs = [tl[0], br[0], br[0], tl[0], tl[0]]
         ys = [tl[1], tl[1], br[1], br[1], tl[1]]
-        plt.plot(xs, ys, color=color)
+        plt.plot(xs, ys, color=color, linewidth=linewidth)
 
         return plt
 
