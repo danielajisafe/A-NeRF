@@ -1002,7 +1002,7 @@ def eval_bullettime_kps(pose_h5, c2ws, focals, rest_pose, pose_keys,
         print("what are your eval idx?")
         ipdb.set_trace()
 
-    eval_opt_kp(kps, comb, rec_eval_pts, gt_eval_pts)
+    eval_opt_kp(kps, comb, rec_eval_pts, gt_eval_pts, args=args)
     #name = "pose_opt_eval_may16"
     #np.save(f"/scratch/dajisafe/smpl/mirror_project_dir/authors_eval_data/temp_dir/cam_trajectory_{name}.npy", np.array(c2ws))
     #np.save(f"/scratch/dajisafe/smpl/mirror_project_dir/authors_eval_data/temp_dir/kps_{name}.npy", np.array(kps))

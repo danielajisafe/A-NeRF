@@ -389,6 +389,8 @@ def config_parser():
                         help='if overlap_rays occurs, render predicted mirror pixel under predicted real pixel instead of bkgd')
     parser.add_argument("--eval_metrics", action='store_false', #default is true
                         help='evaluate the testset rendering (subset of train set) at training time (PSNR, SSIM etc)')
+    # parser.add_argument("--apples_compare", action='store_false', #default is true
+    #                     help='apples compare')
                         
 
     parser.add_argument("--N_rand", type=int, default=32*32*4,

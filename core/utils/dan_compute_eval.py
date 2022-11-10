@@ -43,7 +43,7 @@ from core.utils.dan_skeleton_utils import get_bone_names, get_parent_idx, verify
 
 
 
-def eval_opt_kp(kps,comb, rec_eval_pts, gt_eval_pts):
+def eval_opt_kp(kps,comb, rec_eval_pts, gt_eval_pts,args=None):
 
     
     #cam
@@ -254,7 +254,7 @@ def eval_opt_kp(kps,comb, rec_eval_pts, gt_eval_pts):
     #ipdb.set_trace()
     # apples-to-apples (Alpha-to-Mirr skel vs SMPL-to-Mirr skel comparison)
     resp = input("do you want apples-to-apples evaluation, yes or no? ")
-    if resp == "yes":
+    if True:
         gt3d_chosen_c = gt3d_chosen_c[:,1:15,:]
         kp3d_c = kp3d_c[:,1:15,:]
         print("running apples-to-apples evaluation...")
