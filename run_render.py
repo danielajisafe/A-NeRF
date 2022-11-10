@@ -1,5 +1,6 @@
 import os
 import cv2
+import time
 import ipdb
 import h5py
 #from regex import P
@@ -958,10 +959,13 @@ def eval_bullettime_kps(pose_h5, c2ws, focals, rest_pose, pose_keys,
     cam_id = int(args.data_path.split("_cam_")[1][0])
 
     #import ipdb; ipdb.set_trace()
-    resp = input("do you have the choosen frames, y/n?")
-    if resp == "n":
-        print("using hard-coded indices for evaluation")
+    #resp = input("do you have the choosen frames, y/n?")
+    
+    if True:
         print()
+        print("re-using hard-coded eval indices for evaluation")
+        time.sleep(3)
+        
 
 
     if cam_id==2:
