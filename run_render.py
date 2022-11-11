@@ -1321,7 +1321,8 @@ def run_render():
     #import ipdb; ipdb.set_trace()
     time = datetime.datetime.now().strftime("%Y-%m-%d-%H") # ("%Y-%m-%d-%H-%M-%S")
 
-    comb = args.data_path.split("/")[-2]
+    import ipdb; ipdb.set_trace()
+    comb = args.data_path.split("/")[-3]
     view = comb.split("_cam_")[1]
     print(f"camera: {view} comb: {comb}")
 

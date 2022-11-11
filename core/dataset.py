@@ -234,27 +234,32 @@ class BaseH5Dataset(Dataset):
     
 
         '''Choice selection, not current training step - before and after '''
-        # for first in trange(1178):
-        #     first = 1000 #1177
-        #     chk_img = self.dataset['imgs'][first].reshape(1080,1920,3)
-        #     c2ws_expanded = self.dataset['c2ws'][first:first+1]
-        #     #c2ws_expanded = c2w[None, ...]
-        #     #ipdb.set_trace()
+        ipdb.set_trace()
 
-        #     # # debugging
-        #     # _= input("debugging?")
-        #     # focal = np.array([1.2803090021884900e+03, 1.3033885156746885e+03]).reshape(-1,2)
-
-        #     kp2d = skeleton3d_to_2d(self.dataset['kp3d'][first:first+1], c2ws_expanded, int(self.HW[0]), int(self.HW[1]), self.dataset['focals'][first], self.dataset['centers'][first:first+1])
-        #     # kp2d = skeleton3d_to_2d(kps, c2ws_expanded, int(self.HW[0]), int(self.HW[1]), focal, center[None, ...])
-
-        #     #plot_skeleton2d(kp2d[first], img=chk_img)
-        #     #plt.savefig(f"/scratch/dajisafe/smpl/A_temp_folder/A-NeRF/checkers/imgs/kp_3d_to_2d.jpg", dpi=150, bbox_inches='tight', pad_inches = 0)
-        
-        #     skel_img = draw_skeleton2d(img=chk_img, skel=kp2d[0], skel_type=None, width=3, flip=False) #(chk_img, kp2d, skel_type, 3, flip=False)
-        #     imageio.imwrite(f'/scratch/dajisafe/smpl/A_temp_folder/A-NeRF/checkers/initial_overlay/initial_3d_overlay_{first}.jpg', skel_img)
+        # samples: 3:1800, 5:1240
+        for first in trange(2000):
+            #first = 1000 #1177
+            chk_img = self.dataset['imgs'][first].reshape(1080,1920,3)
+            c2ws_expanded = self.dataset['c2ws'][first:first+1]
             
-        # ipdb.set_trace()
+            kp2d = skeleton3d_to_2d(self.dataset['kp3d'][first:first+1], c2ws_expanded, int(self.HW[0]), int(self.HW[1]), self.dataset['focals'][first], self.dataset['centers'][first:first+1])
+            skel_img = draw_skeleton2d(img=chk_img, skel=kp2d[0], skel_type=None, width=3, flip=False) #(chk_img, kp2d, skel_type, 3, flip=False)
+            imageio.imwrite(f'/scratch/dajisafe/smpl/A_temp_folder/A-NeRF/checkers/initial_overlay/chunjin_mirr/{first:08d}.jpg', skel_img)
+            
+            #c2ws_expanded = c2w[None, ...]
+            #ipdb.set_trace()
+
+            # # debugging
+            # _= input("debugging?")
+            # focal = np.array([1.2803090021884900e+03, 1.3033885156746885e+03]).reshape(-1,2)
+
+            # kp2d = skeleton3d_to_2d(kps, c2ws_expanded, int(self.HW[0]), int(self.HW[1]), focal, center[None, ...])
+
+            #plot_skeleton2d(kp2d[first], img=chk_img)
+            #plt.savefig(f"/scratch/dajisafe/smpl/A_temp_folder/A-NeRF/checkers/imgs/kp_3d_to_2d.jpg", dpi=150, bbox_inches='tight', pad_inches = 0)
+        
+            
+        ipdb.set_trace()
         # -----------------------------
         pre_select = 0
         # self.plot_current_pixel(idx, pixel_idxs, pre_select, type="real")
@@ -271,7 +276,7 @@ class BaseH5Dataset(Dataset):
 
         #time2 = time.time()
         #print(f"time taken - after normal sample pixels {time2-time1}")
-        #ipdb.set_trace()
+        ipdb.set_trace()
         return_dict = {'rays_o': rays_o,
                        'rays_d': rays_d,
                        
