@@ -146,14 +146,17 @@ class BaseH5Dataset(Dataset):
                 N_rand_ratio = 0.7 # 70% for fogs, 30% for overlap_rays areas
            
 
-        '''all frames debug overlap_rays assessment'''        
-        # iou_vals = np.array(list(map(lambda x,y:simple_container(x,y), self.box2d_overlap, self.box2d_v_overlap)))
-        # bools = iou_vals>overlap_thshd
-        # n_overlaps = np.sum(bools)
-        # ov_ratio = n_overlaps/len(iou_vals)
-        # print(f"n_overlaps:{n_overlaps} ov_ratio:{ov_ratio}")
-        # ov_idxs = np.where(bools)[0]; 
-        # ov_idxs, = np.where(bools); 
+            '''all frames debug overlap_rays assessment'''   
+            # thrshd_vals = [0.05, 0.07, 0.10, 0.20]
+            # for overlap_thshd in thrshd_vals:      
+            #     iou_vals = np.array(list(map(lambda x,y:simple_container(x,y), self.box2d_overlap, self.box2d_v_overlap)))
+            #     bools = iou_vals>overlap_thshd
+            #     n_overlaps = np.sum(bools)
+            #     ov_ratio = n_overlaps/len(iou_vals)
+            #     print(f"threshold: {overlap_thshd} n frames: {len(iou_vals)} n_overlaps:{n_overlaps} ov_ratio:{ov_ratio}")
+            #     ov_idxs = np.where(bools)[0]; 
+            #     #ov_idxs, = np.where(bools); 
+            # import ipdb; ipdb.set_trace()
         
         # '''check the boxes'''
         # box2D_real = self.box2d_overlap[idx]
