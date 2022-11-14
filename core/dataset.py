@@ -77,9 +77,9 @@ class BaseH5Dataset(Dataset):
 
         self.overlap_rays = overlap_rays
 
-        if self.N_nms > 0.0:
+        if True:#self.N_nms > 0.0:
             self.init_box2d(scale=1.0)
-        if self.N_nms_v > 0.0:
+        if True:#elf.N_nms_v > 0.0:
             self.init_box2d_v(scale=1.0)
 
         if self.overlap_rays:
@@ -133,27 +133,29 @@ class BaseH5Dataset(Dataset):
         inter_box = None
 
         if self.overlap_rays:
-            overlap_thshd = 0.2 # 20%
+            overlap_thshd = 0.2 #0.2 # 20%
             
             #idx= 1386 #1344 # [cam6: 1386, cam7: 1344]
             '''single-frame overlap_rays assessment'''
-            iou_vals = np.array(list(map(lambda x,y:simple_container(x,y), [self.box2d_overlap[idx]], [self.box2d_v_overlap[idx]])))
+            # iou_vals = np.array(list(map(lambda x,y:simple_container(x,y), [self.box2d_overlap[idx]], [self.box2d_v_overlap[idx]])))
             
-            if iou_vals[0]>=overlap_thshd:
-                box2D_real = self.box2d_overlap[idx]
-                box2D_virt = self.box2d_v_overlap[idx]
-                self.overlap_found = True
-                N_rand_ratio = 0.7 # 70% for fogs, 30% for overlap_rays areas
+            # if iou_vals[0]>=overlap_thshd:
+            #     box2D_real = self.box2d_overlap[idx]
+            #     box2D_virt = self.box2d_v_overlap[idx]
+            #     self.overlap_found = True
+            #     N_rand_ratio = 0.7 # 70% for fogs, 30% for overlap_rays areas
            
 
-        '''all frames debug overlap_rays assessment'''        
-        # iou_vals = np.array(list(map(lambda x,y:simple_container(x,y), self.box2d_overlap, self.box2d_v_overlap)))
-        # bools = iou_vals>overlap_thshd
-        # n_overlaps = np.sum(bools)
-        # ov_ratio = n_overlaps/len(iou_vals)
-        # print(f"n_overlaps:{n_overlaps} ov_ratio:{ov_ratio}")
-        # ov_idxs = np.where(bools)[0]; 
-        # ov_idxs, = np.where(bools); 
+            '''all frames debug overlap_rays assessment'''        
+            iou_vals = np.array(list(map(lambda x,y:simple_container(x,y), self.box2d_overlap, self.box2d_v_overlap)))
+            bools = iou_vals>overlap_thshd
+            n_overlaps = np.sum(bools)
+            ov_ratio = n_overlaps/len(iou_vals)
+            print(f"n frames: {len(iou_vals)} n_overlaps:{n_overlaps} ov_ratio:{ov_ratio}")
+            ov_idxs = np.where(bools)[0]; 
+            #ov_idxs, = np.where(bools); 
+            import ipdb; ipdb.set_trace()
+
         
         # '''check the boxes'''
         # box2D_real = self.box2d_overlap[idx]
@@ -226,25 +228,26 @@ class BaseH5Dataset(Dataset):
         # # _= input("debugging?")
         # # focal = np.array([1.2803090021884900e+03, 1.3033885156746885e+03]).reshape(-1,2)
 
-        # #kp2d = skeleton3d_to_2d(self.dataset['kp3d'][first:first+1], c2ws_expanded, int(self.HW[0]), int(self.HW[1]), self.dataset['focals'][first], self.dataset['centers'][first:first+1])
+        # #kp2d = skeleton3d_to_2d(self.dataset['kp3d'][first:first+1], c2ws_expanded, int(self.HW[0]), int(self.HW[1]), self.dataset['focals'][idx], self.dataset['centers'][idx:first+1])
         # kp2d = skeleton3d_to_2d(kps[first:first+1], c2ws_expanded, int(self.HW[0]), int(self.HW[1]), focal, center[None, ...])
 
         # plot_skeleton2d(kp2d[first], img=chk_img)
+        # plt.axis("off")
         # plt.savefig(f"/scratch/dajisafe/smpl/A_temp_folder/A-NeRF/checkers/imgs/kp_3d_to_2d.jpg", dpi=300, bbox_inches='tight', pad_inches = 0)
-    
+        # import ipdb; ipdb.set_trace()
 
         '''Choice selection, not current training step - before and after '''
-        ipdb.set_trace()
+        # ipdb.set_trace()
 
-        # samples: 3:1800, 5:1240
-        for first in trange(2000):
-            #first = 1000 #1177
-            chk_img = self.dataset['imgs'][first].reshape(1080,1920,3)
-            c2ws_expanded = self.dataset['c2ws'][first:first+1]
+        # # samples: 3:1800, 5:1240
+        # for first in trange(2000):
+        #     #first = 1000 #1177
+        #     chk_img = self.dataset['imgs'][first].reshape(1080,1920,3)
+        #     c2ws_expanded = self.dataset['c2ws'][first:first+1]
             
-            kp2d = skeleton3d_to_2d(self.dataset['kp3d'][first:first+1], c2ws_expanded, int(self.HW[0]), int(self.HW[1]), self.dataset['focals'][first], self.dataset['centers'][first:first+1])
-            skel_img = draw_skeleton2d(img=chk_img, skel=kp2d[0], skel_type=None, width=3, flip=False) #(chk_img, kp2d, skel_type, 3, flip=False)
-            imageio.imwrite(f'/scratch/dajisafe/smpl/A_temp_folder/A-NeRF/checkers/initial_overlay/chunjin_mirr/{first:08d}.jpg', skel_img)
+        #     kp2d = skeleton3d_to_2d(self.dataset['kp3d'][first:first+1], c2ws_expanded, int(self.HW[0]), int(self.HW[1]), self.dataset['focals'][first], self.dataset['centers'][first:first+1])
+        #     skel_img = draw_skeleton2d(img=chk_img, skel=kp2d[0], skel_type=None, width=3, flip=False) #(chk_img, kp2d, skel_type, 3, flip=False)
+        #     imageio.imwrite(f'/scratch/dajisafe/smpl/A_temp_folder/A-NeRF/checkers/initial_overlay/chunjin_mirr/{first:08d}.jpg', skel_img)
             
             #c2ws_expanded = c2w[None, ...]
             #ipdb.set_trace()
@@ -259,7 +262,7 @@ class BaseH5Dataset(Dataset):
             #plt.savefig(f"/scratch/dajisafe/smpl/A_temp_folder/A-NeRF/checkers/imgs/kp_3d_to_2d.jpg", dpi=150, bbox_inches='tight', pad_inches = 0)
         
             
-        ipdb.set_trace()
+        # ipdb.set_trace()
         # -----------------------------
         pre_select = 0
         # self.plot_current_pixel(idx, pixel_idxs, pre_select, type="real")
