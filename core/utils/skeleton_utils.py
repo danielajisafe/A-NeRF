@@ -16,7 +16,10 @@ import pytorch3d.transforms.rotation_conversions as p3dr
 
 import sys
 local_dir = "/scratch/dajisafe/smpl/A_temp_folder" if platform.node() == "naye" else "/home/dajisafe/scratch/anerf_mirr"
+local_dir2 = "/scratch/dajisafe/smpl/A_temp_folder/A-NeRF/core/utils"
+
 sys.path.append(local_dir)
+sys.path.append(local_dir2)
 
 #import ipdb; ipdb.set_trace()
 from dan_skeleton_utils import get_parent_idx

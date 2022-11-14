@@ -391,7 +391,9 @@ def init_catalog(args, n_bullet=3):
     elif view ==5:
         easy_idx = [50, 200, 1000, 1200]
     else:
-        import ipdb; ipdb.set_trace()
+        easy_idx = np.arange(0, args.train_len, 3) #args.selected_idxs #[0, 465, 700] #tim 0 1093  not sure
+        args.selected_idxs = easy_idx
+        #import ipdb; ipdb.set_trace()
 
     #easy_idx = [0, 465, 473, 467, 1467] # [10, 70, 350, 420, 490, 910, 980, 1050] #np.arange(0, args.train_len)
     mirror_easy = {
@@ -1229,11 +1231,12 @@ def run_render():
     os.makedirs(os.path.join(basedir, f'skel_{view}'), exist_ok=True)
     os.makedirs(os.path.join(basedir, f'acc_{view}'), exist_ok=True)
 
+    real_ids = args.selected_idxs
     for i, (rgb, acc, skel) in enumerate(zip(rgbs, accs, skeletons)):
-        #print(f"i {i}")
-        imageio.imwrite(os.path.join(basedir, f'image_{view}', f'{i:05d}.png'), rgb)
-        imageio.imwrite(os.path.join(basedir, f'acc_{view}', f'{i:05d}.png'), acc)
-        imageio.imwrite(os.path.join(basedir, f'skel_{view}', f'{i:05d}.png'), skel)
+        rel_idx = real_ids[i]
+        imageio.imwrite(os.path.join(basedir, f'image_{view}', f'{rel_idx:05d}.png'), rgb)
+        imageio.imwrite(os.path.join(basedir, f'acc_{view}', f'{rel_idx:05d}.png'), acc)
+        imageio.imwrite(os.path.join(basedir, f'skel_{view}', f'{rel_idx:05d}.png'), skel)
     
     #import ipdb; ipdb.set_trace()
     np.save(os.path.join(basedir, 'bboxes.npy'), bboxes, allow_pickle=True)
