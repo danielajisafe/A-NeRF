@@ -326,6 +326,9 @@ def render_testset(poses, hwf, args, render_kwargs, kps=None, skts=None, cyls=No
                                                      cams=cams, subject_idxs=subject_idxs, render_factor=args.render_factor,
                                                      ext_scale=args.ext_scale, white_bkgd=args.white_bkgd, index=index,
                                                      args=args)
+
+    
+
     render_kwargs["ray_caster"].train()
     if save_image:
         print("Warning: this is super hacky. Should terminate in the right way.")
