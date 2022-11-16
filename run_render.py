@@ -4,6 +4,7 @@ import shutil
 import imageio
 import numpy as np
 import deepdish as dd
+import matplotlib.pyplot as plt
 from run_nerf import render_path
 from run_nerf import config_parser as nerf_config_parser
 
@@ -13,7 +14,7 @@ from core.raycasters import create_raycaster
 
 from core.utils.evaluation_helpers import txt_to_argstring
 from core.utils.skeleton_utils import CMUSkeleton, smpl_rest_pose, get_smpl_l2ws, get_per_joint_coords
-from core.utils.skeleton_utils import draw_skeletons_3d, rotate_x, rotate_y, axisang_to_rot, rot_to_axisang
+from core.utils.skeleton_utils import draw_skeletons_3d, rotate_x, rotate_y, axisang_to_rot, rot_to_axisang, plot_bbox2D
 from pytorch_msssim import SSIM
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -391,8 +392,10 @@ def init_catalog(args, n_bullet=3):
     elif view ==5:
         easy_idx = [50, 200, 1000, 1200]
     else:
-        easy_idx = np.arange(0, args.train_len, 3) #args.selected_idxs #[0, 465, 700] #tim 0 1093  not sure
-        args.selected_idxs = easy_idx
+        # easy_idx = np.arange(0, args.train_len, 3) 
+        # args.selected_idxs = easy_idx
+
+        easy_idx = args.selected_idxs #[0, 815, 700] #tim 0 1093  not sure
         #import ipdb; ipdb.set_trace()
 
     #easy_idx = [0, 465, 473, 467, 1467] # [10, 70, 350, 420, 490, 910, 980, 1050] #np.arange(0, args.train_len)
@@ -402,7 +405,7 @@ def init_catalog(args, n_bullet=3):
         'retarget': set_dict(easy_idx, length=25, skip=2, center_kps=True),
         'bullet': set_dict(easy_idx, n_bullet=args.n_bullet),
         'bubble': set_dict(easy_idx, n_step=30),
-        'mesh': set_dict([0], length=1, skip=1),
+        'mesh': set_dict(easy_idx, length=1, skip=1),
     }
 
     # TODO: create validation indices
@@ -1205,6 +1208,17 @@ def run_render():
                                       ret_acc=True,
                                       white_bkgd=args.white_bkgd,
                                       **tensor_data)
+
+    #import ipdb; ipdb.set_trace()
+    '''check the boxes'''
+    
+    # first = 0
+    # chk_img = rgbs[first]
+    # plt.imshow(chk_img); plt.axis("off")
+    # plot_bbox2D(bboxes[first], plt=plt, color="green")
+
+    # plt.savefig(f"/scratch/dajisafe/smpl/A_temp_folder/A-NeRF/checkers/imgs/clean_with_bbox2D.jpg", dpi=150, bbox_inches='tight', pad_inches = 0)
+    # import ipdb; ipdb.set_trace()
 
     if gt_dict['gt_paths'] is not None:
         if args.eval:

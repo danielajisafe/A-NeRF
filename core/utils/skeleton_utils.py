@@ -34,6 +34,21 @@ from extras import KinematicChain
 #     # ref: VisualAILab
 #     return np.array([joint_names.index(i) for i in joint_parents])
 
+def plot_bbox2D(bbox, plt,color="red", linewidth=1.0):
+        # https://stackoverflow.com/a/72793114
+
+        tl, br = bbox
+        # Create figure and axes
+        #fig, ax = plt.subplots()
+
+        # Coordinates of rectangle vertices
+        # in clockwise order
+        xs = [tl[0], br[0], br[0], tl[0], tl[0]]
+        ys = [tl[1], tl[1], br[1], br[1], tl[1]]
+        plt.plot(xs, ys, color=color, linewidth=linewidth)
+
+        return plt
+        
 def normalize_batch_normal(n):
     assert len(n.shape)==2, "shape is not 2-dim or size 2"
     eps=1e-36
