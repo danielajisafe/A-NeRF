@@ -4,6 +4,7 @@ import shutil
 import imageio
 import numpy as np
 import deepdish as dd
+from tqdm import tqdm, trange
 import matplotlib.pyplot as plt
 from run_nerf import render_path
 from run_nerf import config_parser as nerf_config_parser
@@ -392,10 +393,10 @@ def init_catalog(args, n_bullet=3):
     elif view ==5:
         easy_idx = [50, 200, 1000, 1200]
     else:
-        # easy_idx = np.arange(0, args.train_len, 3) 
-        # args.selected_idxs = easy_idx
+        #easy_idx = np.arange(0, args.train_len) 
+        args.selected_idxs = easy_idx
 
-        easy_idx = args.selected_idxs #[0, 815, 700] #tim 0 1093  not sure
+        #easy_idx = args.selected_idxs #[0, 815, 700] #tim 0 1093  not sure
         #import ipdb; ipdb.set_trace()
 
     #easy_idx = [0, 465, 473, 467, 1467] # [10, 70, 350, 420, 490, 910, 980, 1050] #np.arange(0, args.train_len)
@@ -842,6 +843,29 @@ def load_bullettime(pose_h5, c2ws, focals, rest_pose, pose_keys,
     cam_idxs = selected_idxs[:, None].repeat(n_bullet, 1).reshape(-1)
     
 
+    
+    """
+    H, W, C = 1080,1920,3
+    from core.utils.skeleton_utils import draw_skeletons_3d
+    import imageio, h5py
+    #import ipdb; ipdb.set_trace()
+
+    dataset = h5py.File(pose_h5, 'r')
+    n_kps = kps.shape[0]
+    for idx in trange(n_kps):
+        img = dataset['imgs'][idx].reshape(H, W, 3)
+        center = dataset['centers'][idx]
+        focal = focals[idx]
+        c2w = c2ws[idx]
+        # msk = self.dataset['sampling_masks'][idx].reshape(H, W, 1)
+        # img = img.copy() * msk.copy()
+
+        skel_img = draw_skeletons_3d(img[None], kps[idx:idx+1], c2w[None], H, W, focal[None], center[None])
+        #skel_img = draw_skeletons_3d(img[None], kps[idx], c2w[None], H, W, focal[None], center[None])
+        imageio.imwrite(f'/scratch/dajisafe/smpl/A_temp_folder/A-NeRF/checkers/refined_overlay/tim_finetune/{idx:08d}.png', skel_img.reshape(H, W, 3))
+        #print(cam_idxs)
+    """
+
     #import ipdb; ipdb.set_trace()
     #from dan_compute_eval import eval_opt_kp
 
@@ -1245,9 +1269,9 @@ def run_render():
     os.makedirs(os.path.join(basedir, f'skel_{view}'), exist_ok=True)
     os.makedirs(os.path.join(basedir, f'acc_{view}'), exist_ok=True)
 
-    real_ids = args.selected_idxs
+    #real_ids = args.selected_idxs
     for i, (rgb, acc, skel) in enumerate(zip(rgbs, accs, skeletons)):
-        rel_idx = real_ids[i]
+        rel_idx = i #real_ids[i]
         imageio.imwrite(os.path.join(basedir, f'image_{view}', f'{rel_idx:05d}.png'), rgb)
         imageio.imwrite(os.path.join(basedir, f'acc_{view}', f'{rel_idx:05d}.png'), acc)
         imageio.imwrite(os.path.join(basedir, f'skel_{view}', f'{rel_idx:05d}.png'), skel)
