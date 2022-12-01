@@ -94,12 +94,12 @@ def kp_to_valid_rays(poses, H, W, focal, kps=None, cylinder_params=None,
         assert kps is not None
         kps_np = kps.cpu().numpy()
         #expand_ratio = 1.10
-        bot_expand_ratio = 1.10
+        bot_expand_ratio = 0.0 # 1.10
         # For MonoPerfCap Evaluation
-        top_expand_ratio = 1.60
+        top_expand_ratio = 0.0 # 1.60
         # For Surreal
         #top_expand_ratio = 1.10
-        extend_mm = 250
+        extend_mm = 150 #250
 
         # neuralbody
         #bot_expand_ratio = 1.0

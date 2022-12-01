@@ -1033,7 +1033,7 @@ def load_bullettime(pose_h5, c2ws, focals, rest_pose, pose_keys,
         selected_idxs = find_idxs_with_map(selected_idxs, idx_map)
         if args.switch_cam:
             print("are you using the right data path for pose_h5?")
-            ipdb.set_trace()
+            #ipdb.set_trace()
     else:
         selected_idxs = find_idxs_with_map(selected_idxs, idx_map)
         kps, bones = refined
@@ -1448,7 +1448,7 @@ def run_render():
         I_render = I_bgkd + I_image
 
         # plt.imshow(I_render[0]); plt.axis("off")
-        # plt.savefig(f"/scratch/st-rhodin-1/users/dajisafe/anerf_mirr/A-NeRF/checkers/imgs/to_be_del_a_img.jpg", dpi=300, bbox_inches='tight', pad_inches = 0)
+        # plt.savefig(f"/scratch/dajisafe/smpl/A_temp_folder/A-NeRF/checkers/imgs/to_be_del_a_img.jpg", dpi=300, bbox_inches='tight', pad_inches = 0)
         # import ipdb; ipdb.set_trace() 
         
         #blended_img = (img1*alpha + img2*beta) + gamma
@@ -1551,16 +1551,18 @@ def run_render():
     if not args.white_bkgd:    
         '''converts from [0,1] float64bits (2^64) to [0,255] unsigned 8bits (2^8) - losses information
         due to quantization'''
-        rgbs = (rgbs * 255).astype(np.uint8)
-        accs = (accs * 255).astype(np.uint8)
+        pass
+        # rgbs = (rgbs * 255).astype(np.uint8)
+        # accs = (accs * 255).astype(np.uint8)
         #skeletons = (skeletons * 255).astype(np.uint8)
 
     else: 
         '''if white background''' 
         # I convert to np.uint8 but the red skeleton becomes white. imageio converts internally, red skeleton looks okay.
 
-        rgbs = (rgbs * 255)
-        accs = (accs * 255)
+        pass
+        # rgbs = (rgbs * 255)
+        # accs = (accs * 255)
         #skeletons = (skeletons * 255)
 
 
