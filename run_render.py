@@ -1,3 +1,6 @@
+MIRROR ANERF
+
+
 import os
 import cv2
 import time
@@ -270,35 +273,35 @@ def load_render_data(args, nerf_args, poseopt_layer=None, opt_framecode=True):
                                                                  **render_data)
     elif args.render_type == 'bullet':
         # resp = input("do you want to evaluate, yes or no ?")
-        if args.evaluate_pose:
-            print(f'Load data for evaluation!')
-            kps, skts, c2ws, cam_idxs, focals, bones = eval_bullettime_kps(data_h5, c2ws, focals,
+        # if args.evaluate_pose:
+        #     print(f'Load data for evaluation!')
+        #     kps, skts, c2ws, cam_idxs, focals, bones = eval_bullettime_kps(data_h5, c2ws, focals,
+        #                                                             rest_pose, pose_keys,
+        #                                                             #centers=centers_n,
+        #                                                             **render_data)
+        # else:
+        print(f'Load data for bullet time effect!')
+        if args.switch_cam:
+            '''only c2ws changes'''
+            v_focals = focals.copy()
+            kps, skts, c2ws, cam_idxs, focals, bones, root = load_bullettime(data_h5, c2ws, focals,
                                                                     rest_pose, pose_keys,
                                                                     #centers=centers_n,
                                                                     **render_data)
-        else:
-            print(f'Load data for bullet time effect!')
-            if args.switch_cam:
-                '''only c2ws changes'''
-                v_focals = focals.copy()
-                kps, skts, c2ws, cam_idxs, focals, bones, root = load_bullettime(data_h5, c2ws, focals,
-                                                                        rest_pose, pose_keys,
-                                                                        #centers=centers_n,
-                                                                        **render_data)
-                #ipdb.set_trace()
-                _, _, c2ws_virt, _, _, _, _ = load_bullettime(data_h5, v_cam, v_focals,
-                                                                        rest_pose, pose_keys,
-                                                                        #centers=centers_n,
-                                                                        **render_data)
-                # combined real and virt rendering
-                #ipdb.set_trace()
-                c2ws = np.concatenate([c2ws, c2ws_virt])
+            #ipdb.set_trace()
+            _, _, c2ws_virt, _, _, _, _ = load_bullettime(data_h5, v_cam, v_focals,
+                                                                    rest_pose, pose_keys,
+                                                                    #centers=centers_n,
+                                                                    **render_data)
+            # combined real and virt rendering
+            #ipdb.set_trace()
+            c2ws = np.concatenate([c2ws, c2ws_virt])
 
-            else:
-                kps, skts, c2ws, cam_idxs, focals, bones, root = load_bullettime(data_h5, c2ws, focals,
-                                                                    rest_pose, pose_keys,
-                                                                    #centers=centers_n,
-                                                                    **render_data)
+        else:
+            kps, skts, c2ws, cam_idxs, focals, bones, root = load_bullettime(data_h5, c2ws, focals,
+                                                                rest_pose, pose_keys,
+                                                                #centers=centers_n,
+                                                                **render_data)
 
         #import ipdb; ipdb.set_trace()
     elif args.render_type == 'poserot':
@@ -504,7 +507,8 @@ def init_catalog(args, n_bullet=3):
     #import ipdb; ipdb.set_trace()
     #rebuttal_tim = np.arange(800,1178) #[992,1027,1041,1087,1088,1133,1134,1172,1175] #[449,624,644,680,705,746,998,1170,1,209,212,250,280,340,368,369,406,428,438,993]  #np.arange(0, 500) #[500] #1177, 814]
     if args.evaluate_pose:
-        easy_idx = np.arange(0, args.train_len)
+        easy_idx = np.arange(0, args.train_len, 20)
+        args.selected_idxs = easy_idx
     else: #render
         easy_idx = args.selected_idxs #[0] #rebuttal_tim #[406,466,340,600,900,814] # #[0, 465, 473, 467, 1467] # [10, 70, 350, 420, 490, 910, 980, 1050] #np.arange(0, args.train_len)
     
@@ -1321,8 +1325,7 @@ def run_render():
     #import ipdb; ipdb.set_trace()
     time = datetime.datetime.now().strftime("%Y-%m-%d-%H") # ("%Y-%m-%d-%H-%M-%S")
 
-    import ipdb; ipdb.set_trace()
-    comb = args.data_path.split("/")[-3]
+    comb = args.data_path.split("/")[-2]
     view = comb.split("_cam_")[1]
     print(f"camera: {view} comb: {comb}")
 
@@ -1556,31 +1559,42 @@ def run_render():
     if not args.white_bkgd:    
         '''converts from [0,1] float64bits (2^64) to [0,255] unsigned 8bits (2^8) - losses information
         due to quantization'''
-        rgbs = (rgbs * 255).astype(np.uint8)
-        accs = (accs * 255).astype(np.uint8)
+        # rgbs = (rgbs * 255).astype(np.uint8)
+        # accs = (accs * 255).astype(np.uint8)
         #skeletons = (skeletons * 255).astype(np.uint8)
 
     else: 
         '''if white background''' 
         # I convert to np.uint8 but the red skeleton becomes white. imageio converts internally, red skeleton looks okay.
+        pass
 
-        rgbs = (rgbs * 255)
-        accs = (accs * 255)
+        # rgbs = (rgbs * 255)
+        # accs = (accs * 255)
         #skeletons = (skeletons * 255)
 
 
     #ipdb.set_trace()
     # overlay on body reconstruction
-    skel_stage1 = draw_skeletons_3d(rgbs, render_data['kp'],
-                                  render_data['render_poses'][:half_size],
-                                  *render_data['hwf'])
+    if args.switch_cam:
+        # overlay on body reconstruction
+        skel_stage1 = draw_skeletons_3d(rgbs, render_data['kp'],
+                                    render_data['render_poses'][:half_size],
+                                    *render_data['hwf'])
 
-    skeletons = draw_skeletons_3d(skel_stage1, render_data['kp'],
-                                  render_data['render_poses'][half_size:],
-                                  *render_data['hwf'])
+        skeletons = draw_skeletons_3d(skel_stage1, render_data['kp'],
+                                    render_data['render_poses'][half_size:],
+                                    *render_data['hwf'])
+    
+    else:
+        skeletons = draw_skeletons_3d(rgbs, render_data['kp'],
+                                    render_data['render_poses'],
+                                    *render_data['hwf'])
 
     #ipdb.set_trace()
+    real_ids = args.selected_idxs
     for i, (rgb, acc, skel) in enumerate(zip(rgbs, accs, skeletons)):
+        #rel_idx = i
+        rel_idx = real_ids[i]
         #print(f"i {i}")
         '''temp addition to the filename here'''
 
@@ -1597,7 +1611,7 @@ def run_render():
         #ipdb.set_trace()
 
         #-----------------------------------------------
-        rel_idx = i
+        # rel_idx = i
         # plot overlay on volumetric reconstruction 
         #print(f"rgb {rgb.shape}")
         imageio.imwrite(os.path.join(basedir, time, f'image_{view}', f'{rel_idx:05d}.png'), rgb)
