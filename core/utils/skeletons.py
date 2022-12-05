@@ -44,7 +44,7 @@ CMUSkeleton = Skeleton(
 
 
 def plot_skeleton3d(skel, fig=None, skel_id=None, skel_type=CMUSkeleton,
-                    cam_loc=None, layout_kwargs=None, line_type=None, color = None, line_width=4,
+                    cam_loc=None, layout_kwargs=None, line_type=None, color = None, line_width=2,
                     marker_size=3, hoverlabel = None, Ext_trans = None, skel_name = None,
                     view=None, axes=None, low_lim=-7000, up_lim=7000, joint_names=None,
                     joint_parents=None, init_type=None):
@@ -151,7 +151,7 @@ def plot_skeleton3d(skel, fig=None, skel_id=None, skel_type=CMUSkeleton,
                             text=l_joint_names, opacity=1.0)
 
         points_right = go.Scatter3d(x=d_rlx, y=d_rly, z=d_rlz, mode="markers", marker=dict(size=marker_size),
-                            line=dict(color="red"),   #line=dict(color="blue"),
+                            line=dict(color="blue"),   #line=dict(color="blue"),
                             text=r_joint_names, opacity=1.0)
 
     else:
@@ -160,13 +160,14 @@ def plot_skeleton3d(skel, fig=None, skel_id=None, skel_type=CMUSkeleton,
                           text=joint_names, opacity=1.0)
     # ----------------------------------------------------------------------- 
     # Plot lines
-    color = "teal"; line_type = "solid"
+    color = "teal"; 
+    line_type = "solid"
     center_lines = go.Scatter3d(x=clx, y=cly, z=clz, mode="lines",
                                 text = [hoverlabel],
                                 line=dict(dash = line_type, color= color, width=line_width),
                                 hoverinfo="all", opacity=1.0)
     #if color is None:
-    color = "green"
+    color = "blue"
     left_lines = go.Scatter3d(x=llx, y=lly, z=llz, mode="lines",
                               text = [hoverlabel],
                               line=dict(dash = line_type, color= color, width=line_width),

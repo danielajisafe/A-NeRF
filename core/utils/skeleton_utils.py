@@ -1039,7 +1039,7 @@ def plot_skeleton3d(skel, fig=None, skel_id=None, skel_type=None,
         for d in data:
             fig.add_trace(d)
 
-    camera = dict(up=dict(x=0, y=1, z=0))
+    camera = dict(up=dict(x=0, y=-1, z=0))
     if cam_loc is not None:
         camera['eye'] = dict(x=cam_loc[0], y=cam_loc[1], z=cam_loc[2])
     fig.update_layout(scene_camera=camera)
@@ -1363,7 +1363,7 @@ def create_plane(x=None, y=None, z=None, length_x=10., length_y=5,
 def dist_to_joints(kp3d, pts):
     return np.linalg.norm(pts[:, None, :] - kp3d[None], axis=-1)
 
-def plot_bounding_cylinder(kp, cylinder_params=None, fig=None, **kwargs):
+def plot_bounding_cylinder(kp, cylinder_params=None, fig=None, opacity=0.3, **kwargs):
     if cylinder_params is None:
         cylinder_params = get_kp_bounding_cylinder(kp, **kwargs)
 
@@ -1390,9 +1390,9 @@ def plot_bounding_cylinder(kp, cylinder_params=None, fig=None, **kwargs):
     bot_y = y_bot.tolist() + [None]
     bot_z = z.tolist() + [None]
 
-    top_cap = go.Scatter3d(x=top_x, y=top_y, z=top_z, mode="lines",
+    top_cap = go.Scatter3d(x=top_x, y=top_y, z=top_z, mode="lines", opacity=opacity,
                         line=dict(color="red", width=2))
-    bot_cap = go.Scatter3d(x=bot_x, y=bot_y, z=bot_z, mode="lines",
+    bot_cap = go.Scatter3d(x=bot_x, y=bot_y, z=bot_z, mode="lines", opacity=opacity,
                         line=dict(color="blue", width=2))
     data = [top_cap, bot_cap]
     if fig is None:

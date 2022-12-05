@@ -552,6 +552,7 @@ class Trainer:
                     bgs = bgs_masked + rgb_pred_ref_masked
                     bgs = bgs.reshape(-1, 3)
 
+            #ipdb.set_trace()
             rgb_pred = rgb_pred + (1. - acc_pred)[..., None] * bgs
 
         # TODO:
