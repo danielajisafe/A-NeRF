@@ -1590,8 +1590,8 @@ def run_render():
     #ipdb.set_trace()
     real_ids = args.selected_idxs
     for i, (rgb, acc, skel) in enumerate(zip(rgbs, accs, skeletons)):
-        #rel_idx = i
-        rel_idx = real_ids[i]
+        rel_idx = i
+        #rel_idx = real_ids[i]
         #print(f"i {i}")
         '''temp addition to the filename here'''
 
