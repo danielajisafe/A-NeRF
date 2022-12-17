@@ -633,10 +633,17 @@ class BaseH5Dataset(Dataset):
      
         # plt.imshow(img_after.reshape(*self.HW,3).astype(np.float32)); plt.axis("off")
         # plt.savefig(f"/scratch/dajisafe/smpl/A_temp_folder/A-NeRF/checkers/imgs/img_compose_real_img_after.jpg", dpi=300, bbox_inches='tight', pad_inches = 0)
-     
 
-        #ipdb.set_trace()
-        # plt.imshow(img.reshape(*self.HW,3).astype(np.float32) / 255.); plt.axis("off")
+        # img = dataset['imgs'][idx].reshape(1080,1920,3)
+        # masked_real = img * real_mask_v.reshape(1080,1920,1)
+        # masked_img = img * (real_mask_v.reshape(1080,1920,1) + real_mask.reshape(1080,1920,1))
+        # # real_mask_v = dataset_v['masks'][idx]
+        # # plt.imshow(comb_mask.reshape(1080,1920,1))
+        # real_mask_v = (real_mask_v > 0.5).astype(np.int_)
+        # url = f"/scratch/dajisafe/smpl/A_temp_folder/A-NeRF/checkers/imgs/img0_real_mask.jpg"
+        # plt.savefig(f"/scratch/dajisafe/smpl/A_temp_folder/A-NeRF/checkers/imgs/img0_comb_mask.jpg", dpi=300, bbox_inches='tight', pad_inches = 0)
+        # ipdb.set_trace()
+        # # plt.imshow(img.reshape(*self.HW,3).astype(np.float32) / 255.); plt.axis("off")
         # plt.savefig(f"/scratch/dajisafe/smpl/A_temp_folder/A-NeRF/checkers/imgs/img_compose.jpg", dpi=300, bbox_inches='tight', pad_inches = 0)
         # ipdb.set_trace()
         return img, fg, bg
