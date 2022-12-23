@@ -1,3 +1,5 @@
+
+
 import os
 import cv2
 import time
@@ -269,36 +271,36 @@ def load_render_data(args, nerf_args, poseopt_layer=None, opt_framecode=True):
                                                                  rest_pose, pose_keys,
                                                                  **render_data)
     elif args.render_type == 'bullet':
-        # resp = input("do you want to evaluate, yes or no ?")
-        # if args.evaluate_pose:
-        #     print(f'Load data for evaluation!')
-        #     kps, skts, c2ws, cam_idxs, focals, bones = eval_bullettime_kps(data_h5, c2ws, focals,
-        #                                                             rest_pose, pose_keys,
-        #                                                             #centers=centers_n,
-        #                                                             **render_data)
-        # else:
-        print(f'Load data for bullet time effect!')
-        if args.switch_cam:
-            '''only c2ws changes'''
-            v_focals = focals.copy()
-            kps, skts, c2ws, cam_idxs, focals, bones, root = load_bullettime(data_h5, c2ws, focals,
+        resp = input("do you want to evaluate, yes or no ?")
+        if args.evaluate_pose:
+            print(f'Load data for evaluation!')
+            kps, skts, c2ws, cam_idxs, focals, bones = eval_bullettime_kps(data_h5, c2ws, focals,
                                                                     rest_pose, pose_keys,
                                                                     #centers=centers_n,
                                                                     **render_data)
-            #ipdb.set_trace()
-            _, _, c2ws_virt, _, _, _, _ = load_bullettime(data_h5, v_cam, v_focals,
-                                                                    rest_pose, pose_keys,
-                                                                    #centers=centers_n,
-                                                                    **render_data)
-            # combined real and virt rendering
-            #ipdb.set_trace()
-            c2ws = np.concatenate([c2ws, c2ws_virt])
-
         else:
-            kps, skts, c2ws, cam_idxs, focals, bones, root = load_bullettime(data_h5, c2ws, focals,
-                                                                rest_pose, pose_keys,
-                                                                #centers=centers_n,
-                                                                **render_data)
+            print(f'Load data for bullet time effect!')
+            if args.switch_cam:
+                '''only c2ws changes'''
+                v_focals = focals.copy()
+                kps, skts, c2ws, cam_idxs, focals, bones, root = load_bullettime(data_h5, c2ws, focals,
+                                                                        rest_pose, pose_keys,
+                                                                        #centers=centers_n,
+                                                                        **render_data)
+                #ipdb.set_trace()
+                _, _, c2ws_virt, _, _, _, _ = load_bullettime(data_h5, v_cam, v_focals,
+                                                                        rest_pose, pose_keys,
+                                                                        #centers=centers_n,
+                                                                        **render_data)
+                # combined real and virt rendering
+                #ipdb.set_trace()
+                c2ws = np.concatenate([c2ws, c2ws_virt])
+
+            else:
+                kps, skts, c2ws, cam_idxs, focals, bones, root = load_bullettime(data_h5, c2ws, focals,
+                                                                    rest_pose, pose_keys,
+                                                                    #centers=centers_n,
+                                                                    **render_data)
 
         #import ipdb; ipdb.set_trace()
     elif args.render_type == 'poserot':
@@ -504,7 +506,7 @@ def init_catalog(args, n_bullet=3):
     #import ipdb; ipdb.set_trace()
     #rebuttal_tim = np.arange(800,1178) #[992,1027,1041,1087,1088,1133,1134,1172,1175] #[449,624,644,680,705,746,998,1170,1,209,212,250,280,340,368,369,406,428,438,993]  #np.arange(0, 500) #[500] #1177, 814]
     if args.evaluate_pose:
-        easy_idx = np.arange(0, args.train_len, 20)
+        easy_idx = np.arange(0, args.train_len)
         args.selected_idxs = easy_idx
     else: #render
         easy_idx = args.selected_idxs #[0] #rebuttal_tim #[406,466,340,600,900,814] # #[0, 465, 473, 467, 1467] # [10, 70, 350, 420, 490, 910, 980, 1050] #np.arange(0, args.train_len)
@@ -948,6 +950,7 @@ def eval_bullettime_kps(pose_h5, c2ws, focals, rest_pose, pose_keys,
     # prepare pose
     # TODO: hard-coded for now so we can quickly view the outcomes!
     if refined is None:
+        _ = input("using initial poses")
         kps, bones = dd.io.load(pose_h5, pose_keys, sel=dd.aslice[selected_idxs, ...])
         selected_idxs = find_idxs_with_map(selected_idxs, idx_map)
     else:
