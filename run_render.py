@@ -2,6 +2,7 @@ import os
 import torch
 import shutil
 import imageio
+import datetime
 import numpy as np
 import deepdish as dd
 from tqdm import tqdm, trange
@@ -51,6 +52,8 @@ def config_parser():
                         help='input data directory')
     parser.add_argument('--n_bullet', type=int, default=3,
                         help='no of bullet views to render')
+    parser.add_argument('--bullet_ang', type=int, default=360,
+                        help='angle of novel bullet view to render')
 
     parser.add_argument('--entry', type=str, required=True,
                         help='entry in the dataset catalog to render')
@@ -327,6 +330,7 @@ def load_render_data(args, nerf_args, poseopt_layer=None, opt_framecode=True):
 
 def init_catalog(args, n_bullet=3):
     n_bullet = args.n_bullet
+    bullet_ang = args.bullet_ang
     #import ipdb; ipdb.set_trace()
 
     RenderCatalog = {
@@ -394,9 +398,9 @@ def init_catalog(args, n_bullet=3):
         easy_idx = [50, 200, 1000, 1200]
     else:
         #easy_idx = np.arange(0, args.train_len) 
-        args.selected_idxs = easy_idx
+        #args.selected_idxs = easy_idx
 
-        #easy_idx = args.selected_idxs #[0, 815, 700] #tim 0 1093  not sure
+        easy_idx = args.selected_idxs #tim data idx[0, 815, 700] # origin idx 0 1095 1223
         #import ipdb; ipdb.set_trace()
 
     #easy_idx = [0, 465, 473, 467, 1467] # [10, 70, 350, 420, 490, 910, 980, 1050] #np.arange(0, args.train_len)
@@ -404,7 +408,7 @@ def init_catalog(args, n_bullet=3):
         'data_h5': args.data_path + '/mirror_train_h5py.h5',
         'data_h5_v': args.data_path + '/v_mirror_train_h5py.h5',
         'retarget': set_dict(easy_idx, length=25, skip=2, center_kps=True),
-        'bullet': set_dict(easy_idx, n_bullet=args.n_bullet),
+        'bullet': set_dict(easy_idx, n_bullet=args.n_bullet, bullet_ang=args.bullet_ang),
         'bubble': set_dict(easy_idx, n_step=30),
         'mesh': set_dict(easy_idx, length=1, skip=1),
     }
@@ -813,7 +817,7 @@ def load_interpolate(pose_h5, c2ws, focals, rest_pose, pose_keys,
 
 
 def load_bullettime(pose_h5, c2ws, focals, rest_pose, pose_keys,
-                    selected_idxs, refined=None, n_bullet=30, 
+                    selected_idxs, refined=None, n_bullet=30, bullet_ang=360,
                     #centers=None,
                     undo_rot=False, center_cam=True, center_kps=True,
                     idx_map=None):
@@ -880,15 +884,16 @@ def load_bullettime(pose_h5, c2ws, focals, rest_pose, pose_keys,
     # short
     # {'mpjpe_in_mm': 105.09, 'n_mpjpe_in_mm': 60.16, 'pmpjpe_in_mm': 41.67, 'No_of_evaluations': '11/18', 'rec_eval_pts': array([   0,  100,  200,  300,  400,  500,  600,  700,  800,  900, 1000]), 'gt_eval_pts': array([   0,  100,  200,  300,  400,  500,  600,  700,  800,  900, 1000])}
 
-    # # 6
+    # 6
+    
     # python run_render.py --nerf_args logs/mirror/pose_opt_model/-2022-05-16-02-23-39/args.txt --ckptpath logs/mirror/pose_opt_model/-2022-05-16-02-23-39/102000.tar --dataset mirror --entry easy --render_type bullet --runname mirror_bullet --selected_framecode 0 --white_bkgd --selected_idxs 0 --render_refined --data_path ./data/mirror/6/ea8ddac0-6837-4434-b03a-09316277a4aa_cam_6/2022-05-14-13 --n_bullet 4
-    # # python run_render.py --nerf_args logs/mirror/pose_opt_model/-2022-05-16-02-23-39/args.txt --ckptpath logs/mirror/pose_opt_model/-2022-05-16-02-23-39/102000.tar --dataset mirror --entry easy --render_type bullet --runname mirror_bullet --selected_framecode 0 --white_bkgd --selected_idxs 0 --render_refined --data_path ./data/mirror/6/ea8ddac0-6837-4434-b03a-09316277a4aa_cam_6/2022-05-14-13 --n_bullet 1 --train_len 1620
-    # comb="ea8ddac0-6837-4434-b03a-09316277a4aa_cam_6" # 2022-05-16-02-23-39
-    # rec_eval_pts = [0, 100, 200, 300, 400, 500, 599, 699, 799, 899, 999, 1099, 1199, 1299, 1399, 1499, 1599, 1699]
-    # gt_eval_pts = [0, 100, 200, 300, 400, 500, 600, 700, 800, 900, 1000, 1100, 1200, 1300, 1400, 1500, 1600, 1700]
-    # # 'mpjpe_in_mm': 70.0, 'n_mpjpe_in_mm': 56.43, 'pmpjpe_in_mm': 40.18
-    # # short
-    # # {'mpjpe_in_mm': 70.25, 'n_mpjpe_in_mm': 56.58, 'pmpjpe_in_mm': 40.21, 'No_of_evaluations': '11/18', 'rec_eval_pts': array([  0, 100, 200, 300, 400, 500, 599, 699, 799, 899, 999]), 'gt_eval_pts': array([   0,  100,  200,  300,  400,  500,  600,  700,  800,  900, 1000])}
+    # python run_render.py --nerf_args logs/mirror/pose_opt_model/-2022-05-16-02-23-39/args.txt --ckptpath logs/mirror/pose_opt_model/-2022-05-16-02-23-39/102000.tar --dataset mirror --entry easy --render_type bullet --runname mirror_bullet --selected_framecode 0 --white_bkgd --selected_idxs 0 --render_refined --data_path ./data/mirror/6/ea8ddac0-6837-4434-b03a-09316277a4aa_cam_6/2022-05-14-13 --n_bullet 1 --train_len 1620
+    comb="ea8ddac0-6837-4434-b03a-09316277a4aa_cam_6" # 2022-05-16-02-23-39
+    rec_eval_pts = [0, 100, 200, 300, 400, 500, 599, 699, 799, 899, 999, 1099, 1199, 1299, 1399, 1499, 1599, 1699]
+    gt_eval_pts = [0, 100, 200, 300, 400, 500, 600, 700, 800, 900, 1000, 1100, 1200, 1300, 1400, 1500, 1600, 1700]
+    # 'mpjpe_in_mm': 70.0, 'n_mpjpe_in_mm': 56.43, 'pmpjpe_in_mm': 40.18
+    # short
+    # {'mpjpe_in_mm': 70.25, 'n_mpjpe_in_mm': 56.58, 'pmpjpe_in_mm': 40.21, 'No_of_evaluations': '11/18', 'rec_eval_pts': array([  0, 100, 200, 300, 400, 500, 599, 699, 799, 899, 999]), 'gt_eval_pts': array([   0,  100,  200,  300,  400,  500,  600,  700,  800,  900, 1000])}
 
     
 
@@ -945,7 +950,7 @@ def load_bullettime(pose_h5, c2ws, focals, rest_pose, pose_keys,
         kps[..., :, 1] -= shift_y[:, None]
 
     #import ipdb; ipdb.set_trace()
-    c2ws = generate_bullet_time(c2ws, n_bullet).transpose(1, 0, 2, 3).reshape(-1, 4, 4)
+    c2ws = generate_bullet_time(c2ws, n_views=n_bullet, bullet_ang=bullet_ang).transpose(1, 0, 2, 3).reshape(-1, 4, 4)
 
     if isinstance(focals, float):
         focals = np.array([focals] * len(selected_idxs))
@@ -1085,7 +1090,7 @@ def to_tensors(data_dict):
             raise NotImplementedError(f"{k}: only nparray and hwf are handled now!")
     return tensor_dict
 
-def evaluate_metric(rgbs, accs, bboxes, gt_dict, basedir):
+def evaluate_metric(rgbs, accs, bboxes, gt_dict, basedir, time=None):
     '''
     Always evaluate in the box
     '''
@@ -1199,6 +1204,8 @@ def run_render():
     view = comb.split("_cam_")[1]
     print(f"camera: {view} comb: {comb}")
 
+    time = datetime.datetime.now().strftime("%Y-%m-%d-%H") # ("%Y-%m-%d-%H-%M-%S")
+
     
     # update data_path
     if args.dataset== 'mirror':
@@ -1222,7 +1229,7 @@ def run_render():
     basedir = os.path.join(args.outputdir, args.runname)
     os.makedirs(basedir, exist_ok=True)
     if args.render_type == 'mesh':
-        render_mesh(basedir, render_kwargs, tensor_data, res=args.mesh_res, chunk=nerf_args.chunk)
+        render_mesh(basedir, render_kwargs, tensor_data, res=args.mesh_res, chunk=nerf_args.chunk, time=time)
         return
 
     #import ipdb; ipdb.set_trace()
@@ -1246,7 +1253,7 @@ def run_render():
 
     if gt_dict['gt_paths'] is not None:
         if args.eval:
-            evaluate_metric(rgbs, accs, bboxes, gt_dict, basedir)
+            evaluate_metric(rgbs, accs, bboxes, gt_dict, basedir, time)
             pass
 
         elif args.save_gt and gt_dict['is_gt_paths']:
@@ -1265,19 +1272,19 @@ def run_render():
                                   *render_data['hwf'])
 
 
-    os.makedirs(os.path.join(basedir, f'image_{view}'), exist_ok=True)
-    os.makedirs(os.path.join(basedir, f'skel_{view}'), exist_ok=True)
-    os.makedirs(os.path.join(basedir, f'acc_{view}'), exist_ok=True)
+    os.makedirs(os.path.join(basedir, time, f'image_{view}'), exist_ok=True)
+    os.makedirs(os.path.join(basedir, time, f'skel_{view}'), exist_ok=True)
+    os.makedirs(os.path.join(basedir, time, f'acc_{view}'), exist_ok=True)
 
     #real_ids = args.selected_idxs
     for i, (rgb, acc, skel) in enumerate(zip(rgbs, accs, skeletons)):
         rel_idx = i #real_ids[i]
-        imageio.imwrite(os.path.join(basedir, f'image_{view}', f'{rel_idx:05d}.png'), rgb)
-        imageio.imwrite(os.path.join(basedir, f'acc_{view}', f'{rel_idx:05d}.png'), acc)
-        imageio.imwrite(os.path.join(basedir, f'skel_{view}', f'{rel_idx:05d}.png'), skel)
+        imageio.imwrite(os.path.join(basedir, time, f'image_{view}', f'{rel_idx:05d}.png'), rgb)
+        imageio.imwrite(os.path.join(basedir, time, f'acc_{view}', f'{rel_idx:05d}.png'), acc)
+        imageio.imwrite(os.path.join(basedir, time, f'skel_{view}', f'{rel_idx:05d}.png'), skel)
     
     #import ipdb; ipdb.set_trace()
-    np.save(os.path.join(basedir, 'bboxes.npy'), bboxes, allow_pickle=True)
+    np.save(os.path.join(basedir, time, 'bboxes.npy'), bboxes, allow_pickle=True)
     #imageio.mimwrite(os.path.join(basedir, "render_rgb.mp4"), rgbs, fps=args.fps)
 
     # make the block size dynamic

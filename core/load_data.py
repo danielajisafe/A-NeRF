@@ -47,7 +47,7 @@ DATASET_CATALOG = {
     },
 }
 
-def generate_bullet_time(c2w, n_views=20, axis='y'):
+def generate_bullet_time(c2w, n_views=20, axis='y', bullet_ang=360):
     if axis == 'y':
         rotate_fn = rotate_y
     elif axis == 'x':
@@ -57,7 +57,7 @@ def generate_bullet_time(c2w, n_views=20, axis='y'):
     else:
         raise NotImplementedError(f'rotate axis {axis} is not defined')
 
-    y_angles = np.linspace(0, math.radians(360), n_views+1)[:-1]
+    y_angles = np.linspace(0, math.radians(bullet_ang), n_views+1)[:-1]
     c2ws = []
     # for a in y_angles:
     #     c = rotate_fn(a) @ c2w

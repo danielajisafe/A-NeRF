@@ -1054,6 +1054,32 @@ def plot_skeleton3d(skel, fig=None, skel_id=None, skel_type=None,
         fig.update_layout(**layout_kwargs)
     return fig
 
+# def plot_skeleton2d(skel, skel_type=None, img=None):
+
+#     if skel_type is None:
+#         skel_type = get_skeleton_type(skel)
+
+#     joint_names = skel_type.joint_names
+#     joint_tree = skel_type.joint_trees
+
+#     if img is not None:
+#         plt.imshow(img)
+
+#     for i, j in enumerate(skel):
+#         name = joint_names[i]
+#         parent = skel[joint_tree[i]]
+#         offset = parent - j
+
+#         if "left" in name:
+#             color = "red"
+#         elif "right" in name:
+#             color = "blue"
+#         else:
+#             color = "green"
+#         plt.arrow(j[0], j[1], offset[0], offset[1], color=color)
+
+#     return img
+
 def plot_skeleton2d(skel, skel_type=None, img=None):
 
     if skel_type is None:
@@ -1062,7 +1088,10 @@ def plot_skeleton2d(skel, skel_type=None, img=None):
     joint_names = skel_type.joint_names
     joint_tree = skel_type.joint_trees
 
+
+    #import ipdb; ipdb.set_trace()
     if img is not None:
+        #pass
         plt.imshow(img)
 
     for i, j in enumerate(skel):
@@ -1077,6 +1106,7 @@ def plot_skeleton2d(skel, skel_type=None, img=None):
         else:
             color = "green"
         plt.arrow(j[0], j[1], offset[0], offset[1], color=color)
+    #plt.imshow(img)
 
 def plot_points3d(pts, fig=None, label=False, marker_size=3, color="orange"):
 
