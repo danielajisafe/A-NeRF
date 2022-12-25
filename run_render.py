@@ -970,7 +970,27 @@ def eval_bullettime_kps(pose_h5, c2ws, focals, rest_pose, pose_keys,
         print("re-using hard-coded eval indices for evaluation")
         time.sleep(3)
         
+    #import ipdb; ipdb.set_trace()
+    #"""
+    # special case - evaluate step mirror initial using 100% frames (protocol 1)
+    kps_raw, _ = dd.io.load(pose_h5, pose_keys) #, sel=dd.aslice[selected_idxs, ...])
 
+    test_pose_h5 = pose_h5.replace("train", "test")
+    kps_test, _ = dd.io.load(test_pose_h5, pose_keys)
+
+    # combined
+    kps_comb = np.concatenate([kps, kps_test])
+    print(f"kps_raw {kps_raw.shape} kps selected {kps.shape}, kps combined {kps_comb.shape}")
+    time.sleep(3)
+    #"""
+
+    """
+    logic: evaluate every 100th in eval set (18 in total, most possible)
+    find corresponding 18th in reconstruction 
+    1. would be relative to reconstruction sequence
+    2. the number of evaluations would depend on the size of the reconstruction sequence
+    """
+    
 
     if cam_id==2:
         comb = args.data_path.split("/")[-2]
@@ -1007,6 +1027,8 @@ def eval_bullettime_kps(pose_h5, c2ws, focals, rest_pose, pose_keys,
         ipdb.set_trace()
 
     eval_opt_kp(kps, comb, rec_eval_pts, gt_eval_pts, args=args)
+    eval_opt_kp(kps_comb, comb, rec_eval_pts, gt_eval_pts, args=args)
+    
     #name = "pose_opt_eval_may16"
     #np.save(f"/scratch/dajisafe/smpl/mirror_project_dir/authors_eval_data/temp_dir/cam_trajectory_{name}.npy", np.array(c2ws))
     #np.save(f"/scratch/dajisafe/smpl/mirror_project_dir/authors_eval_data/temp_dir/kps_{name}.npy", np.array(kps))

@@ -64,7 +64,7 @@ def eval_opt_kp(kps,comb, rec_eval_pts, gt_eval_pts,args=None):
     rec_eval_pts = rec_eval_pts[:stp_idx]
     gt_eval_pts = gt_eval_pts[:stp_idx]
 
-    print(f"no of excluded test idxs: {len(test_idxs)}")
+    print(f"no of excluded test idxs: {len(test_idxs)} - {(test_idxs)}")
     print(f"rec_eval_pts: {rec_eval_pts}")
     print(f"gt_eval_pts: {gt_eval_pts}")
     
