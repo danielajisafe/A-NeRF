@@ -21,6 +21,7 @@ from pytorch_msssim import SSIM
 
 import sys
 sys.path.append("/scratch/st-rhodin-1/users/dajisafe/anerf_mirr/A-NeRF/core/utils")
+sys.path.append("/scratch/dajisafe/smpl/Rebuttal/A-NeRF/core/utils")
 
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -82,6 +83,8 @@ def config_parser():
                         help='length of trainset') 
     parser.add_argument('--test_len', type=int, default=0,
                         help='length of testset')
+    parser.add_argument('--evaluate_pose', action='store_true',
+                        help='evaluate pmpjpe on train len') 
 
     parser.add_argument('--selected_idxs', nargs='+', type=int, default=None,
                         help='hand-picked idxs for rendering')
@@ -177,6 +180,7 @@ def load_render_data(args, nerf_args, poseopt_layer=None, opt_framecode=True):
     else:
         render_data['idx_map'] = catalog.get('idx_map', None)
 
+    render_data['args'] = args
     pose_keys = ['/kp3d', '/bones']
     cam_keys = ['/c2ws', '/focals']
     # Do partial load here!
@@ -422,8 +426,13 @@ def init_catalog(args, n_bullet=10):
     # else:
     #     import ipdb; ipdb.set_trace()
 
-    easy_idx = [0]#, 20] #, 465, 473, 467, 1467] # [10, 70, 350, 420, 490, 910, 980, 1050] #np.arange(0, args.train_len)
-    #easy_idx = np.arange(0, args.train_len)
+    
+    if args.evaluate_pose:
+        easy_idx = np.arange(0, args.train_len)
+    else:
+        easy_idx = [0]#, 20] #, 465, 473, 467, 1467] # [10, 70, 350, 420, 490, 910, 980, 1050] #np.arange(0, args.train_len)
+
+    #ipdb.set_trace()
 
     vanilla_easy = {
         'data_h5': args.data_path + '/vanilla_train_h5py.h5',
@@ -824,7 +833,9 @@ def load_interpolate(pose_h5, c2ws, focals, rest_pose, pose_keys,
 def load_bullettime(pose_h5, c2ws, focals, rest_pose, pose_keys,
                     selected_idxs, refined=None, n_bullet=30,
                     undo_rot=False, center_cam=True, center_kps=True,
-                    idx_map=None):
+                    idx_map=None, args=None):
+
+    import ipdb
 
     # prepare camera
     c2ws = c2ws[selected_idxs]
@@ -852,11 +863,142 @@ def load_bullettime(pose_h5, c2ws, focals, rest_pose, pose_keys,
         bones = bones[selected_idxs]
     cam_idxs = selected_idxs[:, None].repeat(n_bullet, 1).reshape(-1)
 
-
     #import ipdb; ipdb.set_trace()
-    #from dan_compute_eval import eval_opt_kp
+    from dan_compute_eval import eval_opt_kp
 
 
+    """
+    logic: evaluate every 100th in eval set (18 in total, most possible)
+    find corresponding 18th in reconstruction 
+    1. would be relative to reconstruction sequence
+    2. the number of evaluations would depend on the size of the reconstruction sequence
+    """
+
+    comb = args.data_path.split("/")[-2]
+    cam_id = int(comb.split("_cam_")[1])
+
+    """Please Note: The indices are full for the whole video, both train and test."""
+
+    if cam_id==2:
+        
+        if args.dataset == "mirror" and args.runname.split("_")[0] == "mirror":
+            # Mirror
+            #comb="fc4f46b9-1f80-4498-8949-ca1b52864d0c_cam_2" # 2022-05-16-02-10-36 (3D step full: 1571)
+            rec_eval_pts = [0, 100, 200, 300, 400, 493, 593, 693, 793, 893, 993, 1093, 1193, 1293, 1393]
+            gt_eval_pts = [0, 100, 200, 300, 400, 500, 600, 700, 800, 900, 1000, 1100, 1200, 1300, 1400]
+        	
+        	# common subset
+            rec_eval_pts_sub = [0, 100, 200, 300, 400, 493, 593, 693, 793, 893, 993, 1093, 1193, 1293, 1393]
+            gt_eval_pts_sub = [0, 100, 200, 300, 400, 500, 600, 700, 800, 900, 1000, 1100, 1200, 1300, 1400]
+
+        elif args.dataset == "vanilla" and args.runname.split("_")[0] == "vanilla":
+            print("running vanilla == SMPL estimates")
+            # SMPL
+            rec_eval_pts = [0, 100, 200, 300, 400, 500, 600, 700, 800, 900, 1000, 1100, 1200, 1300, 1400, 1500, 1600, 1700] <- apples-2-apples cut (1500, 1600, 1700)
+            gt_eval_pts = [0, 100, 200, 300, 400, 500, 600, 700, 800, 900, 1000, 1100, 1200, 1300, 1400, 1500, 1600, 1700]
+
+            # common subset
+            rec_eval_pts_sub = [0, 100, 200, 300, 400, 500, 600, 700, 800, 900, 1000, 1100, 1200, 1300, 1400]
+            gt_eval_pts_sub = [0, 100, 200, 300, 400, 500, 600, 700, 800, 900, 1000, 1100, 1200, 1300, 1400]
+
+    elif cam_id==3:
+
+        if args.dataset == "mirror" and args.runname.split("_")[0] == "mirror":      
+            # Mirror
+            #comb="23df3bb4-272d-4fba-b7a6-514119ca8d21_cam_3" # 2022-05-16-02-01-28 (3D step full: 1800)
+            rec_eval_pts = [0, 100, 200, 300, 400, 500, 600, 700, 800, 900, 1000, 1100, 1200, 1300, 1400, 1500, 1600, 1700]
+            gt_eval_pts = [0, 100, 200, 300, 400, 500, 600, 700, 800, 900, 1000, 1100, 1200, 1300, 1400, 1500, 1600, 1700]
+
+        elif args.dataset == "vanilla" and args.runname.split("_")[0] == "vanilla":
+            print("running vanilla == SMPL estimates")
+            # SMPL
+            rec_eval_pts = [0, 100, 200, 300, 400, 500, 600, 700, 800, 900, 1000, 1100, 1200, 1300, 1400, 1500, 1600, 1700]
+            gt_eval_pts = [0, 100, 200, 300, 400, 500, 600, 700, 800, 900, 1000, 1100, 1200, 1300, 1400, 1500, 1600, 1700]
+
+
+    elif cam_id==5:
+        
+        if args.dataset == "mirror" and args.runname.split("_")[0] == "mirror":    
+            # Mirror
+            #comb="c28e8104-b416-474c-914c-c911baa8540b_cam_5" # 2022-05-16-14-42-42 (3D step full: 1377)
+            rec_eval_pts = [0, 100, 200, 288, 388, 488, 588, 688, 788, 888, 988, 1088]
+            gt_eval_pts = [0, 100, 200, 500, 600, 700, 800, 900, 1000, 1100, 1200, 1300]
+
+            # common subset
+            rec_eval_pts_sub =  [0, 100, 200, 288, 388, 488, 588, 688, 788, 888, 988, 1088]
+            gt_eval_pts_sub = [0, 100, 200, 500, 600, 700, 800, 900, 1000, 1100, 1200, 1300]
+
+        elif args.dataset == "vanilla" and args.runname.split("_")[0] == "vanilla":
+            print("running vanilla == SMPL estimates")
+            # SMPL
+            rec_eval_pts = [0, 100, 198, 298, 398, 498, 598, 698, 798, 898, 998, 1098, 1198, 1298, 1398, 1498, 1597, 1697] <- apples-2-apples cut (300, 400, 1400, 1500, 1600, 1700)
+            gt_eval_pts = [0, 100, 200, 300, 400, 500, 600, 700, 800, 900, 1000, 1100, 1200, 1300, 1400, 1500, 1600, 1700]
+
+            # common subset
+            rec_eval_pts = 	  [0, 100, 198, 498, 598, 698, 798, 898, 998, 1098, 1198, 1298]
+            gt_eval_pts_sub = [0, 100, 200, 500, 600, 700, 800, 900, 1000, 1100, 1200, 1300]
+    
+    elif cam_id==6:
+        
+        if args.dataset == "mirror" and args.runname.split("_")[0] == "mirror":    
+            # Mirror
+            #comb="ea8ddac0-6837-4434-b03a-09316277a4aa_cam_6" # 2022-05-16-02-23-39 (3D step full: 1799)
+            rec_eval_pts = [0, 100, 200, 300, 400, 500, 599, 699, 799, 899, 999, 1099, 1199, 1299, 1399, 1499, 1599, 1699]
+            gt_eval_pts = [0, 100, 200, 300, 400, 500, 600, 700, 800, 900, 1000, 1100, 1200, 1300, 1400, 1500, 1600, 1700]
+
+            # common subset
+            rec_eval_pts = 	[0, 100, 200, 300, 400, 500, 599, 699, 799, 899, 999, 1099, 1199, 1299, 1399, 1499, 1599, 1699]
+            gt_eval_pts_sub = [0, 100, 200, 300, 400, 500, 600, 700, 800, 900, 1000, 1100, 1200, 1300, 1400, 1500, 1600, 1700]
+
+        elif args.dataset == "vanilla" and args.runname.split("_")[0] == "vanilla":
+            print("running vanilla == SMPL estimates")
+            # SMPL
+            rec_eval_pts = [0, 100, 200, 300, 400, 500, 600, 700, 800, 900, 1000, 1100, 1200, 1300, 1400, 1500, 1600, 1700]
+            gt_eval_pts = [0, 100, 200, 300, 400, 500, 600, 700, 800, 900, 1000, 1100, 1200, 1300, 1400, 1500, 1600, 1700]
+
+            # common subset
+            rec_eval_pts = 	[0, 100, 200, 300, 400, 500, 600, 700, 800, 900, 1000, 1100, 1200, 1300, 1400, 1500, 1600, 1700]
+            gt_eval_pts_sub = [0, 100, 200, 300, 400, 500, 600, 700, 800, 900, 1000, 1100, 1200, 1300, 1400, 1500, 1600, 1700]
+            
+    elif cam_id==7:    
+        
+        if args.dataset == "mirror" and args.runname.split("_")[0] == "mirror":    
+            # Mirror
+            #comb="261970f0-e705-4546-a957-b719526cbc4a_cam_7" # 2022-05-16-14-12-18 (3D step full: 1736)
+            rec_eval_pts = [0, 100, 200, 300, 400, 500, 600, 700, 800, 900, 1000, 1100, 1200, 1300, 1400, 1500, 1636]
+            gt_eval_pts = [0, 100, 200, 300, 400, 500, 600, 700, 800, 900, 1000, 1100, 1200, 1300, 1400, 1500, 1700]
+
+            # common subset
+            rec_eval_pts = 	[0, 100, 200, 300, 400, 500, 600, 700, 800, 900, 1000, 1100, 1200, 1300, 1400, 1500, 1636]
+            gt_eval_pts_sub = [0, 100, 200, 300, 400, 500, 600, 700, 800, 900, 1000, 1100, 1200, 1300, 1400, 1500, 1700]
+
+        elif args.dataset == "vanilla" and args.runname.split("_")[0] == "vanilla":
+            print("running vanilla == SMPL estimates")
+            # SMPL 
+            rec_eval_pts = [0, 100, 200, 300, 400, 500, 600, 700, 800, 900, 1000, 1100, 1200, 1300, 1400, 1500, 1600, 1700] <- apples-2-apples cut (1600)
+            gt_eval_pts = [0, 100, 200, 300, 400, 500, 600, 700, 800, 900, 1000, 1100, 1200, 1300, 1400, 1500, 1600, 1700] 
+
+            # common subset
+            rec_eval_pts = 	[0, 100, 200, 300, 400, 500, 600, 700, 800, 900, 1000, 1100, 1200, 1300, 1400, 1500, 1700]
+            gt_eval_pts_sub = [0, 100, 200, 300, 400, 500, 600, 700, 800, 900, 1000, 1100, 1200, 1300, 1400, 1500, 1700]
+            
+    else:
+        print("what are your eval idx?")
+        ipdb.set_trace()
+
+    #ipdb.set_trace()
+    eval_opt_kp(kps, comb, rec_eval_pts, gt_eval_pts)
+    #name = "pose_opt_eval_may16"
+    #np.save(f"/scratch/dajisafe/smpl/mirror_project_dir/authors_eval_data/temp_dir/cam_trajectory_{name}.npy", np.array(c2ws))
+    #np.save(f"/scratch/dajisafe/smpl/mirror_project_dir/authors_eval_data/temp_dir/kps_{name}.npy", np.array(kps))
+
+    print("pose evaluation complete...")
+    import ipdb; ipdb.set_trace()
+
+
+
+
+    
     # 3 
     # python run_render.py --nerf_args logs/mirror/pose_opt_model/-2022-05-16-02-01-28/args.txt --ckptpath logs/mirror/pose_opt_model/-2022-05-16-02-01-28/107000.tar --dataset mirror --entry val --render_type val  --runname mirror_val --selected_framecode 0 --white_bkgd --selected_idxs 0 --render_refined --data_path ./data/mirror/3/23df3bb4-272d-4fba-b7a6-514119ca8d21_cam_3/2022-05-14-13 --test_len 180 --eval
     
@@ -1131,10 +1273,11 @@ def render_mesh(basedir, render_kwargs, tensor_data, chunk=1024, radius=1.80,
 def run_render():
     args = config_parser().parse_args()
 
+    #import ipdb; ipdb.set_trace()
     comb = args.data_path.split("/")[-2]
     view = comb.split("_cam_")[1]
     print(f"camera: {view} comb: {comb}")
-    #import ipdb; ipdb.set_trace()
+    
 
     # parse nerf model args
     nerf_args = txt_to_argstring(args.nerf_args)
