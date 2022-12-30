@@ -35,7 +35,7 @@ def render_path(render_poses, hwf, chunk, render_kwargs,
                 gt_imgs=None, bg_imgs=None, bg_indices=None,
                 cams=None, subject_idxs=None, render_factor=0,
                 white_bkgd=False, ret_acc=False,
-                ext_scale=0.00035, base_bg=1.0):
+                ext_scale=0.00035, base_bg=1.0, top_expand_ratio=1.60):
 
     H, W, focal = hwf
 
@@ -51,13 +51,15 @@ def render_path(render_poses, hwf, chunk, render_kwargs,
             focal = focal.copy() / render_factor
             if centers is not None:
                 centers = centers.copy() / render_factor
-
+    
+    #import ipdb; ipdb.set_trace()
     if kp is not None or cyls is not None:
         # only render part of the image
         rays, valid_idxs, cyls, bboxes = kp_to_valid_rays(render_poses, H, W,
                                                           focal, kps=kp, cylinder_params=cyls,
                                                           skts=skts, ext_scale=ext_scale,
-                                                          centers=centers)
+                                                          centers=centers,
+                                                          top_expand_ratio=top_expand_ratio)
     else:
         rays, valid_idxs = None, None
 
@@ -161,7 +163,8 @@ def render_testset(poses, hwf, args, render_kwargs, kps=None, skts=None, cyls=No
                                                      bg_imgs=bg_imgs, bg_indices=bg_indices,
                                                      centers=centers, kp=kps, skts=skts, cyls=cyls, bones=bones,
                                                      cams=cams, subject_idxs=subject_idxs, render_factor=args.render_factor,
-                                                     ext_scale=args.ext_scale, white_bkgd=args.white_bkgd)
+                                                     ext_scale=args.ext_scale, white_bkgd=args.white_bkgd, 
+                                                     )
     render_kwargs["ray_caster"].train()
     if save_image:
         print("Warning: this is super hacky. Should terminate in the right way.")
@@ -615,7 +618,7 @@ def train():
             else:
                 masked_gts = gt_imgs * gt_masks + (1 - gt_masks) * bg_imgs
 
-
+            import ipdb; ipdb.set_trace()
             metrics, rgbs, disps = render_testset(pose_val, render_data["hwf"], args, render_kwargs_test, cams=cams_val,
                                                   kps=kp_val, skts=skt_val, bones=bone_val, subject_idxs=subject_val,
                                                   gt_imgs=masked_gts, gt_masks=gt_masks, vid_base=moviebase, centers=centers,

@@ -2,7 +2,9 @@ import bisect
 import h5py, math
 import ipdb
 import time
+from tqdm import tqdm, trange
 import torch
+import imageio
 import random
 import numpy as np
 import matplotlib.pyplot as plt
@@ -121,11 +123,36 @@ class BaseH5Dataset(Dataset):
         plot_skeleton2d(kp2d[first], img=chk_img)
         plt.savefig(f"/scratch/dajisafe/smpl/Rebuttal/A-NeRF/checkers/imgs/kp_3d_to_2d.jpg", dpi=150, bbox_inches='tight', pad_inches = 0)
 
+        plt.savefig(f"/scratch/dajisafe/smpl/Rebuttal/A-NeRF/checkers/imgs/top_figure.jpg", dpi=300, bbox_inches='tight', pad_inches = 0)
+
         #ipdb.set_trace()
         # time2 = time.time()
         # print(f"time taken - after normal sample pixels {time2-time1}")
         ipdb.set_trace()
         """
+
+        
+        #"""
+        '''Choice selection, not current training step - before and after '''
+
+        #ipdb.set_trace()
+        # samples: van 3:1620, 5:1618
+        for first in trange(1620): 
+            #first = 1000 #1177
+            chk_img = self.dataset['imgs'][first].reshape(1080,1920,3)
+            c2ws_expanded = self.dataset['c2ws'][first:first+1]
+            
+            kp2d = skeleton3d_to_2d(self.dataset['kp3d'][first:first+1], c2ws_expanded, int(self.HW[0]), int(self.HW[1]), self.dataset['focals'][first], self.dataset['centers'][first:first+1])
+            plt.axis("off"); 
+            skel_img = plot_skeleton2d(kp2d[0], img=chk_img)
+            #plt.savefig(f"/scratch/dajisafe/smpl/Rebuttal/A-NeRF/checkers/initial_overlay/internet_vanilla/{first:08d}.jpg", dpi=300, bbox_inches='tight', pad_inches = 0)
+            #skel_img = draw_skeleton2d(img=chk_img, skel=kp2d[0], skel_type=None, width=3, flip=False) #(chk_img, kp2d, skel_type, 3, flip=False)
+            
+            """imageio faster"""
+            imageio.imwrite(f"/scratch/dajisafe/smpl/Rebuttal/A-NeRF/checkers/initial_overlay/6_vanilla/{first:08d}.jpg", skel_img)
+        
+        ipdb.set_trace()
+        #"""
 
         return_dict = {'rays_o': rays_o,
                        'rays_d': rays_d,

@@ -49,10 +49,16 @@ def eval_opt_kp(kps,comb, rec_eval_pts, gt_eval_pts):
 
     n_kps = kps.shape[0]
     test_idxs = np.where((rec_eval_pts/n_kps) >1)[0]
-    stp_idx = test_idxs[0]
-    rec_eval_pts = rec_eval_pts[:stp_idx]
-    gt_eval_pts = gt_eval_pts[:stp_idx]
-    #import ipdb; ipdb.set_trace()
+    # import ipdb; ipdb.set_trace()
+    
+    stp_idx = test_idxs[0] if len(test_idxs) > 0 else None
+
+    if stp_idx!=None:
+        rec_eval_pts = rec_eval_pts[:stp_idx]  
+        gt_eval_pts = gt_eval_pts[:stp_idx]
+    else:
+        pass
+        
 
     print(f"no of excluded test idxs: {len(test_idxs)}")
     print(f"rec_eval_pts: {rec_eval_pts}")

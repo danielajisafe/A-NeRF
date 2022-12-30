@@ -46,7 +46,7 @@ def config_parser():
                         help='path to ckpt')
 
     # render config
-    parser.add_argument('--render_res', nargs='+', type=int, default=[1000, 1000],
+    parser.add_argument('--render_res', nargs='+', type=int, default=[1080, 1920],
                         help='tuple of resolution in (H, W) for rendering')
     parser.add_argument('--dataset', type=str, required=True,
                         help='dataset to render')
@@ -76,7 +76,9 @@ def config_parser():
     parser.add_argument('--render_refined', action='store_true',
                         help='render from refined poses')
     parser.add_argument('--subject_idx', type=int, default=0,
-                        help='which subject to render (for MINeRF)')
+                        help='which subject to render (for MINeRF)') 
+    parser.add_argument('--top_expand_ratio', type=float, default=1.60,
+                        help='margin for head joint e.g SMPL has no head joint')
 
     # frame-related
     parser.add_argument('--train_len', type=int, default=0,
@@ -84,7 +86,11 @@ def config_parser():
     parser.add_argument('--test_len', type=int, default=0,
                         help='length of testset')
     parser.add_argument('--evaluate_pose', action='store_true',
-                        help='evaluate pmpjpe on train len') 
+                        help='evaluate pmpjpe on train len or train+test len') 
+    parser.add_argument('--psnr_images', action='store_true', default=False,
+                        help='evaluate images for psnr - use same img ids or offsets')
+    parser.add_argument('--common_eval_pts', action='store_true',
+                        help='evaluate on common evaluation points between vanilla and mirror train data')
 
     parser.add_argument('--selected_idxs', nargs='+', type=int, default=None,
                         help='hand-picked idxs for rendering')
@@ -191,7 +197,9 @@ def load_render_data(args, nerf_args, poseopt_layer=None, opt_framecode=True):
     c2ws, focals = dd.io.load(data_h5, cam_keys)
     _, H, W, _ = dd.io.load(data_h5, ['/img_shape'])[0]
 
-    # handel resolution
+
+    #import ipdb; ipdb.set_trace()
+    # handle resolution
     if args.render_res is not None:
         assert len(args.render_res) == 2, "Image resolution should be in (H, W)"
         H_r, W_r = args.render_res
@@ -209,10 +217,17 @@ def load_render_data(args, nerf_args, poseopt_layer=None, opt_framecode=True):
                                                                  rest_pose, pose_keys,
                                                                  **render_data)
     elif args.render_type == 'bullet':
-        print(f'Load data for bullet time effect!')
-        kps, skts, c2ws, cam_idxs, focals, bones = load_bullettime(data_h5, c2ws, focals,
-                                                                   rest_pose, pose_keys,
-                                                                   **render_data)
+        if args.evaluate_pose:
+            print(f'Load data for evaluation!')
+            kps, skts, c2ws, cam_idxs, focals, bones = eval_bullettime_kps(data_h5, c2ws, focals,
+                                                                    rest_pose, pose_keys,
+                                                                    #centers=centers_n,
+                                                                    **render_data)
+        else:
+            print(f'Load data for bullet time effect!')
+            kps, skts, c2ws, cam_idxs, focals, bones = load_bullettime(data_h5, c2ws, focals,
+                                                                    rest_pose, pose_keys,
+                                                                    **render_data)
     elif args.render_type == 'poserot':
 
         kps, skts, bones, c2ws, cam_idxs, focals = load_pose_rotate(data_h5, c2ws, focals,
@@ -274,6 +289,12 @@ def load_render_data(args, nerf_args, poseopt_layer=None, opt_framecode=True):
 
     else:
         raise NotImplementedError(f'render type {args.render_type} is not implemented!')
+
+    #import ipdb; ipdb.set_trace()
+    # added for rendering background image
+    if not args.white_bkgd:
+        bg_imgs = dd.io.load(data_h5, '/bkgds').astype(np.float32).reshape(-1, H, W, 3) / 255.
+        bg_indices = dd.io.load(data_h5, '/bkgd_idxs')[cam_idxs].astype(np.int64)
 
     gt_paths, gt_mask_paths = None, None
     is_gt_paths = True
@@ -429,10 +450,14 @@ def init_catalog(args, n_bullet=10):
     
     if args.evaluate_pose:
         easy_idx = np.arange(0, args.train_len)
+    elif args.psnr_images:
+        """interval indices for cam 6 only. Pass in explicit indices for other cameras e.g vanilla c5"""
+        easy_idx = np.arange(0, args.train_len, 20)
+        args.selected_idxs = easy_idx
     else:
-        easy_idx = [0]#, 20] #, 465, 473, 467, 1467] # [10, 70, 350, 420, 490, 910, 980, 1050] #np.arange(0, args.train_len)
+        easy_idx = args.selected_idxs #, 20] #, 465, 473, 467, 1467] # [10, 70, 350, 420, 490, 910, 980, 1050] #np.arange(0, args.train_len)
 
-    #ipdb.set_trace()
+    #import ipdb; ipdb.set_trace()
 
     vanilla_easy = {
         'data_h5': args.data_path + '/vanilla_train_h5py.h5',
@@ -830,7 +855,7 @@ def load_interpolate(pose_h5, c2ws, focals, rest_pose, pose_keys,
     cam_idxs = selected_idxs[:1].repeat(len(kps), 0)
     return kps, skts, c2ws, cam_idxs, focals
 
-def load_bullettime(pose_h5, c2ws, focals, rest_pose, pose_keys,
+def eval_bullettime_kps(pose_h5, c2ws, focals, rest_pose, pose_keys,
                     selected_idxs, refined=None, n_bullet=30,
                     undo_rot=False, center_cam=True, center_kps=True,
                     idx_map=None, args=None):
@@ -877,7 +902,10 @@ def load_bullettime(pose_h5, c2ws, focals, rest_pose, pose_keys,
     comb = args.data_path.split("/")[-2]
     cam_id = int(comb.split("_cam_")[1])
 
-    """Please Note: The indices are full for the whole video, both train and test."""
+    """Please Note: 
+    1. The indices are full for the whole video, both train and test.
+    2. The mirror eval points is a subset of the vanilla eval points -> leading to common eval points
+    """
 
     if cam_id==2:
         
@@ -887,22 +915,26 @@ def load_bullettime(pose_h5, c2ws, focals, rest_pose, pose_keys,
             rec_eval_pts = [0, 100, 200, 300, 400, 493, 593, 693, 793, 893, 993, 1093, 1193, 1293, 1393]
             gt_eval_pts = [0, 100, 200, 300, 400, 500, 600, 700, 800, 900, 1000, 1100, 1200, 1300, 1400]
         	
-        	# common subset
-            rec_eval_pts_sub = [0, 100, 200, 300, 400, 493, 593, 693, 793, 893, 993, 1093, 1193, 1293, 1393]
-            gt_eval_pts_sub = [0, 100, 200, 300, 400, 500, 600, 700, 800, 900, 1000, 1100, 1200, 1300, 1400]
+            if args.common_eval_pts:
+                print("running common evaluation points")
+                # common subset
+                rec_eval_pts = [0, 100, 200, 300, 400, 493, 593, 693, 793, 893, 993, 1093, 1193, 1293, 1393]
+                gt_eval_pts = [0, 100, 200, 300, 400, 500, 600, 700, 800, 900, 1000, 1100, 1200, 1300, 1400]
 
         elif args.dataset == "vanilla" and args.runname.split("_")[0] == "vanilla":
             print("running vanilla == SMPL estimates")
             # SMPL
-            rec_eval_pts = [0, 100, 200, 300, 400, 500, 600, 700, 800, 900, 1000, 1100, 1200, 1300, 1400, 1500, 1600, 1700] <- apples-2-apples cut (1500, 1600, 1700)
+            rec_eval_pts = [0, 100, 200, 300, 400, 500, 600, 700, 800, 900, 1000, 1100, 1200, 1300, 1400, 1500, 1600, 1700] #<- apples-2-apples cut (1500, 1600, 1700)
             gt_eval_pts = [0, 100, 200, 300, 400, 500, 600, 700, 800, 900, 1000, 1100, 1200, 1300, 1400, 1500, 1600, 1700]
 
-            # common subset
-            rec_eval_pts_sub = [0, 100, 200, 300, 400, 500, 600, 700, 800, 900, 1000, 1100, 1200, 1300, 1400]
-            gt_eval_pts_sub = [0, 100, 200, 300, 400, 500, 600, 700, 800, 900, 1000, 1100, 1200, 1300, 1400]
+            if args.common_eval_pts:
+                print("running common evaluation points")
+                # common subset
+                rec_eval_pts = [0, 100, 200, 300, 400, 500, 600, 700, 800, 900, 1000, 1100, 1200, 1300, 1400]
+                gt_eval_pts = [0, 100, 200, 300, 400, 500, 600, 700, 800, 900, 1000, 1100, 1200, 1300, 1400]
 
     elif cam_id==3:
-
+        print("evaluation points are the same for Vanilla and Mirror ")
         if args.dataset == "mirror" and args.runname.split("_")[0] == "mirror":      
             # Mirror
             #comb="23df3bb4-272d-4fba-b7a6-514119ca8d21_cam_3" # 2022-05-16-02-01-28 (3D step full: 1800)
@@ -924,20 +956,24 @@ def load_bullettime(pose_h5, c2ws, focals, rest_pose, pose_keys,
             rec_eval_pts = [0, 100, 200, 288, 388, 488, 588, 688, 788, 888, 988, 1088]
             gt_eval_pts = [0, 100, 200, 500, 600, 700, 800, 900, 1000, 1100, 1200, 1300]
 
-            # common subset
-            rec_eval_pts_sub =  [0, 100, 200, 288, 388, 488, 588, 688, 788, 888, 988, 1088]
-            gt_eval_pts_sub = [0, 100, 200, 500, 600, 700, 800, 900, 1000, 1100, 1200, 1300]
+            if args.common_eval_pts:
+                print("running common evaluation points")
+                # common subset
+                rec_eval_pts =  [0, 100, 200, 288, 388, 488, 588, 688, 788, 888, 988, 1088]
+                gt_eval_pts = [0, 100, 200, 500, 600, 700, 800, 900, 1000, 1100, 1200, 1300]
 
         elif args.dataset == "vanilla" and args.runname.split("_")[0] == "vanilla":
             print("running vanilla == SMPL estimates")
             # SMPL
-            rec_eval_pts = [0, 100, 198, 298, 398, 498, 598, 698, 798, 898, 998, 1098, 1198, 1298, 1398, 1498, 1597, 1697] <- apples-2-apples cut (300, 400, 1400, 1500, 1600, 1700)
+            rec_eval_pts = [0, 100, 198, 298, 398, 498, 598, 698, 798, 898, 998, 1098, 1198, 1298, 1398, 1498, 1597, 1697] #<- apples-2-apples cut (300, 400, 1400, 1500, 1600, 1700)
             gt_eval_pts = [0, 100, 200, 300, 400, 500, 600, 700, 800, 900, 1000, 1100, 1200, 1300, 1400, 1500, 1600, 1700]
 
-            # common subset
-            rec_eval_pts = 	  [0, 100, 198, 498, 598, 698, 798, 898, 998, 1098, 1198, 1298]
-            gt_eval_pts_sub = [0, 100, 200, 500, 600, 700, 800, 900, 1000, 1100, 1200, 1300]
-    
+            if args.common_eval_pts:
+                print("running common evaluation points")
+                # common subset
+                rec_eval_pts =  [0, 100, 198, 498, 598, 698, 798, 898, 998, 1098, 1198, 1298]
+                gt_eval_pts = [0, 100, 200, 500, 600, 700, 800, 900, 1000, 1100, 1200, 1300]
+        
     elif cam_id==6:
         
         if args.dataset == "mirror" and args.runname.split("_")[0] == "mirror":    
@@ -946,9 +982,11 @@ def load_bullettime(pose_h5, c2ws, focals, rest_pose, pose_keys,
             rec_eval_pts = [0, 100, 200, 300, 400, 500, 599, 699, 799, 899, 999, 1099, 1199, 1299, 1399, 1499, 1599, 1699]
             gt_eval_pts = [0, 100, 200, 300, 400, 500, 600, 700, 800, 900, 1000, 1100, 1200, 1300, 1400, 1500, 1600, 1700]
 
-            # common subset
-            rec_eval_pts = 	[0, 100, 200, 300, 400, 500, 599, 699, 799, 899, 999, 1099, 1199, 1299, 1399, 1499, 1599, 1699]
-            gt_eval_pts_sub = [0, 100, 200, 300, 400, 500, 600, 700, 800, 900, 1000, 1100, 1200, 1300, 1400, 1500, 1600, 1700]
+            if args.common_eval_pts:
+                print("running common evaluation points")
+                # common subset
+                rec_eval_pts = 	[0, 100, 200, 300, 400, 500, 599, 699, 799, 899, 999, 1099, 1199, 1299, 1399, 1499, 1599, 1699]
+                gt_eval_pts = [0, 100, 200, 300, 400, 500, 600, 700, 800, 900, 1000, 1100, 1200, 1300, 1400, 1500, 1600, 1700]
 
         elif args.dataset == "vanilla" and args.runname.split("_")[0] == "vanilla":
             print("running vanilla == SMPL estimates")
@@ -956,10 +994,12 @@ def load_bullettime(pose_h5, c2ws, focals, rest_pose, pose_keys,
             rec_eval_pts = [0, 100, 200, 300, 400, 500, 600, 700, 800, 900, 1000, 1100, 1200, 1300, 1400, 1500, 1600, 1700]
             gt_eval_pts = [0, 100, 200, 300, 400, 500, 600, 700, 800, 900, 1000, 1100, 1200, 1300, 1400, 1500, 1600, 1700]
 
-            # common subset
-            rec_eval_pts = 	[0, 100, 200, 300, 400, 500, 600, 700, 800, 900, 1000, 1100, 1200, 1300, 1400, 1500, 1600, 1700]
-            gt_eval_pts_sub = [0, 100, 200, 300, 400, 500, 600, 700, 800, 900, 1000, 1100, 1200, 1300, 1400, 1500, 1600, 1700]
-            
+            if args.common_eval_pts:
+                print("running common evaluation points")
+                # common subset
+                rec_eval_pts = 	[0, 100, 200, 300, 400, 500, 600, 700, 800, 900, 1000, 1100, 1200, 1300, 1400, 1500, 1600, 1700]
+                gt_eval_pts = [0, 100, 200, 300, 400, 500, 600, 700, 800, 900, 1000, 1100, 1200, 1300, 1400, 1500, 1600, 1700]
+                
     elif cam_id==7:    
         
         if args.dataset == "mirror" and args.runname.split("_")[0] == "mirror":    
@@ -968,20 +1008,24 @@ def load_bullettime(pose_h5, c2ws, focals, rest_pose, pose_keys,
             rec_eval_pts = [0, 100, 200, 300, 400, 500, 600, 700, 800, 900, 1000, 1100, 1200, 1300, 1400, 1500, 1636]
             gt_eval_pts = [0, 100, 200, 300, 400, 500, 600, 700, 800, 900, 1000, 1100, 1200, 1300, 1400, 1500, 1700]
 
-            # common subset
-            rec_eval_pts = 	[0, 100, 200, 300, 400, 500, 600, 700, 800, 900, 1000, 1100, 1200, 1300, 1400, 1500, 1636]
-            gt_eval_pts_sub = [0, 100, 200, 300, 400, 500, 600, 700, 800, 900, 1000, 1100, 1200, 1300, 1400, 1500, 1700]
+            if args.common_eval_pts:
+                print("running common evaluation points")
+                # common subset
+                rec_eval_pts = 	[0, 100, 200, 300, 400, 500, 600, 700, 800, 900, 1000, 1100, 1200, 1300, 1400, 1500, 1636]
+                gt_eval_pts = [0, 100, 200, 300, 400, 500, 600, 700, 800, 900, 1000, 1100, 1200, 1300, 1400, 1500, 1700]
 
         elif args.dataset == "vanilla" and args.runname.split("_")[0] == "vanilla":
             print("running vanilla == SMPL estimates")
             # SMPL 
-            rec_eval_pts = [0, 100, 200, 300, 400, 500, 600, 700, 800, 900, 1000, 1100, 1200, 1300, 1400, 1500, 1600, 1700] <- apples-2-apples cut (1600)
+            rec_eval_pts = [0, 100, 200, 300, 400, 500, 600, 700, 800, 900, 1000, 1100, 1200, 1300, 1400, 1500, 1600, 1700] #<- apples-2-apples cut (1600)
             gt_eval_pts = [0, 100, 200, 300, 400, 500, 600, 700, 800, 900, 1000, 1100, 1200, 1300, 1400, 1500, 1600, 1700] 
 
-            # common subset
-            rec_eval_pts = 	[0, 100, 200, 300, 400, 500, 600, 700, 800, 900, 1000, 1100, 1200, 1300, 1400, 1500, 1700]
-            gt_eval_pts_sub = [0, 100, 200, 300, 400, 500, 600, 700, 800, 900, 1000, 1100, 1200, 1300, 1400, 1500, 1700]
-            
+            if args.common_eval_pts:
+                print("running common evaluation points")
+                # common subset
+                rec_eval_pts = 	[0, 100, 200, 300, 400, 500, 600, 700, 800, 900, 1000, 1100, 1200, 1300, 1400, 1500, 1700]
+                gt_eval_pts = [0, 100, 200, 300, 400, 500, 600, 700, 800, 900, 1000, 1100, 1200, 1300, 1400, 1500, 1700]
+                
     else:
         print("what are your eval idx?")
         ipdb.set_trace()
@@ -996,9 +1040,6 @@ def load_bullettime(pose_h5, c2ws, focals, rest_pose, pose_keys,
     import ipdb; ipdb.set_trace()
 
 
-
-
-    
     # 3 
     # python run_render.py --nerf_args logs/mirror/pose_opt_model/-2022-05-16-02-01-28/args.txt --ckptpath logs/mirror/pose_opt_model/-2022-05-16-02-01-28/107000.tar --dataset mirror --entry val --render_type val  --runname mirror_val --selected_framecode 0 --white_bkgd --selected_idxs 0 --render_refined --data_path ./data/mirror/3/23df3bb4-272d-4fba-b7a6-514119ca8d21_cam_3/2022-05-14-13 --test_len 180 --eval
     
@@ -1021,18 +1062,40 @@ def load_bullettime(pose_h5, c2ws, focals, rest_pose, pose_keys,
     # #np.save(f"/scratch/dajisafe/smpl/mirror_project_dir/authors_eval_data/temp_dir/kps_{name}.npy", np.array(kps))
 
 
-    # import ipdb; ipdb.set_trace()
 
+def load_bullettime(pose_h5, c2ws, focals, rest_pose, pose_keys,
+                    selected_idxs, refined=None, n_bullet=30,
+                    undo_rot=False, center_cam=True, center_kps=True,
+                    idx_map=None, args=None):
 
-    # camera 3
-    #
-    #
-    #
-    #
-    #
+    import ipdb
 
+    # prepare camera
+    c2ws = c2ws[selected_idxs]
+    if center_cam:
+        shift_x = c2ws[..., 0, -1].copy()
+        shift_y = c2ws[..., 1, -1].copy()
+        c2ws[..., :2, -1] = 0.
+    c2ws = generate_bullet_time(c2ws, n_bullet).transpose(1, 0, 2, 3).reshape(-1, 4, 4)
 
-    #ipdb.set_trace()
+    if isinstance(focals, float):
+        focals = np.array([focals] * len(selected_idxs))
+    else:
+        focals = focals[selected_idxs]
+    focals = focals[:, None].repeat(n_bullet, 1).reshape(-1)
+
+    # prepare pose
+    # TODO: hard-coded for now so we can quickly view the outcomes!
+    if refined is None:
+        kps, bones = dd.io.load(pose_h5, pose_keys, sel=dd.aslice[selected_idxs, ...])
+        selected_idxs = find_idxs_with_map(selected_idxs, idx_map)
+    else:
+        selected_idxs = find_idxs_with_map(selected_idxs, idx_map)
+        kps, bones = refined
+        kps = kps[selected_idxs]
+        bones = bones[selected_idxs]
+    cam_idxs = selected_idxs[:, None].repeat(n_bullet, 1).reshape(-1)
+
 
     if center_kps:
         root = kps[..., :1, :].copy() # assume to be CMUSkeleton
@@ -1302,6 +1365,7 @@ def run_render():
                                       ext_scale=nerf_args.ext_scale,
                                       ret_acc=True,
                                       white_bkgd=args.white_bkgd,
+                                      top_expand_ratio=args.top_expand_ratio,
                                       **tensor_data)
 
     if gt_dict['gt_paths'] is not None:
@@ -1334,8 +1398,9 @@ def run_render():
     # os.makedirs(os.path.join(basedir, 'skel'), exist_ok=True)
     # os.makedirs(os.path.join(basedir, 'acc'), exist_ok=True)
 
+    real_ids = args.selected_idxs
     for i, (rgb, acc, skel) in enumerate(zip(rgbs, accs, skeletons)):
-
+        i = real_ids[i]
         imageio.imwrite(os.path.join(basedir, time, f'image_{view}', f'{i:05d}.png'), rgb)
         imageio.imwrite(os.path.join(basedir, time, f'acc_{view}', f'{i:05d}.png'), acc)
         imageio.imwrite(os.path.join(basedir, time, f'skel_{view}', f'{i:05d}.png'), skel)
@@ -1343,7 +1408,7 @@ def run_render():
         # imageio.imwrite(os.path.join(basedir, 'image', f'{i:05d}.png'), rgb)
         # imageio.imwrite(os.path.join(basedir, 'acc', f'{i:05d}.png'), acc)
         # imageio.imwrite(os.path.join(basedir, 'skel', f'{i:05d}.png'), skel)
-    np.save(os.path.join(basedir, 'bboxes.npy'), bboxes, allow_pickle=True)
+    np.save(os.path.join(basedir, time, 'bboxes.npy'), bboxes, allow_pickle=True)
     imageio.mimwrite(os.path.join(basedir, "render_rgb.mp4"), rgbs, fps=args.fps)
 
 

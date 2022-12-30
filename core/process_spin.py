@@ -90,6 +90,8 @@ def convert_crop_cam_to_orig_img_and_focal(cam, bbox, img_width, img_height,
     
     #ipdb.set_trace()
     cx, cy, h = bbox[:, 0], bbox[:, 1], bbox[:, 2]
+    #import ipdb; ipdb.set_trace()
+
     hw, hh = img_width / 2., img_height / 2.
 
     # first, we can know the actual focal length by scaling the cropped focal length (this is called scaling by aspect ratio)

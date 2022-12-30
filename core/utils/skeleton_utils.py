@@ -912,12 +912,25 @@ def plot_skeleton2d(skel, skel_type=None, img=None):
         offset = parent - j
 
         if "left" in name:
-            color = "red"
-        elif "right" in name:
             color = "blue"
+        elif "right" in name:
+            color = "red"
         else:
             color = "green"
+
+        # if "left" in name:
+        #     color = (100, 149, 237) 
+        # elif "right" in name:
+        #     color = (255, 0, 0) 
+        # else:
+        #     color = (46, 204, 13) 
+
+        # cv2.line(img, (int(round(j[0])), int(round(j[1]))), 
+        #               (int(round(j[0]+offset[0])), int(round(j[1]+offset[1]))), 
+        #          color, thickness=3)
+        
         plt.arrow(j[0], j[1], offset[0], offset[1], color=color)
+    #return img
 
 def plot_points3d(pts, fig=None, label=False, marker_size=3, color="orange"):
 
