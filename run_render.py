@@ -12,6 +12,7 @@ import imageio
 import datetime
 import numpy as np
 import deepdish as dd
+from tqdm import trange
 import matplotlib.pyplot as plt
 from run_nerf import render_path
 from run_nerf import config_parser as nerf_config_parser
@@ -273,7 +274,7 @@ def load_render_data(args, nerf_args, poseopt_layer=None, opt_framecode=True):
                                                                  rest_pose, pose_keys,
                                                                  **render_data)
     elif args.render_type == 'bullet':
-        resp = input("do you want to evaluate, yes or no ?")
+        #resp = input("do you want to evaluate, yes or no ?")
         if args.evaluate_pose:
             print(f'Load data for evaluation!')
             kps, skts, c2ws, cam_idxs, focals, bones = eval_bullettime_kps(data_h5, c2ws, focals,
@@ -535,8 +536,19 @@ def init_catalog(args, n_bullet=3):
         # mirr_sel_idxs = mirr_sel_idxs[:args.train_len]
 
         # 20th images among common subset
-        easy_idx = mirrr_raw_idxs[::20]
+        #mirr_sel_idxs = mirrr_raw_idxs[:args.train_len]
+        #n = len(mirr_sel_idxs)
+        #sel_idxs = mirr_sel_idxs[::20]
+        
+        n = len(mirrr_raw_idxs)
+        offset_indices = []
 
+        for i in range(0,n,20):
+            index = mirrr_raw_idxs.index(i)
+            offset_indices.append(index)
+
+        easy_idx = offset_indices#[-3:]
+        args.selected_idxs = easy_idx 
         # pick a subset that is common to both
         #import ipdb; ipdb.set_trace()
 
@@ -1647,8 +1659,8 @@ def run_render():
     #ipdb.set_trace()
     real_ids = args.selected_idxs
     for i, (rgb, acc, skel) in enumerate(zip(rgbs, accs, skeletons)):
-        rel_idx = i
-        #rel_idx = real_ids[i]
+        #rel_idx = i
+        rel_idx = real_ids[i]
         #print(f"i {i}")
         '''temp addition to the filename here'''
 
