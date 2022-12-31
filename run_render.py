@@ -316,9 +316,13 @@ def load_render_data(args, nerf_args, poseopt_layer=None, opt_framecode=True):
             gt_mask_paths = [p.replace(*gt_to_mask_map) for p in gt_paths]
         except:
             print('gt path does not exist, grab images directly!')
+            #import ipdb; ipdb.set_trace()
             is_gt_paths = False
-            gt_paths = dd.io.load(data_h5, '/imgs')[extract_idxs]
-            gt_mask_paths = dd.io.load(data_h5, '/masks')[extract_idxs]
+            # gt_paths = dd.io.load(data_h5, '/imgs')[extract_idxs]
+            # gt_mask_paths = dd.io.load(data_h5, '/masks')[extract_idxs]
+
+            gt_paths = dd.io.load(data_h5, '/imgs', sel=dd.aslice[extract_idxs, ...])
+            gt_mask_paths = dd.io.load(data_h5, '/masks', sel=dd.aslice[extract_idxs, ...])
 
     # handle special stuff
     if args.selected_framecode is not None:
@@ -1237,7 +1241,7 @@ def to_tensors(data_dict):
             raise NotImplementedError(f"{k}: only nparray and hwf are handled now!")
     return tensor_dict
 
-def evaluate_metric(rgbs, accs, bboxes, gt_dict, basedir):
+def evaluate_metric(rgbs, accs, bboxes, gt_dict, basedir, time=""):
     '''
     Always evaluate in the box
     '''
@@ -1255,7 +1259,7 @@ def evaluate_metric(rgbs, accs, bboxes, gt_dict, basedir):
     for i, (rgb, acc, bbox, gt_path) in enumerate(zip(rgbs, accs, bboxes, gt_paths)):
 
         if (i + 1) % 150 == 0:
-            np.save(os.path.join(basedir, 'scores.npy'),
+            np.save(os.path.join(basedir, time, 'scores.npy'),
                     {'psnr': psnrs, 'ssim': ssims, 'fg_psnr': fg_psnrs, 'fg_ssim': fg_ssims},
                      allow_pickle=True)
 
@@ -1317,20 +1321,20 @@ def evaluate_metric(rgbs, accs, bboxes, gt_dict, basedir):
 
     score_dict = {'psnr': psnrs, 'ssim': ssims, 'fg_psnr': fg_psnrs, 'fg_ssim': fg_ssims}
 
-    np.save(os.path.join(basedir, 'scores.npy'), score_dict, allow_pickle=True)
+    np.save(os.path.join(basedir, time, 'scores.npy'), score_dict, allow_pickle=True)
 
-    with open(os.path.join(basedir, 'score_final.txt'), 'w') as f:
+    with open(os.path.join(basedir, time, 'score_final.txt'), 'w') as f:
         for k in score_dict:
             avg = np.mean(score_dict[k])
             f.write(f'{k}: {avg}\n')
 
 @torch.no_grad()
 def render_mesh(basedir, render_kwargs, tensor_data, chunk=1024, radius=1.80,
-                res=255, threshold=10.):
+                res=255, threshold=10., time=""):
     import mcubes, trimesh
     ray_caster = render_kwargs['ray_caster']
 
-    os.makedirs(os.path.join(basedir, 'meshes'), exist_ok=True)
+    os.makedirs(os.path.join(basedir, time, 'meshes'), exist_ok=True)
     kps, skts, bones = tensor_data['kp'], tensor_data['skts'], tensor_data['bones']
     v_t_tuples = []
     for i in range(len(kps)):
@@ -1340,7 +1344,7 @@ def render_mesh(basedir, render_kwargs, tensor_data, chunk=1024, radius=1.80,
         sigma = np.maximum(raw_d.cpu().numpy(), 0)
         vertices, triangles = mcubes.marching_cubes(sigma, threshold)
         mesh = trimesh.Trimesh(vertices / res - .5, triangles)
-        mesh.export(os.path.join(basedir, 'meshes', f'{i:03d}.ply'))
+        mesh.export(os.path.join(basedir, time, 'meshes', f'{i:03d}.ply'))
 
 def run_render():
     args = config_parser().parse_args()
@@ -1349,7 +1353,7 @@ def run_render():
     comb = args.data_path.split("/")[-2]
     view = comb.split("_cam_")[1]
     print(f"camera: {view} comb: {comb}")
-    
+    time = datetime.datetime.now().strftime("%Y-%m-%d-%H") # ("%Y-%m-%d-%H-%M-%S")
 
     # parse nerf model args
     nerf_args = txt_to_argstring(args.nerf_args)
@@ -1364,9 +1368,9 @@ def run_render():
     tensor_data = to_tensors(render_data)
 
     basedir = os.path.join(args.outputdir, args.runname)
-    os.makedirs(basedir, exist_ok=True)
+    os.makedirs(os.path.join(basedir, time), exist_ok=True)
     if args.render_type == 'mesh':
-        render_mesh(basedir, render_kwargs, tensor_data, res=args.mesh_res, chunk=nerf_args.chunk)
+        render_mesh(basedir, render_kwargs, tensor_data, res=args.mesh_res, chunk=nerf_args.chunk, time=time)
         return
 
     rgbs, _, accs, _, bboxes = render_path(render_kwargs=render_kwargs,
@@ -1376,17 +1380,19 @@ def run_render():
                                       white_bkgd=args.white_bkgd,
                                       top_expand_ratio=args.top_expand_ratio,
                                       **tensor_data)
+    
+    
 
     if gt_dict['gt_paths'] is not None:
         if args.eval:
-            evaluate_metric(rgbs, accs, bboxes, gt_dict, basedir)
+            evaluate_metric(rgbs, accs, bboxes, gt_dict, basedir, time)
             pass
 
         elif args.save_gt and gt_dict['is_gt_paths']:
             gt_paths = gt_dict['gt_paths']
-            os.makedirs(os.path.join(basedir, 'gt'), exist_ok=True)
+            os.makedirs(os.path.join(basedir, time, 'gt'), exist_ok=True)
             for i in range(len(gt_paths)):
-                shutil.copyfile(gt_paths[i], os.path.join(basedir, 'gt',  f'{i:05d}.png'))
+                shutil.copyfile(gt_paths[i], os.path.join(basedir, time, 'gt',  f'{i:05d}.png'))
 
     if args.no_save:
         return
@@ -1396,8 +1402,6 @@ def run_render():
     skeletons = draw_skeletons_3d(rgbs, render_data['kp'],
                                   render_data['render_poses'],
                                   *render_data['hwf'])
-
-    time = datetime.datetime.now().strftime("%Y-%m-%d-%H") # ("%Y-%m-%d-%H-%M-%S")
 
     os.makedirs(os.path.join(basedir, time, f'image_{view}'), exist_ok=True)
     os.makedirs(os.path.join(basedir, time, f'skel_{view}'), exist_ok=True)
@@ -1418,7 +1422,7 @@ def run_render():
         # imageio.imwrite(os.path.join(basedir, 'acc', f'{i:05d}.png'), acc)
         # imageio.imwrite(os.path.join(basedir, 'skel', f'{i:05d}.png'), skel)
     np.save(os.path.join(basedir, time, 'bboxes.npy'), bboxes, allow_pickle=True)
-    imageio.mimwrite(os.path.join(basedir, "render_rgb.mp4"), rgbs, fps=args.fps)
+    imageio.mimwrite(os.path.join(basedir, time, "render_rgb.mp4"), rgbs, fps=args.fps)
 
 
 
