@@ -1068,7 +1068,6 @@ def load_bullettime(pose_h5, c2ws, focals, rest_pose, pose_keys,
                     undo_rot=False, center_cam=True, center_kps=True,
                     idx_map=None, args=None):
 
-    import ipdb
 
     # prepare camera
     c2ws = c2ws[selected_idxs]
@@ -1082,7 +1081,13 @@ def load_bullettime(pose_h5, c2ws, focals, rest_pose, pose_keys,
         focals = np.array([focals] * len(selected_idxs))
     else:
         focals = focals[selected_idxs]
-    focals = focals[:, None].repeat(n_bullet, 1).reshape(-1)
+    #focals = focals[:, None].repeat(n_bullet, 1).reshape(-1)
+
+    if len(focals.shape) == 2 and focals.shape[1] == 2:
+        focals = focals[:, None].repeat(n_bullet, 1).reshape(-1, 2)
+    else:
+        focals = focals[:, None].repeat(n_bullet, 1).reshape(-1)
+    print(f"focals {focals}")
 
     # prepare pose
     # TODO: hard-coded for now so we can quickly view the outcomes!
@@ -1115,6 +1120,10 @@ def load_bullettime(pose_h5, c2ws, focals, rest_pose, pose_keys,
     # expand shape for repeat
     kps = kps[:, None].repeat(n_bullet, 1).reshape(len(selected_idxs) * n_bullet, -1, 3)
     skts = skts[:, None].repeat(n_bullet, 1).reshape(len(selected_idxs) * n_bullet, -1, 4, 4)
+    # new
+    bones = bones[:, None].repeat(n_bullet, 1).reshape(len(selected_idxs) * n_bullet, -1, 3)
+
+    #import ipdb; ipdb.set_trace()
 
     return kps, skts, c2ws, cam_idxs, focals, bones
 

@@ -58,7 +58,6 @@ def read_spin_data(data_path, ext_scale=0.001, img_res=1000, bbox_res=224, new_f
     return processed_ret
 
 
-
 def convert_crop_cam_to_orig_img_and_focal(cam, bbox, img_width, img_height,
                                            focal=5000., resized_width=224, resized_height=224,
                                            new_focal=None):
@@ -115,6 +114,7 @@ def convert_crop_cam_to_orig_img_and_focal(cam, bbox, img_width, img_height,
     tx = ((cx - hw) / hw / sx) + cam[:, 1]
     ty = ((cy - hh) / hh / sy) + cam[:, 2]
 
+    """dan: update focal along x and y axis"""
     if new_focal is not None:
         print(f"old cz {cz}, focal {f}")
         # Todo: accounf for x and y
@@ -139,6 +139,58 @@ def convert_crop_cam_to_orig_img_and_focal(cam, bbox, img_width, img_height,
     #ipdb.set_trace()
 
     return f , np.stack([tx, ty, cz], axis=-1)
+
+# def convert_crop_cam_to_orig_img_and_focal(cam, bbox, img_width, img_height,
+#                                            focal=5000., resized_width=224, resized_height=224,
+#                                            new_focal=None):
+#     """
+#     Borrow from VIBE
+#     """
+#     '''
+#     Convert predicted camera from cropped image coordinates
+#     to original image coordinates
+#     :param cam (ndarray, shape=(3,)): weak perspective camera in cropped img coordinates
+#     :param bbox (ndarray, shape=(4,)): bbox coordinates (c_x, c_y, h)
+#     :param img_width (int): original image width
+#     :param img_height (int): original image height
+#     :param focal: focal length of the predicted camera in cropped img coordinate
+#     :param resized_width (int): the size of the cropped img (which is resized to a fixed value)
+#     :param resized_height (int): the size of the cropped img (which is resized to a fixed value)
+#     :return:
+#     f: focal length in the original image
+#     tx, ty, cz: camera location (x, y, )
+#     '''
+#     # Note: we assume the bounding box to be a squared one here
+#     # Note: we only need to translate x and y in this case, as the camera is not moved along z-axis
+#     # calculate the z location as in SPIN and VIBE
+#     cz = 2 * focal / (resized_width * cam[:, 0])
+#     cx, cy, h = bbox[:, 0], bbox[:, 1], bbox[:, 2]
+#     hw, hh = img_width / 2., img_height / 2.
+
+#     # first, we can know the actual focal length by scaling the cropped focal length
+#     f = h / resized_width * focal
+
+#     # similarly, undo the bounding box scaling here
+#     # Note: cam[:, 0] = 2 * focal / (resized_width * cz)
+#     # so the following equation is equivalent to
+#     # 2 * focal / (resized_width * cz) * (h / img_width) = (h / resized_width) * (1/img_width) * (focal / cz)
+#     # basically, the first term undo the bounding box scaling
+#     sx = cam[:, 0] * (1. / (img_width / h))
+#     sy = cam[:, 0] * (1. / (img_height / h))
+
+#     # now, apply the scale to move the camera
+#     tx = ((cx - hw) / hw / sx) + cam[:, 1]
+#     ty = ((cy - hh) / hh / sy) + cam[:, 2]
+
+#     if new_focal is not None:
+#         print(f"old cz {cz}, focal {f}")
+#         cz = cz * new_focal / f
+#         f[:] = new_focal
+#         print(f"new cz {cz}, focal {f}")
+
+
+#     return np.stack([f, tx, ty, cz], axis=-1)
+
 
 def get_keypoints_from_betas(betas, joints, rot_mats,
                              ext_scale=1.0, align_joint_idx=8,

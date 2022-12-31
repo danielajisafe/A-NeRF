@@ -93,6 +93,7 @@ def kp_to_valid_rays(poses, H, W, focal, kps=None, cylinder_params=None,
         #top_expand_ratio = 1.10
         extend_mm = 250
 
+        #print("kps_np[:,-1]",  kps_np[:,-1])
         #import ipdb; ipdb.set_trace()
 
         # neuralbody
@@ -115,6 +116,7 @@ def kp_to_valid_rays(poses, H, W, focal, kps=None, cylinder_params=None,
         cyl_idx = i % kps.shape[0]
         cyl_param = cylinder_params[cyl_idx]
         f = focal if isinstance(focal, float) else focal[i]
+        #print(f"f {f}")
         center = None if centers is None else centers[i]
         h = H if isinstance(H, int) else H[i]
         w = W if isinstance(W, int) else W[i]
@@ -135,6 +137,7 @@ def kp_to_valid_rays(poses, H, W, focal, kps=None, cylinder_params=None,
         valid_idxs.append(valid_idx)
         bboxes.append((tl, br))
 
+    #import ipdb; ipdb.set_trace()
     return rays, valid_idxs, cylinder_params, bboxes
 
 def get_corner_rays(H, W, focal, poses):
