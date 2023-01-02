@@ -1,3 +1,4 @@
+#MIRROR ANERF
 
 
 import os
@@ -117,6 +118,10 @@ def config_parser():
 
     parser.add_argument('--no_save', action='store_true',
                         help='no image saving operation')
+    parser.add_argument('--apples14', action='store_true', default=False,
+                        help='use common 14 joints between SMPL, alphapose and Mirror skeleton')
+    parser.add_argument('--body15', action='store_true', default=False,
+                        help='use common 15 joints between alphapose and Mirror skeleton - includes nose joint')
 
     return parser
 
@@ -281,6 +286,12 @@ def load_render_data(args, nerf_args, poseopt_layer=None, opt_framecode=True):
                                                                     rest_pose, pose_keys,
                                                                     #centers=centers_n,
                                                                     **render_data)
+        elif args.psnr_images:
+            print(f'Load data to generate images.')
+            kps, skts, c2ws, cam_idxs, focals, bones = generate_psnr_imgs(data_h5, c2ws, focals,
+                                                                    rest_pose, pose_keys,
+                                                                    #centers=centers_n,
+                                                                    **render_data)
         else:
             print(f'Load data for bullet time effect!')
             if args.switch_cam:
@@ -397,8 +408,11 @@ def load_render_data(args, nerf_args, poseopt_layer=None, opt_framecode=True):
         except:
             print('gt path does not exist, grab images directly!')
             is_gt_paths = False
-            gt_paths = dd.io.load(data_h5, '/imgs')[extract_idxs]
-            gt_mask_paths = dd.io.load(data_h5, '/masks')[extract_idxs]
+            # gt_paths = dd.io.load(data_h5, '/imgs')[extract_idxs]
+            # gt_mask_paths = dd.io.load(data_h5, '/masks')[extract_idxs]
+
+            gt_paths = dd.io.load(data_h5, '/imgs', sel=dd.aslice[extract_idxs, ...])
+            gt_mask_paths = dd.io.load(data_h5, '/masks', sel=dd.aslice[extract_idxs, ...])
 
     # handle special stuff
     if args.selected_framecode is not None:
@@ -547,7 +561,7 @@ def init_catalog(args, n_bullet=3):
             index = mirrr_raw_idxs.index(i)
             offset_indices.append(index)
 
-        easy_idx = offset_indices#[-3:]
+        easy_idx = offset_indices#[-1:]
         args.selected_idxs = easy_idx 
         # pick a subset that is common to both
         #import ipdb; ipdb.set_trace()
@@ -979,7 +993,8 @@ def eval_bullettime_kps(pose_h5, c2ws, focals, rest_pose, pose_keys,
                     undo_rot=False, center_cam=True, center_kps=True,
                     idx_map=None, args=None):
 
-    undo_rot=False; center_cam=True; center_kps=True
+    # undo_rot=False; center_cam=True; center_kps=True
+    center_kps = False; center_cam= False
     #import ipdb; ipdb.set_trace()
 
     # prepare camera
@@ -1015,7 +1030,7 @@ def eval_bullettime_kps(pose_h5, c2ws, focals, rest_pose, pose_keys,
         time.sleep(3)
         
     #import ipdb; ipdb.set_trace()
-    #"""
+    """
     # special case - evaluate step mirror initial using 100% frames (protocol 1)
     kps_raw, _ = dd.io.load(pose_h5, pose_keys) #, sel=dd.aslice[selected_idxs, ...])
 
@@ -1026,7 +1041,7 @@ def eval_bullettime_kps(pose_h5, c2ws, focals, rest_pose, pose_keys,
     kps_comb = np.concatenate([kps, kps_test])
     print(f"kps_raw {kps_raw.shape} kps selected {kps.shape}, kps combined {kps_comb.shape}")
     time.sleep(3)
-    #"""
+    """
 
     """
     logic: evaluate every 100th in eval set (18 in total, most possible)
@@ -1069,9 +1084,14 @@ def eval_bullettime_kps(pose_h5, c2ws, focals, rest_pose, pose_keys,
     else:
         print("what are your eval idx?")
         ipdb.set_trace()
-
-    eval_opt_kp(kps, comb, rec_eval_pts, gt_eval_pts, args=args)
+    
+    
+    """
+    print("******Protocol I: ******")
     eval_opt_kp(kps_comb, comb, rec_eval_pts, gt_eval_pts, args=args)
+    """
+    print("******Protocol II: ******")
+    eval_opt_kp(kps, comb, rec_eval_pts, gt_eval_pts, args=args)
     
     #name = "pose_opt_eval_may16"
     #np.save(f"/scratch/dajisafe/smpl/mirror_project_dir/authors_eval_data/temp_dir/cam_trajectory_{name}.npy", np.array(c2ws))
@@ -1080,6 +1100,88 @@ def eval_bullettime_kps(pose_h5, c2ws, focals, rest_pose, pose_keys,
     print("pose evaluation complete...")
     import ipdb; ipdb.set_trace()
 
+def generate_psnr_imgs(pose_h5, c2ws, focals, rest_pose, pose_keys,
+                    selected_idxs, refined=None, n_bullet=30, bullet_ang=360,
+                    #centers=None,
+                    undo_rot=False, center_cam=True, center_kps=True,
+                    idx_map=None, args=None):
+
+
+    """we need the global root position for PSNR images, so no root-centering"""
+    center_kps = False; center_cam= False
+    #import ipdb; ipdb.set_trace()
+
+    # prepare camera
+    c2ws = c2ws[selected_idxs]
+    # centers = centers[selected_idxs]
+
+    if center_cam:
+        shift_x = c2ws[..., 0, -1].copy()
+        shift_y = c2ws[..., 1, -1].copy()
+        c2ws[..., :2, -1] = 0.
+
+    # prepare pose
+    # TODO: hard-coded for now so we can quickly view the outcomes!
+    if refined is None:
+        kps, bones = dd.io.load(pose_h5, pose_keys, sel=dd.aslice[selected_idxs, ...])
+        selected_idxs = find_idxs_with_map(selected_idxs, idx_map)
+        if args.switch_cam:
+            print("are you using the right data path for pose_h5?")
+            ipdb.set_trace()
+    else:
+        selected_idxs = find_idxs_with_map(selected_idxs, idx_map)
+        kps, bones = refined
+        kps = kps[selected_idxs]
+        bones = bones[selected_idxs]
+    cam_idxs = selected_idxs[:, None].repeat(n_bullet, 1).reshape(-1)
+    
+
+    #import ipdb; ipdb.set_trace()
+    if center_kps:
+        root = kps[..., :1, :].copy() # assume to be CMUSkeleton
+        # move kps to 0 and cam to -root
+        kps[..., :, :] -= root
+        c2ws[..., :3, -1] -= root.reshape(-1,3)
+
+    elif center_cam:
+        kps[..., :, 0] -= shift_x[:, None]
+        kps[..., :, 1] -= shift_y[:, None]
+
+    #import ipdb; ipdb.set_trace()
+    c2ws = generate_bullet_time(c2ws, n_views=n_bullet, bullet_ang=bullet_ang).transpose(1, 0, 2, 3).reshape(-1, 4, 4)
+    
+
+    if isinstance(focals, float):
+        focals = np.array([focals] * len(selected_idxs))
+    else:
+        focals = focals[selected_idxs]
+
+    #import ipdb; ipdb.set_trace()
+    #focals = focals[:, None].repeat(n_bullet, 1).reshape(-1,2)
+    if len(focals.shape) == 2 and focals.shape[1] == 2:
+        focals = focals[:, None].repeat(n_bullet, 1).reshape(-1, 2)
+    else:
+        focals = focals[:, None].repeat(n_bullet, 1).reshape(-1)
+    print(f"focals {focals[0:1]}")
+
+    if undo_rot:
+        bones[..., 0, :] = np.array([1.5708, 0., 0.], dtype=np.float32).reshape(1, 1, 3)
+
+    l2ws = np.array([get_smpl_l2ws(bone, rest_pose, 1.0) for bone in bones])
+    #import ipdb; ipdb.set_trace()
+    l2ws[..., :3, -1] += kps[..., :1, :].copy()
+    kps = l2ws[..., :3, -1]
+    skts = np.linalg.inv(l2ws)
+
+    
+    # expand shape for repeat
+    kps = kps[:, None].repeat(n_bullet, 1).reshape(len(selected_idxs) * n_bullet, -1, 3)
+    skts = skts[:, None].repeat(n_bullet, 1).reshape(len(selected_idxs) * n_bullet, -1, 4, 4)
+    #centers = centers[:, None].repeat(n_bullet, 1).reshape(len(selected_idxs) * n_bullet, 2)
+    #import ipdb; ipdb.set_trace()
+
+   
+    return kps, skts, c2ws, cam_idxs, focals, bones#, root#, centers
 
 def load_bullettime(pose_h5, c2ws, focals, rest_pose, pose_keys,
                     selected_idxs, refined=None, n_bullet=30, bullet_ang=360,
@@ -1135,8 +1237,14 @@ def load_bullettime(pose_h5, c2ws, focals, rest_pose, pose_keys,
         focals = np.array([focals] * len(selected_idxs))
     else:
         focals = focals[selected_idxs]
-    focals = focals[:, None].repeat(n_bullet, 1).reshape(-1,2)
 
+    #import ipdb; ipdb.set_trace()
+    #focals = focals[:, None].repeat(n_bullet, 1).reshape(-1,2)
+    if len(focals.shape) == 2 and focals.shape[1] == 2:
+        focals = focals[:, None].repeat(n_bullet, 1).reshape(-1, 2)
+    else:
+        focals = focals[:, None].repeat(n_bullet, 1).reshape(-1)
+    print(f"focals {focals[0:1]}")
 
     if undo_rot:
         bones[..., 0, :] = np.array([1.5708, 0., 0.], dtype=np.float32).reshape(1, 1, 3)
@@ -1296,7 +1404,9 @@ def evaluate_metric(rgbs, accs, bboxes, gt_dict, basedir, time=""):
 
     for i, (rgb, acc, bbox, gt_path) in enumerate(zip(rgbs, accs, bboxes, gt_paths)):
 
+        # track the last 150 results
         if (i + 1) % 150 == 0:
+            import ipdb; ipdb.set_trace()
             np.save(os.path.join(basedir, time, 'scores.npy'),
                     {'psnr': psnrs, 'ssim': ssims, 'fg_psnr': fg_psnrs, 'fg_ssim': fg_ssims},
                      allow_pickle=True)
@@ -1349,6 +1459,7 @@ def evaluate_metric(rgbs, accs, bboxes, gt_dict, basedir, time=""):
         psnrs.append(box_psnr)
 
         if gt_mask is not None:
+            """se is the error at the size of the bbox * mask cropped at the size of the bbox -> error within the foreground"""
             denom = (mask_cropped.sum() * 3.)
             masked_mse = (se * mask_cropped).sum() / denom
             fg_psnr = -10. * np.log10(masked_mse)
@@ -1444,7 +1555,7 @@ def run_render():
     tensor_data = to_tensors(render_data)
 
     basedir = os.path.join(args.outputdir, args.runname)
-    os.makedirs(basedir, exist_ok=True)
+    os.makedirs(os.path.join(basedir, time), exist_ok=True)
     if args.render_type == 'mesh':
         render_mesh(basedir, render_kwargs, tensor_data, res=args.mesh_res, chunk=nerf_args.chunk, time=time)
         return
@@ -1464,16 +1575,16 @@ def run_render():
     
     if gt_dict['gt_paths'] is not None:
         if args.eval:
-            print("are you using full or raw rgb?")
-            ipdb.set_trace()
+            #print("are you using full or raw rgb?")
+            #ipdb.set_trace()
             evaluate_metric(rgbs, accs, bboxes, gt_dict, basedir, time)
             pass
 
         elif args.save_gt and gt_dict['is_gt_paths']:
             gt_paths = gt_dict['gt_paths']
-            os.makedirs(os.path.join(basedir, 'gt'), exist_ok=True)
+            os.makedirs(os.path.join(basedir, time, 'gt'), exist_ok=True)
             for i in range(len(gt_paths)):
-                shutil.copyfile(gt_paths[i], os.path.join(basedir, 'gt',  f'{i:05d}.png'))
+                shutil.copyfile(gt_paths[i], os.path.join(basedir, time, 'gt',  f'{i:05d}.png'))
 
     if args.no_save:
         return
@@ -1685,13 +1796,13 @@ def run_render():
         imageio.imwrite(os.path.join(basedir, time, f'skel_{view}', f'{rel_idx:05d}.png'), skel)
     
     #import ipdb; ipdb.set_trace()
-    np.save(os.path.join(basedir, 'bboxes.npy'), bboxes, allow_pickle=True)
-    #imageio.mimwrite(os.path.join(basedir, "render_rgb.mp4"), rgbs, fps=args.fps)
+    np.save(os.path.join(basedir, time, 'bboxes.npy'), bboxes, allow_pickle=True)
+    #imageio.mimwrite(os.path.join(basedir, time, "render_rgb.mp4"), rgbs, fps=args.fps)
 
     # make the block size dynamic
     kargs = { 'macro_block_size': None }
     print("saving images only.....")
-    #imageio.mimwrite(os.path.join(basedir, "render_rgb_no_skel.mp4"), rgbs, fps=args.fps,**kargs)
+    #imageio.mimwrite(os.path.join(basedir, time, "render_rgb_no_skel.mp4"), rgbs, fps=args.fps,**kargs)
 
 if __name__ == '__main__':
     torch.set_default_tensor_type('torch.cuda.FloatTensor')
