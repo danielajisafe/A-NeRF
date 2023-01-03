@@ -1,3 +1,5 @@
+# MIRROR ANERF
+
 #MIRROR ANERF
 
 
@@ -74,6 +76,8 @@ def config_parser():
                         help='evaluate the [refined/initial] pose for e.g trainset or images')
     parser.add_argument('--psnr_images', action='store_true', default=False,
                         help='evaluate images for psnr - use same img ids or offsets')
+    parser.add_argument('--generate_skeleton_overlay', action='store_true', default=False,
+                        help='overlay skeleton (initial or refined) on GT images') 
     parser.add_argument("--use_mirr", action='store_true',
                         help='use both masks')
     # parser.add_argument("--no_reload", action='store_true',
@@ -286,6 +290,13 @@ def load_render_data(args, nerf_args, poseopt_layer=None, opt_framecode=True):
                                                                     rest_pose, pose_keys,
                                                                     #centers=centers_n,
                                                                     **render_data)
+        elif args.generate_skeleton_overlay:
+            print(f'Load data to overlay skeleton on GT images.')
+            _, _, _, _, _, _ = generate_skeleton_overlay(data_h5, c2ws, focals,
+                                                                    rest_pose, pose_keys,
+                                                                    #centers=centers_n,
+                                                                    **render_data)
+        
         elif args.psnr_images:
             print(f'Load data to generate images.')
             kps, skts, c2ws, cam_idxs, focals, bones = generate_psnr_imgs(data_h5, c2ws, focals,
@@ -507,6 +518,8 @@ def init_catalog(args, n_bullet=3):
     comb = args.data_path.split("/")[-2]
     view = int(comb.split("_cam_")[1])
 
+    
+
     # if view ==3:
     #     easy_idx = [0, 473, 467, 1467]
     # elif view ==2:
@@ -527,7 +540,7 @@ def init_catalog(args, n_bullet=3):
         args.selected_idxs = easy_idx
 
     elif args.psnr_images:
-
+        
         import pickle#5 as pickle
         with open(f'{args.data_path}/calib{view}_20000iter_May_11.pickle', 'rb') as handle:
             from_pickle = pickle.load(handle)
@@ -542,7 +555,7 @@ def init_catalog(args, n_bullet=3):
 
         mirrr_raw_idxs = from_pickle['chosen_frames'][:args.train_len]
 
-        """ please update code: hard-coded vanilla indices here for now"""
+        #""" please update code: hard-coded vanilla indices here for now"""
         # vanilla_raw_idxs = np.arange(1800) #spin_raw_data['valid_idxs']
         # common_eval_pts = list(set(mirrr_raw_idxs).intersection(set(vanilla_raw_idxs)))
 
@@ -565,6 +578,24 @@ def init_catalog(args, n_bullet=3):
         args.selected_idxs = easy_idx 
         # pick a subset that is common to both
         #import ipdb; ipdb.set_trace()
+
+    elif generate_skeleton_overlay:
+        # mirrr_raw_idxs = from_pickle['chosen_frames'][:args.train_len]
+
+        # #""" please update code: hard-coded vanilla indices here for now"""
+        # n = len(mirrr_raw_idxs)
+        # offset_indices = []
+
+        # for i in range(0,n,20):
+        #     index = mirrr_raw_idxs.index(i)
+        #     offset_indices.append(index)
+
+        # easy_idx = offset_indices[-1:]
+
+        print("did you consider offset in selected idxs?")
+        time.sleep(3)
+        easy_idx = args.selected_idxs
+        args.selected_idxs = easy_idx 
 
     else: #render
         easy_idx = args.selected_idxs #[0] #rebuttal_tim #[406,466,340,600,900,814] # #[0, 465, 473, 467, 1467] # [10, 70, 350, 420, 490, 910, 980, 1050] #np.arange(0, args.train_len)
@@ -1099,6 +1130,123 @@ def eval_bullettime_kps(pose_h5, c2ws, focals, rest_pose, pose_keys,
 
     print("pose evaluation complete...")
     import ipdb; ipdb.set_trace()
+
+def generate_skeleton_overlay(pose_h5, c2ws, focals, rest_pose, pose_keys,
+                    selected_idxs, refined=None, n_bullet=30, bullet_ang=360,
+                    #centers=None,
+                    undo_rot=False, center_cam=True, center_kps=True,
+                    idx_map=None, args=None):
+
+    import ipdb
+    comb = args.data_path.split("/")[-2]
+    view = comb.split("_cam_")[1]
+
+    """we need the global root position for 3D skeleton overlay, so no root-centering"""
+    center_kps = False; center_cam= False
+
+    # prepare camera
+    c2ws = c2ws[selected_idxs]
+    # centers = centers[selected_idxs]
+
+    if center_cam:
+        shift_x = c2ws[..., 0, -1].copy()
+        shift_y = c2ws[..., 1, -1].copy()
+        c2ws[..., :2, -1] = 0.
+
+    # prepare pose
+    # TODO: hard-coded for now so we can quickly view the outcomes!
+    if refined is None:
+        print("using *** initial optimized mirror poses ***")
+        kps, bones = dd.io.load(pose_h5, pose_keys, sel=dd.aslice[selected_idxs, ...])
+        selected_idxs = find_idxs_with_map(selected_idxs, idx_map)
+        if args.switch_cam:
+            print("are you using the right data path for pose_h5?")
+            ipdb.set_trace()
+    else:
+        print("using *** refined mirror poses ***")
+        selected_idxs = find_idxs_with_map(selected_idxs, idx_map)
+        kps, bones = refined
+        kps = kps[selected_idxs]
+        bones = bones[selected_idxs]
+    cam_idxs = selected_idxs[:, None].repeat(n_bullet, 1).reshape(-1)
+    
+
+    #import ipdb; ipdb.set_trace()
+    if center_kps:
+        root = kps[..., :1, :].copy() # assume to be CMUSkeleton
+        # move kps to 0 and cam to -root
+        kps[..., :, :] -= root
+        c2ws[..., :3, -1] -= root.reshape(-1,3)
+
+    elif center_cam:
+        kps[..., :, 0] -= shift_x[:, None]
+        kps[..., :, 1] -= shift_y[:, None]
+
+    #import ipdb; ipdb.set_trace()
+    c2ws = generate_bullet_time(c2ws, n_views=n_bullet, bullet_ang=bullet_ang).transpose(1, 0, 2, 3).reshape(-1, 4, 4)
+    
+
+    if isinstance(focals, float):
+        focals = np.array([focals] * len(selected_idxs))
+    else:
+        focals = focals[selected_idxs]
+
+    #import ipdb; ipdb.set_trace()
+    #focals = focals[:, None].repeat(n_bullet, 1).reshape(-1,2)
+    if len(focals.shape) == 2 and focals.shape[1] == 2:
+        focals = focals[:, None].repeat(n_bullet, 1).reshape(-1, 2)
+    else:
+        focals = focals[:, None].repeat(n_bullet, 1).reshape(-1)
+    print(f"focals {focals[0:1]}")
+
+    if undo_rot:
+        bones[..., 0, :] = np.array([1.5708, 0., 0.], dtype=np.float32).reshape(1, 1, 3)
+
+    l2ws = np.array([get_smpl_l2ws(bone, rest_pose, 1.0) for bone in bones])
+    #import ipdb; ipdb.set_trace()
+    l2ws[..., :3, -1] += kps[..., :1, :].copy()
+    kps = l2ws[..., :3, -1]
+    skts = np.linalg.inv(l2ws)
+
+    # prepare GT images
+    gt_imgs = dd.io.load(pose_h5, '/imgs', sel=dd.aslice[selected_idxs, ...])
+    centers = dd.io.load(pose_h5, '/centers', sel=dd.aslice[selected_idxs, ...])
+    #gt_masks = dd.io.load(pose_h5, '/masks', sel=dd.aslice[selected_idxs, ...])
+    img_shape = dd.io.load(pose_h5, '/img_shape')
+    _,H,W,C = img_shape.tolist()
+    #import ipdb; ipdb.set_trace()
+    
+    # expand shape for repeat
+    kps = kps[:, None].repeat(n_bullet, 1).reshape(len(selected_idxs) * n_bullet, -1, 3)
+    skts = skts[:, None].repeat(n_bullet, 1).reshape(len(selected_idxs) * n_bullet, -1, 4, 4)
+    #centers = centers[:, None].repeat(n_bullet, 1).reshape(len(selected_idxs) * n_bullet, 2)
+    #import ipdb; ipdb.set_trace()
+
+    """begin overlay"""
+    
+    for i in trange(len(selected_idxs)):
+        idx = selected_idxs[i]
+        from core.utils.skeleton_utils import draw_skeletons_3d
+        import imageio
+
+        #img = dd.io.load(pose_h5, '/imgs', sel=dd.aslice[idx, ...])
+        #center = dd.io.load(pose_h5, '/centers', sel=dd.aslice[idx, ...])
+        img = gt_imgs[i].reshape(H, W, 3)
+        #msk = gt_masks['sampling_masks'][idx].reshape(H, W, 1)
+        img = img.copy() #* msk.copy()
+        skel_img = draw_skeletons_3d(img[None], kps[i:i+1], c2ws[i][None], H, W, focals[i][None], centers[i][None])
+        #skel_img = draw_skeletons_3d(img[None], kps[:1], c2w[None], H, W, focal[None], center[None])
+        # if refined is None:
+        #     save_dir = f"/scratch/st-rhodin-1/users/dajisafe/anerf_mirr/A-NeRF/checkers/initial_overlay/init_SPIN/{view}"
+        # else:
+        save_dir = f"/scratch/st-rhodin-1/users/dajisafe/anerf_mirr/A-NeRF/checkers/refined_overlay/mirror/{view}_ref_2023_01_03"
+        imageio.imwrite(f'{save_dir}/{idx:05d}.png', skel_img.reshape(H, W, 3))
+    print(cam_idxs)
+    ipdb.set_trace()
+
+    #plt.savefig(f"/scratch/st-rhodin-1/users/dajisafe/anerf_mirr/A-NeRF/checkers/initial_overlay/init_SPIN/5/pixel_loc.jpg", dpi=300, bbox_inches='tight', pad_inches = 0)
+
+    return kps, skts, c2ws, cam_idxs, focals, bones
 
 def generate_psnr_imgs(pose_h5, c2ws, focals, rest_pose, pose_keys,
                     selected_idxs, refined=None, n_bullet=30, bullet_ang=360,
