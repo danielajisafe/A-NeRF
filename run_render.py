@@ -1061,8 +1061,8 @@ def eval_bullettime_kps(pose_h5, c2ws, focals, rest_pose, pose_keys,
         time.sleep(3)
         
     #import ipdb; ipdb.set_trace()
-    """
-    # special case - evaluate step mirror initial using 100% frames (protocol 1)
+    #"""
+    #"""special case - evaluate step mirror initial using 100% frames (protocol 1) """
     kps_raw, _ = dd.io.load(pose_h5, pose_keys) #, sel=dd.aslice[selected_idxs, ...])
 
     test_pose_h5 = pose_h5.replace("train", "test")
@@ -1072,7 +1072,7 @@ def eval_bullettime_kps(pose_h5, c2ws, focals, rest_pose, pose_keys,
     kps_comb = np.concatenate([kps, kps_test])
     print(f"kps_raw {kps_raw.shape} kps selected {kps.shape}, kps combined {kps_comb.shape}")
     time.sleep(3)
-    """
+    #"""
 
     """
     logic: evaluate every 100th in eval set (18 in total, most possible)
@@ -1117,10 +1117,11 @@ def eval_bullettime_kps(pose_h5, c2ws, focals, rest_pose, pose_keys,
         ipdb.set_trace()
     
     
-    """
-    print("******Protocol I: ******")
+    #""" 
+    print("******Protocol I: special case ******")
     eval_opt_kp(kps_comb, comb, rec_eval_pts, gt_eval_pts, args=args)
-    """
+    #"""
+
     print("******Protocol II: ******")
     eval_opt_kp(kps, comb, rec_eval_pts, gt_eval_pts, args=args)
     

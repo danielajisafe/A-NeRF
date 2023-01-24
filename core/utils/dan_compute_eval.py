@@ -253,15 +253,19 @@ def eval_opt_kp(kps,comb, rec_eval_pts, gt_eval_pts,args=None):
     kp3d_c = kp3d_c[:,:19,:]
 
     #ipdb.set_trace()
-    # apples-to-apples (Alpha-to-Mirr skel vs SMPL-to-Mirr skel comparison)
-    resp = input("do you want apples-to-apples evaluation, yes or no? ")
-    if True:
+    """apples-to-apples (Alphapose, Mirr skel and SMPL comparison """
+    #resp = input("do you want apples14 evaluation, yes or no? ")
+    if args.apples14:
         gt3d_chosen_c = gt3d_chosen_c[:,1:15,:]
         kp3d_c = kp3d_c[:,1:15,:]
-        print("running apples-to-apples evaluation...")
+        print("running apples14 (S1) evaluation...")
+    elif args.body15:
+        gt3d_chosen_c = gt3d_chosen_c[:,:15,:]
+        kp3d_c = kp3d_c[:,:15,:]
+        print("running body15 evaluation...")
     else:
-        print("NOT running apples-to-apples evaluation...why?")
-        #ipdb.set_trace()
+        print("running 19-joints (S2) evaluation...why?")
+        ipdb.set_trace()
 
     mpjpe = MPJPE(gt3d_chosen_c, kp3d_c)
     n_mpjpe = NMPJPE(gt3d_chosen_c, kp3d_c)
