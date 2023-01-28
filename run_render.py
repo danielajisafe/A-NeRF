@@ -1081,7 +1081,7 @@ def eval_bullettime_kps(pose_h5, c2ws, focals, rest_pose, pose_keys,
     2. the number of evaluations would depend on the size of the reconstruction sequence
     """
     
-
+    """these are eval indices within alphapose valid frames (also called chosen frames)"""
     if cam_id==2:
         comb = args.data_path.split("/")[-2]
         #comb="fc4f46b9-1f80-4498-8949-ca1b52864d0c_cam_2" # 2022-05-16-02-10-36

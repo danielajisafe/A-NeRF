@@ -44,7 +44,9 @@ from core.utils.dan_skeleton_utils import get_bone_names, get_parent_idx, verify
 
 
 def eval_opt_kp(kps,comb, rec_eval_pts, gt_eval_pts,args=None):
-
+    """ the kps from h5py has been converted to hip-first for pose refinement
+        or appearance learning purposes
+    """
     
     #cam
     #comb = "fc4f46b9-1f80-4498-8949-ca1b52864d0c_cam_2" 
