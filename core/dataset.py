@@ -211,8 +211,6 @@ class BaseH5Dataset(Dataset):
         n_overlap_pixels_dups = n_overlap_pixels_dups.repeat(self.N_samples, 0)
         n_rays_per_img_dups = n_rays_per_img_dups.repeat(self.N_samples, 0)
 
-
-        #import ipdb; ipdb.set_trace()
         # maybe get a version that computes only sampled points?
         rays_o, rays_d, _ = self.get_rays(c2w, focal, pixel_idxs, center)
         if not v_empty:
@@ -401,17 +399,14 @@ class BaseH5Dataset(Dataset):
                               -(j-offset_y),
                               -np.ones_like(i)], axis=-1)
 
-        # pre-computed pixel indices from image resolution (0 to n, from first cell to last cell)
+        # pre-computed pixel indices: from image resolution (0 to n, from first cell to last cell)
         self._pixel_idxs = np.arange(np.prod(self.HW)).reshape(*self.HW)
 
-
-        #ipdb.set_trace()
         # store pose and camera data directly in memory (they are small)
         self.gt_kp3d = dataset['gt_kp3d'][:] if 'gt_kp3d' in self.dataset_keys else None
         self.kp_map, self.kp_uidxs = None, None # only not None when self.multiview = True
         self.kp3d, self.bones, self.skts, self.cyls = self._load_pose_data(dataset)
         
-
         self.focals, self.c2ws = self._load_camera_data(dataset)
 
         # TODO: can we use the choosen frames from 3D step?
@@ -585,19 +580,12 @@ class BaseH5Dataset(Dataset):
 
     def plot_current_pixel(self, img, pixel_idxs, pre_select, size):
         # TODO: Update helper plotting.
-
-        # debug -----------------------------------------
-        #raw_img = self.dataset['imgs'][idx].reshape(*self.HW,3).astype(np.float32) / 255.
-    
         plt.imshow(img); plt.axis("off")
         pts = self._2d_pixel_loc[pixel_idxs[pre_select:pre_select+size]]
         plt.scatter(pts[:,0], pts[:,1], c="g")
-        #plt.plot(*self._2d_pixel_loc[pixel_idxs[-2]], "og", markersize=5)
-
-        # [1087505, 1089258, 1457963,  572801,  968285])
         #if inter_box is not None: plot_bbox2D(inter_box, plt=plt, color="cyan")
         plt.savefig(f"/scratch/dajisafe/smpl/A_temp_folder/A-NeRF/checkers/imgs/pixel_loc.jpg", dpi=300, bbox_inches='tight', pad_inches = 0)
-        #ipdb.set_trace()
+
 
     def get_img_data(self, idx, pixel_idxs, inter_box=None, n_overlap_pixel_ids=None):
         '''
@@ -609,7 +597,6 @@ class BaseH5Dataset(Dataset):
         else:
             n_overlap_p_ids = n_overlap_pixel_ids[0]
 
-        #ipdb.set_trace()
         # fg = self.dataset['masks'][idx, pixel_idxs].astype(np.float32)
         a = self.dataset['masks'][idx, pixel_idxs[:-n_overlap_p_ids]]
         b = self.dataset['masks'][idx, pixel_idxs[-n_overlap_p_ids:]]
@@ -623,7 +610,6 @@ class BaseH5Dataset(Dataset):
         a = self.dataset['imgs'][idx, pixel_idxs[:-n_overlap_p_ids]]
         b = self.dataset['imgs'][idx, pixel_idxs[-n_overlap_p_ids:]]
         img = np.concatenate([a, b]).astype(np.float32) / 255.
-
 
         bg = None
         if self.has_bg:
@@ -748,7 +734,7 @@ class BaseH5Dataset(Dataset):
         
         # plot_bbox2D(real_box, plt=plt, color="gray", linewidth=0.5)
         # plot_bbox2D(virt_box, plt=plt, color="gray", linewidth=0.5)
-        plot_bbox2D(inter_box, plt=plt, color="green", linewidth=1.5)
+        #plot_bbox2D(inter_box, plt=plt, color="green", linewidth=1.5)
         #plt.savefig(f"/scratch/dajisafe/smpl/A_temp_folder/A-NeRF/checkers/imgs/bbox2D.jpg", dpi=600, bbox_inches='tight', pad_inches = 0)
         # ipdb.set_trace()
 
@@ -804,7 +790,6 @@ class BaseH5Dataset(Dataset):
         sampled_idxs = np.sort(sampled_idxs).astype(np.int_)
         return sampled_idxs, inter_box, union_idxs
 
-
     def sample_pixels(self, idx, q_idx, N_rand_ratio=1.0):
         '''
         return sampled pixels (in (H*W,) indexing, not (H, W))
@@ -832,8 +817,6 @@ class BaseH5Dataset(Dataset):
         sampled_idxs = np.random.choice(valid_idxs,
                                         N_rand,
                                         replace=False)
-
-        #import ipdb; ipdb.set_trace()
         if self.patch_size > 1:
 
             H, W = self.HW
@@ -1180,7 +1163,6 @@ class BaseH5Dataset(Dataset):
             'kp_uidxs': self.kp_uidxs, # important for multiview setting
         }
 
-        #dataset.close()
 
         '''virtual data starts here'''
 
@@ -1207,7 +1189,6 @@ class BaseH5Dataset(Dataset):
         # get the subset idxs to collect the right data
         k_idxs, c_idxs, i_idxs, kq_idxs, cq_idxs = self._get_subset_idxs(render=True)
 
-        #import ipdb; ipdb.set_trace()
         # grab only a subset (15 images) for rendering
         # kq_idxs = kq_idxs[::self.render_skip][self.N_render : self.N_render + 1] #[:self.N_render]
         # cq_idxs = cq_idxs[::self.render_skip][self.N_render : self.N_render + 1] #[:self.N_render]
@@ -1220,8 +1201,7 @@ class BaseH5Dataset(Dataset):
         i_idxs = i_idxs[::self.render_skip][:self.N_render]
         k_idxs = k_idxs[::self.render_skip][:self.N_render]
         c_idxs = c_idxs[::self.render_skip][:self.N_render]
-
-        
+ 
         # get images if split == 'render'
         # note: needs to have self._idx_map
         H, W = self.HW
@@ -1229,7 +1209,6 @@ class BaseH5Dataset(Dataset):
         render_fgs = dataset['masks'][i_idxs].reshape(-1, H, W, 1)
         '''Binarize mask'''
         render_fgs = (render_fgs > 0.5).astype(np.int_)
-
         render_bgs = self.bgs.reshape(-1, H, W, 3).astype(np.float32) / 255.
         render_bg_idxs = self.bg_idxs[i_idxs]
 
@@ -1524,8 +1503,6 @@ def ray_collate_fn(batch):
     batch = default_collate(batch)
     # default collate results in shape (N_images, N_rays_per_images, ...)
     # flatten the first two dimensions.
-
-    #import ipdb; ipdb.set_trace()
     batch = {k: batch[k].flatten(end_dim=1) for k in batch}
     batch['rays'] = torch.stack([batch['rays_o'], batch['rays_d'], 
                                 batch['rays_o_v'], batch['rays_d_v']], dim=0)
