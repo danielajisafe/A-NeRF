@@ -1687,7 +1687,7 @@ def draw_opt_poses(c2ws, hwf, anchor_kps, opt_kps, gt_kps=None,
     return np.array(imgs)
 
 def draw_markers(pts, img=None, H=1000, W=1000, res=0.1, marker_type=cv2.MARKER_CROSS,
-                 thickness=3, color=(255, 0, 0), marker_size=5):
+                 thickness=3, color=(255, 0, 0), marker_size=15):
     '''
     Draw 2d points on the input image
     '''

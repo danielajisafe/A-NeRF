@@ -18,7 +18,7 @@ from .utils.skeleton_utils import SMPLSkeleton, get_per_joint_coords, cylinder_t
 from .utils.ray_utils import get_rays_np, kp_to_valid_rays
 
 from .utils.skeleton_utils import SMPLSkeleton, get_per_joint_coords, cylinder_to_box_2d, nerf_c2w_to_extrinsic,\
-    skeleton3d_to_2d, plot_skeleton2d, draw_skeleton2d, plot_bbox2D, get_iou
+    skeleton3d_to_2d, plot_skeleton2d, draw_skeleton2d, plot_bbox2D, get_iou, draw_markers
 
 
 dataset_catalog = {
@@ -101,6 +101,9 @@ class BaseH5Dataset(Dataset):
         else:
             idx = q_idx
 
+        """temp debug"""
+        idx= 1344 #1344 # [cam6: 1386, cam7: 1344]
+
         # TODO: map idx to something else (e.g., create a seq of img idx?)
         # or implement a different sampler
         # as we may not actually use the idx here
@@ -177,11 +180,11 @@ class BaseH5Dataset(Dataset):
         # time1 = time.time()
         # print(f"time taken - before sample pixels {time1-time0}")
         # sample pixels
-        pixel_idxs = self.sample_pixels(idx, q_idx, N_rand_ratio)
+        pixel_idxs, r_full_idxs, r_samp_mask = self.sample_pixels(idx, q_idx, N_rand_ratio)
 
         v_empty=False
         # in case mask is empty
-        pixel_idxs_v, v_empty = self.sample_pixels_v(idx, q_idx, N_rand_ratio)
+        pixel_idxs_v, v_empty, v_full_idxs, v_samp_mask = self.sample_pixels_v(idx, q_idx, N_rand_ratio)
         
         n_overlap_pixels_dups = np.array([-1])
         n_rays_per_img_dups = np.array([-1])
@@ -190,7 +193,12 @@ class BaseH5Dataset(Dataset):
 
         if self.overlap_rays and self.overlap_found:
             #import ipdb; ipdb.set_trace()
-            pixel_idxs_overlap, inter_box = self.sample_overlap_pixels(idx, q_idx, pixel_idxs, pixel_idxs_v, box2D_real, box2D_virt, N_rand_ratio)
+            pixel_idxs_overlap, inter_box, union_idxs = self.sample_overlap_pixels(idx, q_idx, pixel_idxs, pixel_idxs_v, box2D_real, 
+                                                                        box2D_virt, N_rand_ratio, 
+                                                                        r_full_pixel_idxs=r_full_idxs, 
+                                                                        v_full_pixel_idxs=v_full_idxs, 
+                                                                        r_smask = r_samp_mask, 
+                                                                        v_smask = v_samp_mask)
             
             #import ipdb; ipdb.set_trace()
 
@@ -221,23 +229,23 @@ class BaseH5Dataset(Dataset):
         #import ipdb; ipdb.set_trace()
         # #-------------------------------------------
         ''' currrent debug'''
-        # first =  0 #1000 #1177
-        # chk_img = self.dataset['imgs'][idx].reshape(1080,1920,3)
-        # #c2ws_expanded = self.dataset['c2ws'][first:first+1]
-        # c2ws_expanded = c2w[None, ...]
-        # #ipdb.set_trace()
+        first =  0 #1000 #1177
+        chk_img = self.dataset['imgs'][idx].reshape(1080,1920,3)
+        #c2ws_expanded = self.dataset['c2ws'][first:first+1]
+        c2ws_expanded = c2w[None, ...]
+        #ipdb.set_trace()
 
-        # # # debugging
-        # # _= input("debugging?")
-        # # focal = np.array([1.2803090021884900e+03, 1.3033885156746885e+03]).reshape(-1,2)
+        # # debugging
+        # _= input("debugging?")
+        # focal = np.array([1.2803090021884900e+03, 1.3033885156746885e+03]).reshape(-1,2)
 
-        # #kp2d = skeleton3d_to_2d(self.dataset['kp3d'][first:first+1], c2ws_expanded, int(self.HW[0]), int(self.HW[1]), self.dataset['focals'][idx], self.dataset['centers'][idx:first+1])
-        # kp2d = skeleton3d_to_2d(kps[first:first+1], c2ws_expanded, int(self.HW[0]), int(self.HW[1]), focal, center[None, ...])
+        #kp2d = skeleton3d_to_2d(self.dataset['kp3d'][first:first+1], c2ws_expanded, int(self.HW[0]), int(self.HW[1]), self.dataset['focals'][idx], self.dataset['centers'][idx:first+1])
+        kp2d = skeleton3d_to_2d(kps[first:first+1], c2ws_expanded, int(self.HW[0]), int(self.HW[1]), focal, center[None, ...])
 
-        # plot_skeleton2d(kp2d[first], img=chk_img)
-        # plt.axis("off")
-        # plt.savefig(f"/scratch/dajisafe/smpl/A_temp_folder/A-NeRF/checkers/imgs/kp_3d_to_2d.jpg", dpi=300, bbox_inches='tight', pad_inches = 0)
-        # import ipdb; ipdb.set_trace()
+        plot_skeleton2d(kp2d[first], img=chk_img)
+        plt.axis("off")
+        plt.savefig(f"/scratch/dajisafe/smpl/A_temp_folder/A-NeRF/checkers/imgs/kp_3d_to_2d.jpg", dpi=300, bbox_inches='tight', pad_inches = 0)
+        #import ipdb; ipdb.set_trace()
 
         '''Choice selection, not current training step - before and after '''
         # ipdb.set_trace()
@@ -265,12 +273,14 @@ class BaseH5Dataset(Dataset):
             #plt.savefig(f"/scratch/dajisafe/smpl/A_temp_folder/A-NeRF/checkers/imgs/kp_3d_to_2d.jpg", dpi=150, bbox_inches='tight', pad_inches = 0)
         
             
-        # ipdb.set_trace()
+        #ipdb.set_trace()
         # -----------------------------
         pre_select = 0
-        # self.plot_current_pixel(idx, pixel_idxs, pre_select, type="real")
-        # self.plot_current_pixel(idx, pixel_idxs_v, pre_select, type="virt")
-        # plt.savefig(f"/scratch/dajisafe/smpl/A_temp_folder/A-NeRF/checkers/imgs/pixel_loc.jpg", dpi=300, bbox_inches='tight', pad_inches = 0)
+
+        """
+        import cv2
+        self.plot_current_pixel(chk_img, pixel_idxs_overlap, pre_select, size=3)
+        """
 
         #ipdb.set_trace()
         idx_repeat = np.array([idx]).repeat(self.N_samples, 0)
@@ -282,7 +292,7 @@ class BaseH5Dataset(Dataset):
 
         #time2 = time.time()
         #print(f"time taken - after normal sample pixels {time2-time1}")
-        ipdb.set_trace()
+        #ipdb.set_trace()
         return_dict = {'rays_o': rays_o,
                        'rays_d': rays_d,
                        
@@ -572,7 +582,22 @@ class BaseH5Dataset(Dataset):
 
         return c2w, focal, center, cam_idx
 
+    def plot_current_pixel(self, img, pixel_idxs, pre_select, size):
+        # TODO: Update helper plotting.
+
+        # debug -----------------------------------------
+        #raw_img = self.dataset['imgs'][idx].reshape(*self.HW,3).astype(np.float32) / 255.
     
+        plt.imshow(img); plt.axis("off")
+        pts = self._2d_pixel_loc[pixel_idxs[pre_select:pre_select+size]]
+        plt.scatter(pts[:,0], pts[:,1], c="g")
+        #plt.plot(*self._2d_pixel_loc[pixel_idxs[-2]], "og", markersize=5)
+
+        # [1087505, 1089258, 1457963,  572801,  968285])
+        #if inter_box is not None: plot_bbox2D(inter_box, plt=plt, color="cyan")
+        plt.savefig(f"/scratch/dajisafe/smpl/A_temp_folder/A-NeRF/checkers/imgs/pixel_loc.jpg", dpi=300, bbox_inches='tight', pad_inches = 0)
+        #ipdb.set_trace()
+
     def get_img_data(self, idx, pixel_idxs, inter_box=None, n_overlap_pixel_ids=None):
         '''
         get image data (in np.uint8)
@@ -597,17 +622,6 @@ class BaseH5Dataset(Dataset):
         a = self.dataset['imgs'][idx, pixel_idxs[:-n_overlap_p_ids]]
         b = self.dataset['imgs'][idx, pixel_idxs[-n_overlap_p_ids:]]
         img = np.concatenate([a, b]).astype(np.float32) / 255.
-
-        ## debug -----------------------------------------
-        # raw_img = self.dataset['imgs'][idx].reshape(*self.HW,3).astype(np.float32) / 255.
-        # plt.imshow(raw_img); plt.axis("off")
-        # plt.plot(*self._2d_pixel_loc[pixel_idxs[-1]], "og", markersize=5)
-        # plt.plot(*self._2d_pixel_loc[pixel_idxs[-2]], "og", markersize=5)
-
-        # # [1087505, 1089258, 1457963,  572801,  968285])
-        # if inter_box is not None: plot_bbox2D(inter_box, plt=plt, color="cyan")
-        # plt.savefig(f"/scratch/dajisafe/smpl/A_temp_folder/A-NeRF/checkers/imgs/pixel_loc_real.jpg", dpi=300, bbox_inches='tight', pad_inches = 0)
-        # #ipdb.set_trace()
 
 
         bg = None
@@ -709,7 +723,8 @@ class BaseH5Dataset(Dataset):
         return img, fg, bg
 
 
-    def sample_overlap_pixels(self, idx, q_idx, pixel_idxs, pixel_idxs_v, box2D_real, box2D_virt, N_rand_ratio):
+    def sample_overlap_pixels(self, idx, q_idx, pixel_idxs, pixel_idxs_v, box2D_real, box2D_virt, N_rand_ratio, 
+                                r_full_pixel_idxs=None, v_full_pixel_idxs=None, r_smask = None, v_smask = None):
         p = self.patch_size
         N_rand = self.N_samples // int(p**2)
         N_rand_overlap = np.ceil(N_rand * (1-N_rand_ratio)).astype(np.int_) # 70% fog, 30% overlap_rays
@@ -732,8 +747,8 @@ class BaseH5Dataset(Dataset):
         
         # plot_bbox2D(real_box, plt=plt, color="gray", linewidth=0.5)
         # plot_bbox2D(virt_box, plt=plt, color="gray", linewidth=0.5)
-        # plot_bbox2D(inter_box, plt=plt, color="green", linewidth=1.5)
-        # plt.savefig(f"/scratch/dajisafe/smpl/A_temp_folder/A-NeRF/checkers/imgs/bbox2D.jpg", dpi=600, bbox_inches='tight', pad_inches = 0)
+        plot_bbox2D(inter_box, plt=plt, color="green", linewidth=1.5)
+        #plt.savefig(f"/scratch/dajisafe/smpl/A_temp_folder/A-NeRF/checkers/imgs/bbox2D.jpg", dpi=600, bbox_inches='tight', pad_inches = 0)
         # ipdb.set_trace()
 
         # h_range = torch.arange(max_y1, min_y2)
@@ -751,16 +766,42 @@ class BaseH5Dataset(Dataset):
         # convert 2D locations to indices 
         valid_idxs =  (valid_h * w + valid_w).reshape(-1)
 
-        # remove others from the list
-        valid_idxs = list(set(valid_idxs) - set(pixel_idxs) - set(pixel_idxs_v))
+        '''Union of both real and virt masks'''
+        union_mask = r_smask + v_smask
+        union_mask = (union_mask > 0.5).astype(np.int_)
 
-        sampled_idxs = np.random.choice(valid_idxs,
+        # plt.axis("off")
+        # plt.imshow(r_smask.reshape(1080, 1920, 1))
+        # plt.savefig(f"/scratch/dajisafe/smpl/A_temp_folder/A-NeRF/checkers/imgs/r_smask.jpg", dpi=600, bbox_inches='tight', pad_inches = 0)  
+        
+        # plt.imshow(v_smask.reshape(1080, 1920, 1))
+        # plt.savefig(f"/scratch/dajisafe/smpl/A_temp_folder/A-NeRF/checkers/imgs/v_smask.jpg", dpi=600, bbox_inches='tight', pad_inches = 0) 
+        
+        # plt.imshow(union_mask.reshape(1080, 1920, 1))
+        # plt.savefig(f"/scratch/dajisafe/smpl/A_temp_folder/A-NeRF/checkers/imgs/union_mask.jpg", dpi=600, bbox_inches='tight', pad_inches = 0) 
+        
+        # import ipdb; ipdb.set_trace()
+
+        """the comma unrolls the single-element tuple"""
+        union_idxs, = np.where(union_mask>0)
+
+        # remove others from the list
+        complement_idxs = set(valid_idxs) - set(union_idxs)
+        occluded_mask_idxs = list(set(valid_idxs) - set(complement_idxs))
+
+        """
+        # Previous occlusion implementation
+        valid_idxs = list(set(valid_idxs) - set(pixel_idxs) - set(pixel_idxs_v))
+        """
+
+        #valid_idxs = occluded_mask_idxs
+        sampled_idxs = np.random.choice(occluded_mask_idxs,
                                         N_rand_overlap,
                                         replace=False)
 
         #ipdb.set_trace()
         sampled_idxs = np.sort(sampled_idxs).astype(np.int_)
-        return sampled_idxs, inter_box
+        return sampled_idxs, inter_box, union_idxs
 
 
     def sample_pixels(self, idx, q_idx, N_rand_ratio=1.0):
@@ -824,7 +865,7 @@ class BaseH5Dataset(Dataset):
             sampled_idxs[np.random.choice(len(sampled_idxs), size=(N_nms,), replace=False)] = nms_idxs
 
         sampled_idxs = np.sort(sampled_idxs)
-        return sampled_idxs
+        return sampled_idxs, valid_idxs, sampling_mask
 
 
     def sample_pixels_v(self, idx, q_idx, N_rand_ratio=1.0):
@@ -901,7 +942,7 @@ class BaseH5Dataset(Dataset):
 
         #import ipdb; ipdb.set_trace()
         sampled_idxs_v = np.sort(sampled_idxs_v)
-        return sampled_idxs_v, False
+        return sampled_idxs_v, False, valid_idxs_v, sampling_mask_v
 
     def _sample_in_box2d(self, idx, q_idx, fg, N_samples):
 
