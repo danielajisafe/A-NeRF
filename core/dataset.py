@@ -101,8 +101,8 @@ class BaseH5Dataset(Dataset):
         else:
             idx = q_idx
 
-        """temp debug"""
-        idx= 1344 #1344 # [cam6: 1386, cam7: 1344]
+        #"""temp debug"""
+        #idx= 1344 #1344 # [cam6: 1386, cam7: 1344]
 
         # TODO: map idx to something else (e.g., create a seq of img idx?)
         # or implement a different sampler
