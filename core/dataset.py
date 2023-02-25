@@ -102,7 +102,8 @@ class BaseH5Dataset(Dataset):
             idx = q_idx
 
         #"""temp debug"""
-        #idx= 1344 #1344 # [cam6: 1386, cam7: 1344]
+        #idx= 1386 #1344 # [cam6: 1386, cam7: 1344]
+        #idx = 200
 
         # TODO: map idx to something else (e.g., create a seq of img idx?)
         # or implement a different sampler
@@ -225,8 +226,10 @@ class BaseH5Dataset(Dataset):
                                           n_overlap_pixel_ids=n_overlap_pixels_dups)
 
         #import ipdb; ipdb.set_trace()
-        # #-------------------------------------------
-        ''' currrent debug'''
+        # # #-------------------------------------------
+        # ''' currrent debug'''
+
+        
         
         # first =  0 #1000 #1177
         # chk_img = self.dataset['imgs'][idx].reshape(1080,1920,3)
@@ -243,8 +246,8 @@ class BaseH5Dataset(Dataset):
 
         # plot_skeleton2d(kp2d[first], img=chk_img)
         # plt.axis("off")
-        # plt.savefig(f"/scratch/dajisafe/smpl/A_temp_folder/A-NeRF/checkers/imgs/kp_3d_to_2d.jpg", dpi=300, bbox_inches='tight', pad_inches = 0)
-        # #import ipdb; ipdb.set_trace()
+        # plt.savefig(f"{self.check_folder}/kp_3d_to_2d.jpg", dpi=300, bbox_inches='tight', pad_inches = 0)
+        # import ipdb; ipdb.set_trace()
 
         '''Choice selection, not current training step - before and after '''
         # ipdb.set_trace()
@@ -277,6 +280,7 @@ class BaseH5Dataset(Dataset):
         pre_select = 0
 
         """
+        # debugging
         import cv2
         self.plot_current_pixel(chk_img, pixel_idxs_overlap, pre_select, size=3)
         """
@@ -452,6 +456,8 @@ class BaseH5Dataset(Dataset):
 
         dataset_v.close()
 
+        self.check_folder = "/scratch/st-rhodin-1/users/dajisafe/anerf_mirr/A-NeRF/checkers/imgs"
+
     def _load_pose_data(self, dataset):
         '''
         read pose data from .h5 file
@@ -584,7 +590,8 @@ class BaseH5Dataset(Dataset):
         pts = self._2d_pixel_loc[pixel_idxs[pre_select:pre_select+size]]
         plt.scatter(pts[:,0], pts[:,1], c="g")
         #if inter_box is not None: plot_bbox2D(inter_box, plt=plt, color="cyan")
-        plt.savefig(f"/scratch/dajisafe/smpl/A_temp_folder/A-NeRF/checkers/imgs/pixel_loc.jpg", dpi=300, bbox_inches='tight', pad_inches = 0)
+        plt.savefig(f"{self.check_folder}/pixel_loc.jpg", dpi=300, bbox_inches='tight', pad_inches = 0)
+        ipdb.set_trace()
 
 
     def get_img_data(self, idx, pixel_idxs, inter_box=None, n_overlap_pixel_ids=None):
@@ -759,22 +766,32 @@ class BaseH5Dataset(Dataset):
 
         # plt.axis("off")
         # plt.imshow(r_smask.reshape(1080, 1920, 1))
-        # plt.savefig(f"/scratch/dajisafe/smpl/A_temp_folder/A-NeRF/checkers/imgs/r_smask.jpg", dpi=600, bbox_inches='tight', pad_inches = 0)  
+        # plt.savefig(f"{self.check_folder}/r_smask.jpg", dpi=600, bbox_inches='tight', pad_inches = 0)  
         
         # plt.imshow(v_smask.reshape(1080, 1920, 1))
-        # plt.savefig(f"/scratch/dajisafe/smpl/A_temp_folder/A-NeRF/checkers/imgs/v_smask.jpg", dpi=600, bbox_inches='tight', pad_inches = 0) 
+        # plt.savefig(f"{self.check_folder}/v_smask.jpg", dpi=600, bbox_inches='tight', pad_inches = 0) 
         
         # plt.imshow(union_mask.reshape(1080, 1920, 1))
-        # plt.savefig(f"/scratch/dajisafe/smpl/A_temp_folder/A-NeRF/checkers/imgs/union_mask.jpg", dpi=600, bbox_inches='tight', pad_inches = 0) 
+        # plt.savefig(f"{self.check_folder}/union_mask.jpg", dpi=600, bbox_inches='tight', pad_inches = 0) 
         
         # import ipdb; ipdb.set_trace()
 
         """the comma unrolls the single-element tuple"""
         union_idxs, = np.where(union_mask>0)
 
+        
         # remove others from the list
         complement_idxs = set(valid_idxs) - set(union_idxs)
         occluded_mask_idxs = list(set(valid_idxs) - set(complement_idxs))
+
+        """
+        # debugging
+        occluded_mask = np.zeros((1080*1920))
+        occluded_mask_idxs = np.array(occluded_mask_idxs).astype(np.int_)
+        occluded_mask[occluded_mask_idxs] +=1
+        plt.imshow(occluded_mask.reshape(1080, 1920, 1))
+        plt.savefig(f"{self.check_folder}/occlusion_mask.jpg", dpi=600, bbox_inches='tight', pad_inches = 0) 
+        """
 
         """
         # Previous occlusion implementation
@@ -786,7 +803,7 @@ class BaseH5Dataset(Dataset):
                                         N_rand_overlap,
                                         replace=False)
 
-        #ipdb.set_trace()
+        
         sampled_idxs = np.sort(sampled_idxs).astype(np.int_)
         return sampled_idxs, inter_box, union_idxs
 
