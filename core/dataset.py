@@ -101,9 +101,12 @@ class BaseH5Dataset(Dataset):
         else:
             idx = q_idx
 
-        #"""temp debug"""
-        #idx= 1386 #1344 # [cam6: 1386, cam7: 1344]
-        #idx = 200
+        """temp debug
+        idx= 1386 #1344 # [cam6: 1386, cam7: 1344]
+
+        np.random.seed(45)
+        idx, = np.random.randint(0,1799,1) #899
+        """
 
         # TODO: map idx to something else (e.g., create a seq of img idx?)
         # or implement a different sampler
@@ -226,11 +229,9 @@ class BaseH5Dataset(Dataset):
                                           n_overlap_pixel_ids=n_overlap_pixels_dups)
 
         #import ipdb; ipdb.set_trace()
-        # # #-------------------------------------------
+        # #-------------------------------------------
         # ''' currrent debug'''
 
-        
-        
         # first =  0 #1000 #1177
         # chk_img = self.dataset['imgs'][idx].reshape(1080,1920,3)
         # #c2ws_expanded = self.dataset['c2ws'][first:first+1]
@@ -246,7 +247,7 @@ class BaseH5Dataset(Dataset):
 
         # plot_skeleton2d(kp2d[first], img=chk_img)
         # plt.axis("off")
-        # plt.savefig(f"{self.check_folder}/kp_3d_to_2d.jpg", dpi=300, bbox_inches='tight', pad_inches = 0)
+        # plt.savefig(f"{self.check_folder}/kp_3d_to_2d_{idx}_alpha_only.jpg", dpi=300, bbox_inches='tight', pad_inches = 0)
         # import ipdb; ipdb.set_trace()
 
         '''Choice selection, not current training step - before and after '''

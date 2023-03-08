@@ -542,7 +542,7 @@ def init_catalog(args, n_bullet=3):
     elif args.psnr_images:
         
         import pickle#5 as pickle
-        with open(f'{args.data_path}/calib{view}_20000iter_May_11.pickle', 'rb') as handle:
+        with open(f'{args.--data_path}/calib{view}_20000iter_May_11.pickle', 'rb') as handle:
             from_pickle = pickle.load(handle)
 
         # spin_pickle = f"{args.data_path}/output.pkl"
