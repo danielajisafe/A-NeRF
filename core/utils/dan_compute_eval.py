@@ -121,6 +121,8 @@ def eval_opt_kp(kps,comb, rec_eval_pts, gt_eval_pts):
     m_l_elb, m_l_wrist, m_r_sh = 6,7,2
     m_r_elb, m_r_wrist = 3,4
 
+    # if args.body15:
+
     smpl_eval_joints = [s_pelvis, s_lhip, s_rhip, s_lknee, s_r_knee, s_l_ankle, s_r_ankle, s_neck, s_l_sh, 
     s_l_elb, s_l_wrist, s_r_sh, s_r_elb, s_r_wrist]
 
@@ -267,6 +269,7 @@ def eval_opt_kp(kps,comb, rec_eval_pts, gt_eval_pts):
     kp3d_c = kp3d_final - kp3d_final[:, hip_index:hip_index+1, :]
 
     '''drop keypoints in the feet (mirror authors excluded that)'''
+    import ipdb; ipdb.set_trace()
     # gt3d_chosen_c = gt3d_chosen_c[:,:19,:]
     # kp3d_c = kp3d_c[:,:19,:]
 

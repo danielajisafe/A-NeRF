@@ -116,6 +116,8 @@ def config_parser():
 
     parser.add_argument('--no_save', action='store_true',
                         help='no image saving operation')
+    # parser.add_argument('--body15', action='store_true',
+    #                     help='body15 evaluation')
 
     return parser
 
