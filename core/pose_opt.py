@@ -23,6 +23,7 @@ def create_popt(args, data_attrs, ckpt=None, device=None):
     init_bones = torch.tensor(data_attrs['bones'])
     kp_map = data_attrs.get('kp_map', None)
     kp_uidxs = data_attrs.get('kp_uidxs', None)
+    idx_map = data_attrs.get('idx_map', None)
     rest_pose_idxs = data_attrs.get('rest_pose_idxs', None)
     
     poseopt_kwargs = {}
@@ -38,6 +39,7 @@ def create_popt(args, data_attrs, ckpt=None, device=None):
                                rest_pose_idxs=rest_pose_idxs,
                                use_cache=args.opt_pose_cache,
                                use_rot6d=args.opt_rot6d,
+                               idx_map=idx_map,
                                **poseopt_kwargs)
 
     #import ipdb; ipdb.set_trace() # issue is here
@@ -224,10 +226,14 @@ def load_poseopt_from_state_dict(state_dict):
     bones = state_dict['poseopt_layer_state_dict']['bones']
 
     # prob if it is multiview
-    kp_map = kp_uidxs = None
+    kp_map = kp_uidxs  = None
+    idx_map = None
     if 'kp_map' in state_dict['poseopt_layer_state_dict']:
         kp_map = state_dict['poseopt_layer_state_dict']['kp_map'].cpu().numpy()
         kp_uidxs = state_dict['poseopt_layer_state_dict']['kp_uidxs'].cpu().numpy()
+
+    if 'idx_map' in state_dict['poseopt_layer_state_dict']:
+        idx_map = state_dict['poseopt_layer_state_dict']['idx_map'].cpu().numpy()
 
     N, N_J, N_D = pelvis.shape[0], *bones.shape[1:]
     # multiview setting has root bone removed and stored separately,
@@ -238,7 +244,7 @@ def load_poseopt_from_state_dict(state_dict):
     dummy_bone = torch.zeros(N, N_J, 3)
 
     poseopt = PoseOptLayer(dummy_kp, dummy_bone, dummy_kp[0:1],
-                           use_rot6d= N_D==6, kp_map=kp_map, kp_uidxs=kp_uidxs)
+                           use_rot6d= N_D==6, kp_map=kp_map, kp_uidxs=kp_uidxs, idx_map=idx_map)
     poseopt.load_state_dict(state_dict['poseopt_layer_state_dict'])
     return poseopt
 
@@ -246,7 +252,7 @@ class PoseOptLayer(nn.Module):
 
     def __init__(self, kps, bones, rest_pose, skel_type=SMPLSkeleton,
                  kp_map=None, kp_uidxs=None, use_cache=False, use_rot6d=False,
-                 beta=None, rest_pose_idxs=None):
+                 beta=None, rest_pose_idxs=None, idx_map=None):
         """
         kps: (N, N_joints, 3)
         bones: (N, N_joints, 3)
@@ -260,11 +266,15 @@ class PoseOptLayer(nn.Module):
         self.use_rot6d = use_rot6d
         self.rest_pose_idxs = rest_pose_idxs
 
+        #import ipdb; ipdb.set_trace()
         if kp_map is not None:
             self.register_buffer('kp_map', torch.tensor(kp_map).long())
             self.register_buffer('kp_uidxs', torch.tensor(kp_uidxs).long())
         else:
             self.kp_map = self.kp_uidxs = None
+        
+        # if idx_map is not None:
+        #     self.register_buffer('idx_map', torch.tensor(idx_map).long())
 
         if skel_type == SMPLSkeleton:
             self.root_id = skel_type.root_id
@@ -272,17 +282,22 @@ class PoseOptLayer(nn.Module):
         else:
             raise NotImplementedError("only support SMPLSkeleton now")
 
-        self.init_kp_params(kps, bones, rest_pose, kp_uidxs, beta)
+        self.init_kp_params(kps, bones, rest_pose, kp_uidxs, beta, idx_map=idx_map)
         self.N_kps = self.pelvis.shape[0]
 
         if self.use_cache:
             self.update_cache()
 
-    def init_kp_params(self, kps, bones, rest_pose, kp_uidxs, beta):
+    def init_kp_params(self, kps, bones, rest_pose, kp_uidxs, beta, idx_map=None):
 
+        # register + requires_grad=False is used to save data (without gradient) as part of the model
         self.beta = torch.tensor(beta, requires_grad=False) if beta is not None else None
         self.register_buffer('rest_pose', torch.tensor(rest_pose, requires_grad=False))
 
+        if idx_map is not None:
+            self.register_buffer('idx_map', torch.tensor(idx_map, requires_grad=False))
+
+        # register + requires_grad=True is used to save data (with gradient) as part of the model
         # pelvis is optimized for each view
         self.register_parameter('pelvis', torch.nn.Parameter(kps[:, self.root_id], requires_grad=True))
 
@@ -295,6 +310,10 @@ class PoseOptLayer(nn.Module):
         if self.kp_map is None:
             self.register_parameter('bones', torch.nn.Parameter(bones, requires_grad=True))
             return
+        
+        # no multi-view but we still need the kp_map for saved refined poses
+        #self.register_parameter('bones', torch.nn.Parameter(bones, requires_grad=True))
+        
         print("SET UP WITH MULTI_VIEWS!")
         self.register_parameter('root_bones', torch.nn.Parameter(bones[:, self.root_id], requires_grad=True))
         self.register_parameter('bones', torch.nn.Parameter(bones[kp_uidxs, self.root_id+1:], requires_grad=True))

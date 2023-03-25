@@ -1,6 +1,7 @@
 import os
 import cv2
 import math
+import numpy as np
 from torch.utils.data import DataLoader
 
 from .dataset import *
@@ -160,7 +161,30 @@ def get_dataset_from_catalog(args, N_samples, dataset_type, subject=None, N_nms=
         path_v = args.data_path +'/v_mirror_train_h5py.h5'
         #import ipdb; ipdb.set_trace()
         
+        # idx_map= np.random.randint(0,args.train_size, args.data_size)
+        # import ipdb; ipdb.set_trace()
+
+        #s_path = "/scratch/dajisafe/anerf_mirr/A-NeRF/logs/mirror/fr_model"
+        #s_path = "/scratch/dajisafe/anerf_mirr/A-NeRF/logs/mirror/ab_model"
+        #s_path = "/scratch/dajisafe/anerf_mirr/A-NeRF/logs/mirror/ti_model"
+        # s_path = "/scratch/dajisafe/anerf_mirr/A-NeRF/logs/mirror/net_4l5h9ajj2wI_model/-2022-11-05-03-31-16-c0"
+        
+
+        # save_idx_file = f"{s_path}/idx_map.npy"
+        # np.save(save_idx_file, idx_map) # .astype(np.int)
+        
+
+        
+        # better approach
+        #"""
+        a = np.arange(args.train_size)
+        n_remain = args.data_size - args.train_size
+        b = np.random.randint(0,args.train_size, n_remain)
+        idx_map = np.concatenate([a,b])
+        #"""
+
         dataset = MirrorDataset(path, path_v, N_cams=args.N_cams, N_rand_kps=args.rand_train_kps, overlap_rays=args.overlap_rays,
+                                train_size=args.train_size, data_size=args.data_size, idx_map=idx_map,
                                  **shared_kwargs)
     
     elif dataset_type == 'zju':

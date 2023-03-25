@@ -394,6 +394,10 @@ def config_parser():
                         help='evaluate the testset rendering (subset of train set) at training time (PSNR, SSIM etc)')
     # parser.add_argument("--apples_compare", action='store_false', #default is true
     #                     help='apples compare')
+    parser.add_argument("--train_size", type=int, default=None,
+                        help='no of samples for training')
+    parser.add_argument("--data_size", type=int, default=None,
+                        help='no of total samples')
                         
 
     parser.add_argument("--N_rand", type=int, default=32*32*4,
@@ -694,15 +698,7 @@ def train():
 
     parser = config_parser()
     args = parser.parse_args()
-    
 
-    train_loader, render_data, data_attrs = load_data(args)
-    #import ipdb; ipdb.set_trace()
-
-    skel_type = data_attrs['skel_type']
-    hwf = data_attrs["hwf"]
-    H, W, focal = hwf
-    print("Loader initialized.")
 
     # Create log dir and copy the config file
     basedir = args.basedir
@@ -724,6 +720,15 @@ def train():
     expname = args.expname
     print(f"Current timestamp: {expname.split('/')[-1]}")
     #ipdb.set_trace()
+
+    train_loader, render_data, data_attrs = load_data(args)
+    #import ipdb; ipdb.set_trace()
+
+    skel_type = data_attrs['skel_type']
+    hwf = data_attrs["hwf"]
+    H, W, focal = hwf
+    print("Loader initialized.")
+
 
     os.makedirs(os.path.join(basedir, expname), exist_ok=True)
     f = os.path.join(basedir, expname, 'args.txt')

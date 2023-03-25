@@ -317,8 +317,9 @@ def evaluate_metric(rgbs, gt_imgs, disps=None, gt_masks=None, valid_idxs=None, p
         #import pdb; pdb.set_trace() # what works here?
         th_ssim = ssim_eval(th_rgbs, th_gt)
     except:
-        th_ssim = ssim_eval(th_rgbs.float(), th_gt.float())
-        print()
+        th_gt = th_gt.type(torch.FloatTensor) # from float64 (double) to float32
+        th_ssim = ssim_eval(th_rgbs, th_gt)
+        #print()
     test_ssim = th_ssim.permute(0, 2, 3, 1).cpu().numpy()
     sqr_diff = np.square(gt_imgs - rgbs)
     if gt_masks is not None:

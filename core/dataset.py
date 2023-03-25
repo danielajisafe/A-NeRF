@@ -10,7 +10,7 @@ import h5py, math
 import numpy as np
 from tqdm import tqdm, trange
 import matplotlib.pyplot as plt
-from torch.utils.data import Dataset, DataLoader, Sampler, ConcatDataset
+from torch.utils.data import Dataset, DataLoader, Sampler, ConcatDataseft
 from torch.utils.data._utils.collate import default_collate
 
 from .pose_opt import pose_ckpt_to_pose_data
@@ -31,7 +31,8 @@ dataset_catalog = {
 class BaseH5Dataset(Dataset):
     # TODO: poor naming
     def __init__(self, h5_path, h5_path_v, N_samples=96, patch_size=1, split='full',
-                 N_nms=0, N_nms_v=0, subject=None, mask_img=False, multiview=False, overlap_rays=False):
+                 N_nms=0, N_nms_v=0, subject=None, mask_img=False, multiview=False, overlap_rays=False,
+                 train_size=None, data_size=None, idx_map = None):
         '''
         Base class for multi-proc h5 dataset
 
@@ -63,7 +64,7 @@ class BaseH5Dataset(Dataset):
         self.N_nms = int(math.floor(N_nms)) if N_nms >= 1.0 else float(N_nms)
         self.N_nms_v  = int(math.floor(N_nms_v )) if N_nms_v  >= 1.0 else float(N_nms_v)
 
-        self._idx_map = None # map queried idx to predefined idx
+        self._idx_map = idx_map #None # map queried idx to predefined idx
         self._render_idx_map = None # map idx for render
 
         self.init_meta()
@@ -85,6 +86,8 @@ class BaseH5Dataset(Dataset):
         if self.overlap_rays:
             self.init_box2d(scale=1.0, box2d_overlap=True)
             self.init_box2d_v(scale=1.0, box2d_overlap=True)
+
+        
 
         # import ipdb; ipdb.set_trace()
 
@@ -230,25 +233,35 @@ class BaseH5Dataset(Dataset):
 
         #import ipdb; ipdb.set_trace()
         # #-------------------------------------------
-        # ''' currrent debug'''
+        ''' currrent debug'''
+        """
+        first =  0 #1000 #1177
+        H, W = 1080,1920
+        chk_img = self.dataset['imgs'][idx].reshape(H, W, 3)
+        msk = self.dataset['sampling_masks'][idx].reshape(H, W, 1)
+        chk_img = chk_img.copy() * msk.copy()
+            
+        white_bg = np.ones((H,W,3)) * 255
+        white_bg = white_bg * (1-msk.copy())
+        # blend 
+        chk_img = (chk_img + white_bg).astype(np.uint8)
 
-        # first =  0 #1000 #1177
-        # chk_img = self.dataset['imgs'][idx].reshape(1080,1920,3)
-        # #c2ws_expanded = self.dataset['c2ws'][first:first+1]
-        # c2ws_expanded = c2w[None, ...]
-        # #ipdb.set_trace()
+        #c2ws_expanded = self.dataset['c2ws'][first:first+1]
+        c2ws_expanded = c2w[None, ...]
+        #ipdb.set_trace()
 
-        # # # debugging
-        # # _= input("debugging?")
-        # # focal = np.array([1.2803090021884900e+03, 1.3033885156746885e+03]).reshape(-1,2)
+        # # debugging
+        # _= input("debugging?")
+        # focal = np.array([1.2803090021884900e+03, 1.3033885156746885e+03]).reshape(-1,2)
 
-        # #kp2d = skeleton3d_to_2d(self.dataset['kp3d'][first:first+1], c2ws_expanded, int(self.HW[0]), int(self.HW[1]), self.dataset['focals'][idx], self.dataset['centers'][idx:first+1])
-        # kp2d = skeleton3d_to_2d(kps[first:first+1], c2ws_expanded, int(self.HW[0]), int(self.HW[1]), focal, center[None, ...])
+        #kp2d = skeleton3d_to_2d(self.dataset['kp3d'][first:first+1], c2ws_expanded, int(self.HW[0]), int(self.HW[1]), self.dataset['focals'][idx], self.dataset['centers'][idx:first+1])
+        kp2d = skeleton3d_to_2d(kps[first:first+1], c2ws_expanded, int(self.HW[0]), int(self.HW[1]), focal, center[None, ...])
 
-        # plot_skeleton2d(kp2d[first], img=chk_img)
-        # plt.axis("off")
-        # plt.savefig(f"{self.check_folder}/kp_3d_to_2d_{idx}_alpha_only.jpg", dpi=300, bbox_inches='tight', pad_inches = 0)
-        # import ipdb; ipdb.set_trace()
+        plot_skeleton2d(kp2d[first], img=chk_img)
+        plt.axis("off")
+        plt.savefig(f"{self.check_folder}/kp_3d_to_2d_{idx:04d}.jpg", dpi=300, bbox_inches='tight', pad_inches = 0)
+        import ipdb; ipdb.set_trace()
+        """
 
         '''Choice selection, not current training step - before and after '''
         # ipdb.set_trace()
@@ -297,6 +310,7 @@ class BaseH5Dataset(Dataset):
         #time2 = time.time()
         #print(f"time taken - after normal sample pixels {time2-time1}")
         #ipdb.set_trace()
+
         return_dict = {'rays_o': rays_o,
                        'rays_d': rays_d,
                        
@@ -409,7 +423,9 @@ class BaseH5Dataset(Dataset):
 
         # store pose and camera data directly in memory (they are small)
         self.gt_kp3d = dataset['gt_kp3d'][:] if 'gt_kp3d' in self.dataset_keys else None
-        self.kp_map, self.kp_uidxs = None, None # only not None when self.multiview = True
+        self.kp_map, self.kp_uidxs = None, None #self._idx_map, self._idx_map # only not None when self.multiview = True
+        self.idx_map = self._idx_map
+        #import ipdb; ipdb.set_trace()
         self.kp3d, self.bones, self.skts, self.cyls = self._load_pose_data(dataset)
         
         self.focals, self.c2ws = self._load_camera_data(dataset)
@@ -444,7 +460,7 @@ class BaseH5Dataset(Dataset):
 
         # store pose and camera data directly in memory (they are small)
         self.gt_kp3d_v = dataset_v['gt_kp3d'][:] if 'gt_kp3d' in self.dataset_keys_v else None
-        self.kp_map_v, self.kp_uidxs_v = None, None # only not None when self.multiview = True
+        #self.kp_map_v, self.kp_uidxs_v = self._idx_map, list(set(self._idx_map)) # only not None when self.multiview = True
         self.kp3d_v, self.cyls_v = self._load_pose_data_v(dataset_v)
         self.A_dash = dataset_v['A_dash'][:]
         self.m_normal = dataset_v['m_normal'][:]
@@ -457,7 +473,7 @@ class BaseH5Dataset(Dataset):
 
         dataset_v.close()
 
-        self.check_folder = "/scratch/st-rhodin-1/users/dajisafe/anerf_mirr/A-NeRF/checkers/imgs"
+        self.check_folder = "/scratch/dajisafe/anerf_mirr/A-NeRF/checkers/imgs"
 
     def _load_pose_data(self, dataset):
         '''
@@ -503,10 +519,10 @@ class BaseH5Dataset(Dataset):
         temp = []
         for i in range(len(dataset['imgs'])):
             q_idx = i
-            #if self._idx_map is not None:
-            #    idx = self._idx_map[q_idx]
-            #else:
-            idx = q_idx
+            if self._idx_map is not None:
+               idx = self._idx_map[q_idx]
+            else:
+                idx = q_idx
 
             # get camera information
             c2w, focal, center, cam_idxs = self.get_camera_data(idx, q_idx, 1)
@@ -539,10 +555,10 @@ class BaseH5Dataset(Dataset):
         # use images from real data
         for i in range(len(dataset['imgs'])):
             q_idx = i
-            #if self._idx_map is not None:
-            #    idx = self._idx_map[q_idx]
-            #else:
-            idx = q_idx
+            if self._idx_map is not None:
+               idx = self._idx_map[q_idx]
+            else:
+                idx = q_idx
 
             # get camera information
             c2w, focal, center, cam_idxs = self.get_camera_data(idx, q_idx, 1)
@@ -1179,6 +1195,7 @@ class BaseH5Dataset(Dataset):
             'betas': betas,
             'kp_map': self.kp_map, # important for multiview setting
             'kp_uidxs': self.kp_uidxs, # important for multiview setting
+            'idx_map': self.idx_map,
         }
 
 
@@ -1190,8 +1207,8 @@ class BaseH5Dataset(Dataset):
         data_attrs['m_normal'] = self.m_normal[k_idxs]
         data_attrs['avg_D'] = self.avg_D[:]
         #import ipdb; ipdb.set_trace()
-        #data_attrs['kp_map'] = self.kp_map, # important for multiview setting
-        #data_attrs['kp_uidxs'] = self.kp_uidxs, # important for multiview setting
+        #data_attrs['kp_map'] = self.kp_map # important for multiview setting
+        #data_attrs['kp_uidxs'] = self.kp_uidxs # important for multiview setting
 
         dataset.close()
         
