@@ -3,6 +3,7 @@ import ipdb
 import time
 import imageio
 import bisect
+import platform
 # from regex import B
 import torch
 import random
@@ -475,7 +476,12 @@ class BaseH5Dataset(Dataset):
 
         dataset_v.close()
 
-        self.check_folder = "/scratch/dajisafe/anerf_mirr/A-NeRF/checkers/imgs"
+        if 'cedar' in platform.node():
+            self.check_folder = "/scratch/dajisafe/anerf_mirr/A-NeRF/checkers/imgs"
+        elif platform.node() == 'naye':
+            self.check_folder = "/scratch/st-rhodin-1/users/dajisafe/anerf_mirr/A-NeRF/checkers/imgs"
+        else: # sockeye
+            self.check_folder = "/scratch/dajisafe/anerf_mirr/A-NeRF/checkers/imgs"
 
     def _load_pose_data(self, dataset):
         '''

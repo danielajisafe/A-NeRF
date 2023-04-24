@@ -421,6 +421,10 @@ def config_parser():
                         help='loss weight for real points. (optional)')
     parser.add_argument("--v_weight", type=float, default=0.5,
                         help='loss weight for virtual points. (optional)')
+    parser.add_argument("--opt_r_color", action='store_true', default=False,
+                        help='optimize scale factor for real color')
+    parser.add_argument("--opt_v_color", action='store_true', default=False,
+                        help='optimize scale factor for virtual color')
 
                         
 
@@ -742,7 +746,17 @@ def train():
             file.write(open(args.config, 'r').read())
 
     # Create nerf model
+    if args.opt_r_color:
+        r_color_factor = torch.ones(1)
+        data_attrs['r_color_factor'] = r_color_factor
+
+    if args.opt_v_color:
+        v_color_factor = torch.ones(1)
+        data_attrs['v_color_factor'] = v_color_factor
+
+        
     render_kwargs_train, render_kwargs_test, start, grad_vars, optimizer, loaded_ckpt = create_raycaster(args, data_attrs, device=device)
+    #ipdb.set_trace()
     global_step = start
 
     popt_kwargs, pose_optimizer = None, None
@@ -773,6 +787,14 @@ def train():
         #print(f"time taken: batch -  {time1-time0} secs")
         #ipdb.set_trace()
         loss_dict, stats = trainer.train_batch(batch, i, global_step)
+        if args.opt_v_color:
+            if i in range(0,5):
+                print(f"r_color_factor {data_attrs['r_color_factor']}")
+                print(f"v_color_factor {data_attrs['v_color_factor']}")
+            else:
+                ipdb.set_trace()
+            
+
         #time2 = time.time()
         #print(f"time taken: forward - {time2-time1} secs")
         

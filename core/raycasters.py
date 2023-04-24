@@ -110,10 +110,15 @@ def create_raycaster(args, data_attrs, device=None):
             model_fine = NeRF(**nerf_kwargs)
         else:
             model_fine = model
+    
+    r_color_factor = data_attrs['r_color_factor'] if 'r_color_factor' in data_attrs else None
+    v_color_factor = data_attrs['v_color_factor'] if 'v_color_factor' in data_attrs else None
 
     # create ray caster
     ray_caster = RayCaster(model, embed_fn, embedbones_fn, embeddirs_fn, network_fine=model_fine,
                            joint_coords=torch.tensor(data_attrs['joint_coords']),
+                           r_color_factor=r_color_factor, 
+                           v_color_factor=v_color_factor,
                            single_net=args.single_net)
     print(ray_caster)
     ray_caster.state_dict()
@@ -337,7 +342,8 @@ class ContrastiveHead(nn.Module):
 class RayCaster(nn.Module):
 
     def __init__(self, network, embed_fn, embedbones_fn, embeddirs_fn,
-                 network_fine=None, joint_coords=None, single_net=False):
+                 network_fine=None, joint_coords=None, single_net=False, 
+                 r_color_factor=None, v_color_factor=None):
         super().__init__()
 
         self.network = network
@@ -350,6 +356,12 @@ class RayCaster(nn.Module):
             N_J = joint_coords.shape[-3]
             joint_coords = joint_coords.reshape(-1, N_J, 3, 3)
             self.register_buffer('joint_coords', joint_coords)
+
+        if r_color_factor:
+            self.register_parameter('r_color_factor', torch.nn.Parameter(r_color_factor, requires_grad=True))
+
+        if v_color_factor:
+            self.register_parameter('v_color_factor', torch.nn.Parameter(v_color_factor, requires_grad=True))
 
         self.single_net = single_net
 
