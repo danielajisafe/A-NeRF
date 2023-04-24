@@ -623,7 +623,8 @@ class BaseH5Dataset(Dataset):
         '''
         get image data (in np.uint8)
         '''
-
+        
+        ipdb.set_trace()
         if n_overlap_pixel_ids[0] == -1:
             n_overlap_p_ids = len(pixel_idxs)
         else:
