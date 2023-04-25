@@ -12,7 +12,8 @@ import itertools
 class NeRF(nn.Module):
     def __init__(self,D=8, W=256, input_ch=3, input_ch_bones=0, input_ch_views=3,
                  output_ch=4, skips=[4], use_viewdirs=False, use_framecode=False,
-                 framecode_ch=16, n_framecodes=0,skel_type=None,density_scale=1.0):
+                 framecode_ch=16, n_framecodes=0,skel_type=None,density_scale=1.0,
+                 opt_r_color=False, opt_v_color=False):
         """
         idx_maps: for mapping framecode_idx
         """
@@ -40,6 +41,12 @@ class NeRF(nn.Module):
 
         self.init_density_net()
         self.init_radiance_net()
+
+        if opt_r_color:
+            self.register_parameter('r_color_factor', torch.nn.Parameter(torch.ones(3), requires_grad = True))
+
+        if opt_v_color:
+            self.register_parameter('v_color_factor', torch.nn.Parameter(torch.ones(3), requires_grad = True))
 
         ## Implementation according to the official code release (https://github.com/bmild/nerf/blob/master/run_nerf_helpers.py#L104-L105)
 

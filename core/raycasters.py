@@ -99,7 +99,10 @@ def create_raycaster(args, data_attrs, device=None, c_factor=None):
                    'framecode_ch': args.framecode_size,
                    'n_framecodes': n_framecodes,
                    'skel_type': skel_type,
-                   'density_scale': args.density_scale}
+                   'density_scale': args.density_scale,
+                   'opt_r_color': args.opt_r_color, 
+                   'opt_v_color': args.opt_v_color,
+                    }
 
     model = NeRF(**nerf_kwargs)
 
@@ -111,16 +114,18 @@ def create_raycaster(args, data_attrs, device=None, c_factor=None):
         else:
             model_fine = model
     
-    # from run_nerf.py
-    r_color_factor = c_factor[0] if c_factor is not None else None
-    v_color_factor = c_factor[1] if c_factor is not None else None
+    # # from run_nerf.py
+    # r_color_factor = c_factor[0] if args.opt_r_color else None
+    # v_color_factor = c_factor[1] if args.opt_v_color else None
 
+    # ipdb.set_trace()
     # create ray caster
     ray_caster = RayCaster(model, embed_fn, embedbones_fn, embeddirs_fn, network_fine=model_fine,
                            joint_coords=torch.tensor(data_attrs['joint_coords']),
-                           r_color_factor=r_color_factor, 
-                           v_color_factor=v_color_factor,
-                           single_net=args.single_net)
+                        #    opt_r_color=args.opt_r_color, 
+                        #    opt_v_color=args.opt_v_color,
+                           single_net=args.single_net, 
+                           device=device)
     print(ray_caster)
     ray_caster.state_dict()
     # add all learnable grad vars
@@ -198,6 +203,9 @@ def create_raycaster(args, data_attrs, device=None, c_factor=None):
 
     # reset gradient
     optimizer.zero_grad()
+    # add.module to access parameter when using DataParallel
+    # print(f"ray_caster {render_kwargs_train['ray_caster'].module.network.v_color_factor}")
+    #ipdb.set_trace()
 
     return render_kwargs_train, render_kwargs_test, start, grad_vars, optimizer, loaded_ckpt
 
@@ -243,15 +251,15 @@ def get_grad_vars(args, ray_caster):
         grad_vars += get_vars(embedbones_fn)
         grad_vars += get_vars(embeddirs_fn)
 
-    if args.opt_r_color:
-        grad_vars += ray_caster.r_color_factor
-        if not ray_caster.r_color_factor.requires_grad:
-            ipdb.set_trace()
+    # if args.opt_r_color:
+    #     grad_vars += ray_caster.r_color_factor
+    #     if not ray_caster.r_color_factor.requires_grad:
+    #         ipdb.set_trace()
 
-    if args.opt_v_color:
-        grad_vars += ray_caster.v_color_factor
-        if not ray_caster.v_color_factor.requires_grad:
-            ipdb.set_trace()
+    # if args.opt_v_color:
+    #     grad_vars += ray_caster.v_color_factor
+    #     if not ray_caster.v_color_factor.requires_grad:
+    #         ipdb.set_trace()
 
     return grad_vars
 
@@ -355,7 +363,8 @@ class RayCaster(nn.Module):
 
     def __init__(self, network, embed_fn, embedbones_fn, embeddirs_fn,
                  network_fine=None, joint_coords=None, single_net=False, 
-                 r_color_factor=None, v_color_factor=None):
+                #  opt_r_color=False, opt_v_color=False,
+                 device=None):
         super().__init__()
 
         self.network = network
@@ -370,16 +379,19 @@ class RayCaster(nn.Module):
             self.register_buffer('joint_coords', joint_coords)
         
         # becomes an attribute, but one that is differentiable
-        if r_color_factor is not None:
-            # self.r_color_factor = r_color_factor
-            # self.r_color_factor.requires_grad = True
-            self.register_parameter('r_color_factor', torch.nn.Parameter(r_color_factor, requires_grad = True))
+        # if opt_r_color:
+        #     # self.r_color_factor = r_color_factor
+        #     # self.r_color_factor.requires_grad = True
+        #     self.r_color_factor = torch.ones(3, requires_grad=True, device=device)
+        #     #self.register_parameter('r_color_factor', torch.nn.Parameter(r_color_factor, requires_grad = True))
 
-        if v_color_factor is not None:
-            # self.v_color_factor = v_color_factor
-            # self.v_color_factor.requires_grad = True
-            self.register_parameter('v_color_factor', torch.nn.Parameter(v_color_factor, requires_grad = True))
+        # if opt_v_color:
+        #     # self.v_color_factor = v_color_factor
+        #     # self.v_color_factor.requires_grad = True
+        #     self.v_color_factor = torch.ones(3, requires_grad=True, device=device)
+        #     #self.register_parameter('v_color_factor', torch.nn.Parameter(v_color_factor, requires_grad = True))
 
+        # # ipdb.set_trace()
         self.single_net = single_net
 
     @torch.no_grad()

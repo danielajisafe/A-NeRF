@@ -473,13 +473,13 @@ class Trainer:
             rgb_pred_ref=preds['rgb_map_ref'] 
             acc_pred_ref=preds['acc_map_ref']
 
-        ipdb.set_trace()
+
         # update with color factor
         if args.opt_r_color:
-            preds['rgb_map'] = preds['rgb_map'] * self.data_attrs['r_color_factor'] 
+            preds['rgb_map'] = preds['rgb_map'] * self.render_kwargs_train['ray_caster'].module.network.r_color_factor
 
-        if args.opt_v_color and use_mirr:
-            rgb_pred_ref = rgb_pred_ref * self.data_attrs['v_color_factor'] 
+        if args.opt_v_color:
+            rgb_pred_ref = rgb_pred_ref * self.render_kwargs_train['ray_caster'].module.network.v_color_factor
 
         # rgb loss of nerf
         results.append(self._compute_nerf_loss(batch, rgb_pred=preds['rgb_map'], acc_pred=preds['acc_map'],
@@ -574,7 +574,7 @@ class Trainer:
         rgb_loss = loss_fn(rgb_pred, batch['target_s'], reduction='mean')
         if use_mirr:
             rgb_loss_v = loss_fn(rgb_pred_ref, batch['target_s_v'], reduction='mean')
-            rgb_loss = rgb_loss*args.r_weight +rgb_loss_v*args.v_weight
+            rgb_loss = rgb_loss*args.r_weight + rgb_loss_v*args.v_weight
             #import ipdb; ipdb.set_trace()
 
 
@@ -701,6 +701,16 @@ class Trainer:
         # only need to retain comp. graph if step between pose update > 1
         retain_graph = args.opt_pose_cache and args.opt_pose_step > 1
         loss.backward(retain_graph=retain_graph)
+        # import ipdb; ipdb.set_trace()
+
+        """
+        # the zero gradients happens immediately after
+        
+        if args.opt_r_color:
+            print(f" {i} r_color_factor {self.render_kwargs_train['ray_caster'].module.network.r_color_factor.grad}")
+        if args.opt_v_color:
+            print(f" {i} v_color_factor {self.render_kwargs_train['ray_caster'].module.network.v_color_factor.grad}")
+        """
 
         # reset gradient immediately after parameter update
         self._optim_step()

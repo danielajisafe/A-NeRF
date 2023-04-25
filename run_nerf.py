@@ -745,21 +745,10 @@ def train():
         with open(f, 'w') as file:
             file.write(open(args.config, 'r').read())
 
-    # Create nerf model
-    if args.opt_r_color:
-        r_color_factor = torch.ones(3, requires_grad=True, device=device)
-        # r_color_factor = np.ones(3)
-        # data_attrs['r_color_factor'] = r_color_factor
-        
+    # Create nerf model    
+    render_kwargs_train, render_kwargs_test, start, grad_vars, optimizer, loaded_ckpt = create_raycaster(args, data_attrs, device=device)
+                                                                                                        # c_factor=(r_color_factor, v_color_factor))
 
-    if args.opt_v_color:
-        v_color_factor = torch.ones(3, requires_grad=True, device=device)
-        # v_color_factor = np.ones(3)
-        # data_attrs['v_color_factor'] = v_color_factor
-
-        
-    render_kwargs_train, render_kwargs_test, start, grad_vars, optimizer, loaded_ckpt = create_raycaster(args, data_attrs, device=device, 
-                                                                                                        c_factor=(r_color_factor, v_color_factor))
     #ipdb.set_trace()
     global_step = start
 
@@ -791,13 +780,16 @@ def train():
         #print(f"time taken: batch -  {time1-time0} secs")
         #ipdb.set_trace()
         loss_dict, stats = trainer.train_batch(batch, i, global_step)
-        if args.opt_v_color:
-            if i in range(0,5):
-                print(f"r_color_factor {data_attrs['r_color_factor'].grad()}")
-                print(f"v_color_factor {data_attrs['v_color_factor'].grad()}")
-            else:
-                ipdb.set_trace()
-            
+        # if i in range(0,5):
+        #     # pass
+        #     if args.opt_r_color:
+        #         print(f"real color_factor {render_kwargs_train['ray_caster'].module.network.r_color_factor}")
+        #     if args.opt_v_color:
+        #         print(f"virt color_factor {render_kwargs_train['ray_caster'].module.network.v_color_factor}")
+
+        # else:
+        #     ipdb.set_trace()
+        
 
         #time2 = time.time()
         #print(f"time taken: forward - {time2-time1} secs")

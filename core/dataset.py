@@ -312,7 +312,7 @@ class BaseH5Dataset(Dataset):
 
         #time2 = time.time()
         #print(f"time taken - after normal sample pixels {time2-time1}")
-        ipdb.set_trace()
+        #ipdb.set_trace()
 
         return_dict = {'rays_o': rays_o,
                        'rays_d': rays_d,
