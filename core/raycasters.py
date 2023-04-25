@@ -21,7 +21,7 @@ from .utils.skeleton_utils import SMPLSkeleton, rot6d_to_axisang, axisang_to_rot
 import sys; sys.path.append("/scratch/dajisafe/smpl/mirror_project_dir")
 from .utils.extras import save2pickle, load_pickle
 
-def create_raycaster(args, data_attrs, device=None):
+def create_raycaster(args, data_attrs, device=None, c_factor=None):
     """Instantiate NeRF's MLP model.
     """
     skel_type = data_attrs["skel_type"]
@@ -111,8 +111,9 @@ def create_raycaster(args, data_attrs, device=None):
         else:
             model_fine = model
     
-    r_color_factor = data_attrs['r_color_factor'] if 'r_color_factor' in data_attrs else None
-    v_color_factor = data_attrs['v_color_factor'] if 'v_color_factor' in data_attrs else None
+    # from run_nerf.py
+    r_color_factor = c_factor[0] if c_factor is not None else None
+    v_color_factor = c_factor[1] if c_factor is not None else None
 
     # create ray caster
     ray_caster = RayCaster(model, embed_fn, embedbones_fn, embeddirs_fn, network_fine=model_fine,
@@ -124,6 +125,7 @@ def create_raycaster(args, data_attrs, device=None):
     ray_caster.state_dict()
     # add all learnable grad vars
     grad_vars = get_grad_vars(args, ray_caster)
+    # ipdb.set_trace()
 
     # Create optimizer
     optimizer = torch.optim.Adam(params=grad_vars, lr=args.lrate, betas=(0.9, 0.999))
@@ -241,6 +243,16 @@ def get_grad_vars(args, ray_caster):
         grad_vars += get_vars(embedbones_fn)
         grad_vars += get_vars(embeddirs_fn)
 
+    if args.opt_r_color:
+        grad_vars += ray_caster.r_color_factor
+        if not ray_caster.r_color_factor.requires_grad:
+            ipdb.set_trace()
+
+    if args.opt_v_color:
+        grad_vars += ray_caster.v_color_factor
+        if not ray_caster.v_color_factor.requires_grad:
+            ipdb.set_trace()
+
     return grad_vars
 
 def get_density_fn(args):
@@ -356,12 +368,17 @@ class RayCaster(nn.Module):
             N_J = joint_coords.shape[-3]
             joint_coords = joint_coords.reshape(-1, N_J, 3, 3)
             self.register_buffer('joint_coords', joint_coords)
+        
+        # becomes an attribute, but one that is differentiable
+        if r_color_factor is not None:
+            # self.r_color_factor = r_color_factor
+            # self.r_color_factor.requires_grad = True
+            self.register_parameter('r_color_factor', torch.nn.Parameter(r_color_factor, requires_grad = True))
 
-        if r_color_factor:
-            self.register_parameter('r_color_factor', torch.nn.Parameter(r_color_factor, requires_grad=True))
-
-        if v_color_factor:
-            self.register_parameter('v_color_factor', torch.nn.Parameter(v_color_factor, requires_grad=True))
+        if v_color_factor is not None:
+            # self.v_color_factor = v_color_factor
+            # self.v_color_factor.requires_grad = True
+            self.register_parameter('v_color_factor', torch.nn.Parameter(v_color_factor, requires_grad = True))
 
         self.single_net = single_net
 

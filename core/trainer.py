@@ -467,11 +467,19 @@ class Trainer:
             print("there is an issue. where are mirrored/reflected rays?")
             import ipdb; ipdb.set_trace()
 
+
         rgb_pred_ref, acc_pred_ref = None, None
         if use_mirr:
-            rgb_pred_ref=preds['rgb_map_ref']
+            rgb_pred_ref=preds['rgb_map_ref'] 
             acc_pred_ref=preds['acc_map_ref']
 
+        ipdb.set_trace()
+        # update with color factor
+        if args.opt_r_color:
+            preds['rgb_map'] = preds['rgb_map'] * self.data_attrs['r_color_factor'] 
+
+        if args.opt_v_color and use_mirr:
+            rgb_pred_ref = rgb_pred_ref * self.data_attrs['v_color_factor'] 
 
         # rgb loss of nerf
         results.append(self._compute_nerf_loss(batch, rgb_pred=preds['rgb_map'], acc_pred=preds['acc_map'],

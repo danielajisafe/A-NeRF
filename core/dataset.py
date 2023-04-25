@@ -216,6 +216,7 @@ class BaseH5Dataset(Dataset):
             n_overlap_pixels_dups = np.array([len(pixel_idxs_overlap)])
             n_rays_per_img_dups = np.array([len(pixel_idxs)])
 
+        # ipdb.set_trace()
         n_overlap_pixels_dups = n_overlap_pixels_dups.repeat(self.N_samples, 0)
         n_rays_per_img_dups = n_rays_per_img_dups.repeat(self.N_samples, 0)
 
@@ -224,6 +225,7 @@ class BaseH5Dataset(Dataset):
         if not v_empty:
             rays_o_v, rays_d_v, _ = self.get_rays_v(c2w, focal, pixel_idxs_v, center)
 
+        # ipdb.set_trace()
         # load the image, foreground and background,
         # and get values from sampled pixels
         rays_rgb, fg, bg = self.get_img_data(idx, pixel_idxs, inter_box=inter_box, 
@@ -310,7 +312,7 @@ class BaseH5Dataset(Dataset):
 
         #time2 = time.time()
         #print(f"time taken - after normal sample pixels {time2-time1}")
-        #ipdb.set_trace()
+        ipdb.set_trace()
 
         return_dict = {'rays_o': rays_o,
                        'rays_d': rays_d,
@@ -624,7 +626,7 @@ class BaseH5Dataset(Dataset):
         get image data (in np.uint8)
         '''
         
-        ipdb.set_trace()
+        # ipdb.set_trace()
         if n_overlap_pixel_ids[0] == -1:
             n_overlap_p_ids = len(pixel_idxs)
         else:
