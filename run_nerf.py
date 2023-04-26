@@ -781,11 +781,11 @@ def train():
         #ipdb.set_trace()
         loss_dict, stats = trainer.train_batch(batch, i, global_step)
         # if i in range(0,5):
-        #     # pass
-        #     if args.opt_r_color:
-        #         print(f"real color_factor {render_kwargs_train['ray_caster'].module.network.r_color_factor}")
-        #     if args.opt_v_color:
-        #         print(f"virt color_factor {render_kwargs_train['ray_caster'].module.network.v_color_factor}")
+        #     pass
+        #     # if args.opt_r_color:
+        #     #     print(f"real color_factor {render_kwargs_train['ray_caster'].module.network.r_color_factor}")
+        #     # if args.opt_v_color:
+        #     #     print(f"virt color_factor {render_kwargs_train['ray_caster'].module.network.v_color_factor}")
 
         # else:
         #     ipdb.set_trace()

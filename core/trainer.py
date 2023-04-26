@@ -473,13 +473,22 @@ class Trainer:
             rgb_pred_ref=preds['rgb_map_ref'] 
             acc_pred_ref=preds['acc_map_ref']
 
-
+        import ipdb; ipdb.set_trace()
         # update with color factor
+        eps = 1e-36
         if args.opt_r_color:
-            preds['rgb_map'] = preds['rgb_map'] * self.render_kwargs_train['ray_caster'].module.network.r_color_factor
+            r_factor = self.render_kwargs_train['ray_caster'].module.network.r_color_factor
+            # positive constraint
+            r_factor = torch.sqrt(r_factor**2 + eps)
+            preds['rgb_map'] = preds['rgb_map'] * r_factor
+            # print(f"r_factor {r_factor}")
 
         if args.opt_v_color:
-            rgb_pred_ref = rgb_pred_ref * self.render_kwargs_train['ray_caster'].module.network.v_color_factor
+            v_factor = self.render_kwargs_train['ray_caster'].module.network.v_color_factor
+            # positive constraint
+            v_factor = torch.sqrt(v_factor**2 + eps)
+            rgb_pred_ref = rgb_pred_ref * v_factor
+            # print(f"v_factor {v_factor}")
 
         # rgb loss of nerf
         results.append(self._compute_nerf_loss(batch, rgb_pred=preds['rgb_map'], acc_pred=preds['acc_map'],
