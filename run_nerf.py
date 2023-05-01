@@ -457,6 +457,10 @@ def config_parser():
                         help='ignore the poseopt ckpt')
     parser.add_argument("--finetune", action='store_true',
                         help='flag to indicate fine tune stage, which will not load optimizer and global step from ckpt')
+    parser.add_argument("--sub_fine_folder", action='store_true', #default is false
+                        help='create a different internal finetune folder to seperate multiple experiments')
+                        
+
     parser.add_argument("--fix_layer", type=int, default=0,
                         help='flag to fix the pts_linears layer weights before the specified layer')
     parser.add_argument("--use_yuv", action='store_true',
@@ -718,8 +722,8 @@ def train():
         # use timestamp added from terminal
         if args.finetune:
             args.expname = args.expname+'/finetune'
-        else:
-            pass
+            if args.sub_fine_folder and not args.debug:
+                ...
 
     expname = args.expname
     print(f"Current timestamp: {expname.split('/')[-1]}")
@@ -780,15 +784,11 @@ def train():
         #print(f"time taken: batch -  {time1-time0} secs")
         #ipdb.set_trace()
         loss_dict, stats = trainer.train_batch(batch, i, global_step)
-        # if i in range(0,5):
-        #     pass
-        #     # if args.opt_r_color:
-        #     #     print(f"real color_factor {render_kwargs_train['ray_caster'].module.network.r_color_factor}")
-        #     # if args.opt_v_color:
-        #     #     print(f"virt color_factor {render_kwargs_train['ray_caster'].module.network.v_color_factor}")
-
-        # else:
-        #     ipdb.set_trace()
+        
+        if args.opt_r_color:
+            writer.add_scalar("r_color_factor", render_kwargs_train['ray_caster'].module.network.r_color_factor, i)
+        if args.opt_v_color:
+            writer.add_scalar("v_color_factor", render_kwargs_train['ray_caster'].module.network.v_color_factor, i)
         
 
         #time2 = time.time()

@@ -21,13 +21,20 @@ def filter_state_dict(current_state_dict, state_dict):
     filtered_state_dict = {}
     for local_key in current_state_dict:
         local_val = current_state_dict[local_key]
-        loaded_val = state_dict[local_key]
-        if local_val.shape != loaded_val.shape:
-            print(f'!!!WARNING!!!: size mismatch for {local_key}: current model is {local_val.shape} '+
-                  f'while the size in ckpt is {loaded_val.shape}')
-            print(f'!!!WARNING!!!: Automatically omit loading {local_key}. If this is not intended, stop the program now!')
+
+        if local_key in state_dict:
+            loaded_val = state_dict[local_key]
+
+            if local_val.shape != loaded_val.shape:
+                print(f'!!!WARNING!!!: size mismatch for {local_key}: current model is {local_val.shape} '+
+                    f'while the size in ckpt is {loaded_val.shape}')
+                print(f'!!!WARNING!!!: Automatically omit loading {local_key}. If this is not intended, stop the program now!')
+            else:
+                filtered_state_dict[local_key] = loaded_val
         else:
-            filtered_state_dict[local_key] = loaded_val
+            print(f'!!!WARNING!!!: local key "{local_key}" is not in current model')
+            print(f'!!!WARNING!!!: Automatically omit loading "{local_key}". If this is not intended, stop the program now!')
+        
 
     return filtered_state_dict
 
