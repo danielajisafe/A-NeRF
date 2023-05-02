@@ -723,11 +723,15 @@ def train():
         if args.finetune:
             args.expname = args.expname+'/finetune'
             if args.sub_fine_folder and not args.debug:
-                ...
+                added_timestamp = datetime.datetime.now().strftime("%Y-%m-%d-%H-%M-%S")
+                args.expname = args.expname + f'/{added_timestamp}'
+                
 
     expname = args.expname
     print(f"Current timestamp: {expname.split('/')[-1]}")
-    #ipdb.set_trace()
+    if args.sub_fine_folder and not args.debug:
+        print(f"finetune timestamp: {added_timestamp}")
+    # ipdb.set_trace()
 
     train_loader, render_data, data_attrs = load_data(args)
     #import ipdb; ipdb.set_trace()
@@ -786,15 +790,19 @@ def train():
         loss_dict, stats = trainer.train_batch(batch, i, global_step)
         
         if args.opt_r_color:
-            writer.add_scalar("r_color_factor", render_kwargs_train['ray_caster'].module.network.r_color_factor, i)
+            writer.add_scalar("r_color_factor/R", render_kwargs_train['ray_caster'].module.network.r_color_factor[0], i)
+            writer.add_scalar("r_color_factor/G", render_kwargs_train['ray_caster'].module.network.r_color_factor[1], i)
+            writer.add_scalar("r_color_factor/B", render_kwargs_train['ray_caster'].module.network.r_color_factor[2], i)
+
         if args.opt_v_color:
-            writer.add_scalar("v_color_factor", render_kwargs_train['ray_caster'].module.network.v_color_factor, i)
-        
+            writer.add_scalar("v_color_factor/R_v", render_kwargs_train['ray_caster'].module.network.v_color_factor[0], i)
+            writer.add_scalar("v_color_factor/G_v", render_kwargs_train['ray_caster'].module.network.v_color_factor[1], i)
+            writer.add_scalar("v_color_factor/B_v", render_kwargs_train['ray_caster'].module.network.v_color_factor[2], i)
 
         #time2 = time.time()
         #print(f"time taken: forward - {time2-time1} secs")
         
-        #ipdb.set_trace()
+        # ipdb.set_trace()
         # Rest is logging
         if i % args.i_weights == 0:
             #path = os.path.join(basedir, expname, f"%06d_{args.slurm_job_id}.tar"%i)
