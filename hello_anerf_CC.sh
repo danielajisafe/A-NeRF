@@ -4,7 +4,7 @@
 # NOTICE: Please make all modfications on local Naye Machine
 # --------------------------------------------------------------
 
-#SBATCH --time=0-24:00:00
+#SBATCH --time=0-72:00:00
 #SBATCH --account=rrg-rhodin 
 
 #SBATCH --gres=gpu:v100l:4
