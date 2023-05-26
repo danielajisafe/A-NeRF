@@ -6,6 +6,7 @@ from tqdm import tqdm, trange
 import torch
 import imageio
 import random
+import platform
 import numpy as np
 import matplotlib.pyplot as plt
 from torch.utils.data import Dataset, DataLoader, Sampler, ConcatDataset
@@ -29,7 +30,8 @@ dataset_catalog = {
 class BaseH5Dataset(Dataset):
     # TODO: poor naming
     def __init__(self, h5_path, N_samples=96, patch_size=1, split='full',
-                 N_nms=0, subject=None, mask_img=False, multiview=False):
+                 N_nms=0, subject=None, mask_img=False, multiview=False,
+                 train_size=None, data_size=None, idx_map = None):
         '''
         Base class for multi-proc h5 dataset
 
@@ -54,7 +56,7 @@ class BaseH5Dataset(Dataset):
         self.N_samples = N_samples
         self.patch_size = patch_size
         self.N_nms = int(math.floor(N_nms)) if N_nms >= 1.0 else float(N_nms)
-        self._idx_map = None # map queried idx to predefined idx
+        self._idx_map = idx_map # map queried idx to predefined idx
         self._render_idx_map = None # map idx for render
 
         self.init_meta()
@@ -92,6 +94,7 @@ class BaseH5Dataset(Dataset):
         # time1 = time.time()
         # print(f"time taken - before sample pixels {time1-time0}")
 
+        # import ipdb; ipdb.set_trace()
         # sample pixels
         pixel_idxs = self.sample_pixels(idx, q_idx)
 
@@ -105,34 +108,32 @@ class BaseH5Dataset(Dataset):
 
         #-------------------------------------------
         """
-        **Debug
+        ## Debugging
 
         first = 0
         chk_img = self.dataset['imgs'][idx].reshape(int(self.HW[0]), int(self.HW[1]),3)
         c2ws_expanded = c2w[None, ...]
 
-        #ipdb.set_trace()
+        # ipdb.set_trace()
         # # debugging
         # _= input("debugging?")
         # focal = np.array([1.2803090021884900e+03, 1.3033885156746885e+03]).reshape(-1,2)
-
-        #focal = float(focal) if isinstance(focal, float) else focal
+        # focal = float(focal) if isinstance(focal, float) else focal
 
         kp2d = skeleton3d_to_2d(kps, c2ws_expanded, int(self.HW[0]), int(self.HW[1]), focal , center[None, ...])
         plt.axis("off")
         plot_skeleton2d(kp2d[first], img=chk_img)
-        plt.savefig(f"/scratch/dajisafe/smpl/Rebuttal/A-NeRF/checkers/imgs/kp_3d_to_2d.jpg", dpi=150, bbox_inches='tight', pad_inches = 0)
+        plt.savefig(f"{self.check_folder}/kp_3d_to_2d_{idx:04d}.jpg", dpi=150, bbox_inches='tight', pad_inches = 0)
 
-        plt.savefig(f"/scratch/dajisafe/smpl/Rebuttal/A-NeRF/checkers/imgs/top_figure.jpg", dpi=300, bbox_inches='tight', pad_inches = 0)
-
-        #ipdb.set_trace()
+        # plt.savefig(f"/scratch/dajisafe/smpl/Rebuttal/A-NeRF/checkers/imgs/top_figure.jpg", dpi=300, bbox_inches='tight', pad_inches = 0)
+        # ipdb.set_trace()
         # time2 = time.time()
         # print(f"time taken - after normal sample pixels {time2-time1}")
         ipdb.set_trace()
         """
 
         
-        #"""
+        """
         '''Choice selection, not current training step - before and after '''
 
         #ipdb.set_trace()
@@ -148,12 +149,12 @@ class BaseH5Dataset(Dataset):
             #plt.savefig(f"/scratch/dajisafe/smpl/Rebuttal/A-NeRF/checkers/initial_overlay/internet_vanilla/{first:08d}.jpg", dpi=300, bbox_inches='tight', pad_inches = 0)
             #skel_img = draw_skeleton2d(img=chk_img, skel=kp2d[0], skel_type=None, width=3, flip=False) #(chk_img, kp2d, skel_type, 3, flip=False)
             
-            """imageio faster"""
+            # imageio faster
             imageio.imwrite(f"/scratch/dajisafe/smpl/Rebuttal/A-NeRF/checkers/initial_overlay/6_vanilla/{first:08d}.jpg", skel_img)
         
         ipdb.set_trace()
-        #"""
-
+        """
+ 
         return_dict = {'rays_o': rays_o,
                        'rays_d': rays_d,
                        'target_s': rays_rgb,
@@ -219,6 +220,8 @@ class BaseH5Dataset(Dataset):
         # precompute mesh (for ray generation) to reduce computational cost
         img_shape = dataset['img_shape'][:]
         self._N_total_img = img_shape[0]
+
+        assert (len(self._idx_map) == self._N_total_img), "h5py data size is not equal to len(idx_map) or args.data_size"
         self.HW = img_shape[1:3]
         mesh = np.meshgrid(np.arange(self.HW[1], dtype=np.float32),
                            np.arange(self.HW[0], dtype=np.float32),
@@ -254,6 +257,7 @@ class BaseH5Dataset(Dataset):
                 self.gt_kp3d = None
 
         self.kp_map, self.kp_uidxs = None, None # only not None when self.multiview = True
+        self.idx_map = self._idx_map
         self.kp3d, self.bones, self.skts, self.cyls = self._load_pose_data(dataset)
 
         self.focals, self.c2ws = self._load_camera_data(dataset)
@@ -275,6 +279,14 @@ class BaseH5Dataset(Dataset):
         self.skel_type = SMPLSkeleton
 
         dataset.close()
+
+        if 'cedar' in platform.node():
+            self.check_folder = "/scratch/dajisafe/anerf_mirr/A-NeRF/checkers/imgs"
+        elif platform.node() == 'naye':
+            self.check_folder = "/scratch/dajisafe/smpl/A_temp_folder/A-NeRF/checkers/imgs"
+        else: # sockeye
+            self.check_folder = "/scratch/st-rhodin-1/users/dajisafe/anerf_mirr/A-NeRF/checkers/imgs"
+
 
     def _load_pose_data(self, dataset):
         '''
@@ -313,10 +325,10 @@ class BaseH5Dataset(Dataset):
         self.box2d = []
         for i in range(len(dataset['imgs'])):
             q_idx = i
-            #if self._idx_map is not None:
-            #    idx = self._idx_map[q_idx]
-            #else:
-            idx = q_idx
+            if self._idx_map is not None:
+               idx = self._idx_map[q_idx]
+            else:
+                idx = q_idx
 
             # get camera information
             c2w, focal, center, cam_idxs = self.get_camera_data(idx, q_idx, 1)
@@ -382,9 +394,15 @@ class BaseH5Dataset(Dataset):
         sampling_mask = self.dataset['sampling_masks'][idx].reshape(-1)
 
         valid_idxs, = np.where(sampling_mask>0)
+
+        # when there is no segmentation detected in the mask, choose any random idx
+        if len(valid_idxs) == 0 or len(valid_idxs) < N_rand:
+            valid_idxs = np.arange(len(sampling_mask))
+        
         sampled_idxs = np.random.choice(valid_idxs,
-                                        N_rand,
-                                        replace=False)
+                                            N_rand,
+                                            replace=False)
+
         if self.patch_size > 1:
             H, W = self.HW
             hs, ws = sampled_idxs // W, sampled_idxs % W
@@ -580,6 +598,7 @@ class BaseH5Dataset(Dataset):
             'betas': betas,
             'kp_map': self.kp_map, # important for multiview setting
             'kp_uidxs': self.kp_uidxs, # important for multiview setting
+            'idx_map': self.idx_map,
         }
 
         dataset.close()

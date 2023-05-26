@@ -217,7 +217,10 @@ def config_parser():
                         help='channels per layer in fine network')
     parser.add_argument("--eval_metrics", action='store_false', #default is true
                         help='evaluate the testset rendering (subset of train set) at training time (PSNR, SSIM etc)')
-                        
+    parser.add_argument("--train_size", type=int, default=None,
+                        help='no of samples for training')
+    parser.add_argument("--data_size", type=int, default=None,
+                        help='no of total samples')
 
 
     parser.add_argument("--N_rand", type=int, default=32*32*4,
@@ -618,7 +621,7 @@ def train():
             else:
                 masked_gts = gt_imgs * gt_masks + (1 - gt_masks) * bg_imgs
 
-            import ipdb; ipdb.set_trace()
+            # import ipdb; ipdb.set_trace()
             metrics, rgbs, disps = render_testset(pose_val, render_data["hwf"], args, render_kwargs_test, cams=cams_val,
                                                   kps=kp_val, skts=skt_val, bones=bone_val, subject_idxs=subject_val,
                                                   gt_imgs=masked_gts, gt_masks=gt_masks, vid_base=moviebase, centers=centers,

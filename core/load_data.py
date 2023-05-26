@@ -153,7 +153,14 @@ def get_dataset_from_catalog(args, N_samples, dataset_type, subject=None, N_nms=
         path_v = args.data_path +'/vanilla_train_h5py.h5'
         #import ipdb; ipdb.set_trace()
 
+
+        a = np.arange(args.train_size)
+        n_remain = args.data_size - args.train_size
+        b = np.random.randint(0,args.train_size, n_remain)
+        idx_map = np.concatenate([a,b])
+
         dataset = VanillaDataset(path, N_cams=args.N_cams, N_rand_kps=args.rand_train_kps,
+                                 train_size=args.train_size, data_size=args.data_size, idx_map=idx_map,
                                  **shared_kwargs)
 
     elif dataset_type == 'zju':
