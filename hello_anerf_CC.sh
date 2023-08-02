@@ -52,8 +52,7 @@ export LD_LIBRARY_PATH=$LD_LIBRARY_PATH:~/miniconda3/lib
 # python run_nerf.py --config configs/mirror/mirror.txt --basedir logs/mirror --expname da_model --data_path /scratch/dajisafe/anerf_mirr/DANBO-pytorch/data/mirror/0/2f4b7613-7d51-4a1d-81b0-4ba0a21129df_cam_0/2023-05-09-13_cropping --N_rand 3072 --i_testset 5000 --i_pose_weights 5000 --i_weights 5000 --i_print 5000 --train_size 2000 --data_size 2000 --n_framecodes 2000 --eval_metrics --no_reload # --num_workers 1
 # python run_nerf.py --config configs/mirror/mirror.txt --basedir logs/mirror --expname da_model --data_path /scratch/dajisafe/anerf_mirr/DANBO-pytorch/data/mirror/0/2f4b7613-7d51-4a1d-81b0-4ba0a21129df_cam_0/2023-05-09-13_cropping --N_rand 3072 --i_testset 2 --i_pose_weights 2 --i_weights 2 --i_print 2 --train_size 2000 --data_size 2000 --n_framecodes 2000 --eval_metrics --no_reload --num_workers 0
 # reload - CANCEL 24HR RUN ONCE 3-DAYS RUN BEGIN
-python run_nerf.py --config configs/mirror/mirror.txt --basedir logs/mirror --expname da_model/-2023-05-10-15-46-27-c0 --data_path /scratch/dajisafe/anerf_mirr/DANBO-pytorch/data/mirror/0/2f4b7613-7d51-4a1d-81b0-4ba0a21129df_cam_0/2023-05-09-13_cropping --N_rand 3072 --i_testset 5000 --i_pose_weights 5000 --i_weights 5000 --i_print 5000 --train_size 2000 --data_size 2000 --n_framecodes 2000 --eval_metrics # --num_workers 1
-
+# python run_nerf.py --config configs/mirror/mirror.txt --basedir logs/mirror --expname da_model/-2023-05-10-15-46-27-c0 --data_path /scratch/dajisafe/anerf_mirr/DANBO-pytorch/data/mirror/0/2f4b7613-7d51-4a1d-81b0-4ba0a21129df_cam_0/2023-05-09-13_cropping --N_rand 3072 --i_testset 5000 --i_pose_weights 5000 --i_weights 5000 --i_print 5000 --train_size 2000 --data_size 2000 --n_framecodes 2000 --eval_metrics # --num_workers 1
 
 # Chunjin - 01 - CANCELLED: restpose unscaled
 # basic with mirror input (using a similar but not GT background, lets see if this works)
@@ -78,7 +77,6 @@ python run_nerf.py --config configs/mirror/mirror.txt --basedir logs/mirror --ex
 #python run_nerf.py --config configs/mirror/mirror.txt --basedir logs/mirror --expname ab_model/-2023-03-25-11-57-35-c0 --data_path /scratch/dajisafe/anerf_mirr/DANBO-pytorch/data/mirror/0/83bed111-cf7e-48cb-b75a-3fd92694280a_cam_0/2023-03-02-19 --N_rand 3072 --i_testset 5000 --i_pose_weights 5000 --i_weights 5000 --i_print 5000 --train_size 1800 --data_size 2000 --n_framecodes 1800 --eval_metrics #--num_workers 1 #--no_reload
 #debug
 #python run_nerf.py --config configs/mirror/mirror.txt --basedir logs/mirror --expname ab_model --data_path /scratch/dajisafe/anerf_mirr/DANBO-pytorch/data/mirror/0/83bed111-cf7e-48cb-b75a-3fd92694280a_cam_0/2023-03-02-19 --N_rand 3072 --i_testset 5 --i_pose_weights 5 --i_weights 5 --i_print 5 --train_size 1800 --data_size 2000 --n_framecodes 1800 --eval_metrics --num_workers 1 --no_reload
-
 
 
 # Frank - subj 1

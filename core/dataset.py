@@ -239,7 +239,9 @@ class BaseH5Dataset(Dataset):
         ''' currrent debug'''
         """
         first =  0 #1000 #1177
-        H, W = 1080,1920
+        # import ipdb; ipdb.set_trace()
+        # H, W = 1080,1920
+        N,H,W,C = self.dataset['img_shape']
         chk_img = self.dataset['imgs'][idx].reshape(H, W, 3)
         msk = self.dataset['sampling_masks'][idx].reshape(H, W, 1)
         chk_img = chk_img.copy() * msk.copy()
@@ -393,6 +395,7 @@ class BaseH5Dataset(Dataset):
         self.A_dash = None
         self.m_normal = None
         self.avg_D = None
+        # import ipdb; ipdb.set_trace()
 
         if 'centers' in dataset:
             self.centers = dataset['centers'][:]
@@ -483,7 +486,7 @@ class BaseH5Dataset(Dataset):
         elif platform.node() == 'naye':
             self.check_folder = "/scratch/st-rhodin-1/users/dajisafe/anerf_mirr/A-NeRF/checkers/imgs"
         else: # sockeye
-            self.check_folder = "/scratch/dajisafe/anerf_mirr/A-NeRF/checkers/imgs"
+            self.check_folder = "/scratch/st-rhodin-1/users/dajisafe/anerf_mirr/A-NeRF/checkers/imgs"
 
     def _load_pose_data(self, dataset):
         '''
