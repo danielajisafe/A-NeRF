@@ -13,11 +13,14 @@ import torch
 import shutil
 import imageio
 import datetime
+import platform
 import numpy as np
 import deepdish as dd
+import time as timenow
 from tqdm import trange
 import matplotlib.pyplot as plt
 from run_nerf import render_path
+from render.post_process import cca_image
 from run_nerf import config_parser as nerf_config_parser
 
 from core.pose_opt import load_poseopt_from_state_dict, pose_ckpt_to_pose_data
@@ -34,6 +37,19 @@ import sys
 sys.path.append("/scratch/dajisafe/smpl/A_temp_folder/A-NeRF/core/utils")
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+
+import sys
+sys.path.append("/scratch/dajisafe/smpl/A_temp_folder/DANBO-pytorch/core/utils")
+device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+
+if  platform.node() == "naye":
+     project_dir = "path-to-project-directory"
+elif platform.node() == "baker":
+    project_dir =  "path-to-project-directory"
+elif platform.node() == "se061":
+    project_dir =  "/scratch/st-rhodin-1/users/dajisafe/anerf_mirr/A-NeRF"
+else:
+    project_dir = "/scratch/st-rhodin-1/users/dajisafe/anerf_mirr/A-NeRF"
 
 GT_PREFIXES = {
     'h36m': 'data/h36m/',
@@ -84,6 +100,8 @@ def config_parser():
     #                     help='do not reload weights from saved ckpt?')
     parser.add_argument("--render_folder", type=str, default='',
                         help='use existing render folder')
+    parser.add_argument('--outliers', action='store_true', default=True,
+                         help='remove outliers during rendering. False if called')
 
     # used to updated the same parameters copied/passed over from run_nerf 
     parser.add_argument("--train_size", type=int, default=None,
@@ -545,6 +563,7 @@ def init_catalog(args, n_bullet=3):
     #import ipdb; ipdb.set_trace()
     #rebuttal_tim = np.arange(800,1178) #[992,1027,1041,1087,1088,1133,1134,1172,1175] #[449,624,644,680,705,746,998,1170,1,209,212,250,280,340,368,369,406,428,438,993]  #np.arange(0, 500) #[500] #1177, 814]
     if args.evaluate_pose:
+        ipdb.set_trace()
         easy_idx = np.arange(0, args.train_len)
         args.selected_idxs = easy_idx
 
@@ -579,14 +598,19 @@ def init_catalog(args, n_bullet=3):
         n = len(mirrr_raw_idxs)
         offset_indices = []
 
-        for i in range(0,n,20):
+        render_interval = 40
+        for i in range(0,n,render_interval):
+            # look for corresponding offset for required frames
+            if args.selected_idxs != None:
+                if i not in args.selected_idxs:
+                    continue
             index = mirrr_raw_idxs.index(i)
             offset_indices.append(index)
 
-        easy_idx = offset_indices#[-1:]
-        args.selected_idxs = easy_idx 
+        #[-1:]
+        args.selected_idxs = easy_idx = offset_indices.copy()
         # pick a subset that is common to both
-        #import ipdb; ipdb.set_trace()
+        # ipdb.set_trace()
 
     elif generate_skeleton_overlay:
         # mirrr_raw_idxs = from_pickle['chosen_frames'][:args.train_len]
@@ -604,12 +628,13 @@ def init_catalog(args, n_bullet=3):
         print("did you consider offset in selected idxs?")
         time.sleep(3)
         easy_idx = args.selected_idxs
-        args.selected_idxs = easy_idx 
+        # args.selected_idxs = easy_idx 
 
     else: #render
         easy_idx = args.selected_idxs #[0] #rebuttal_tim #[406,466,340,600,900,814] # #[0, 465, 473, 467, 1467] # [10, 70, 350, 420, 490, 910, 980, 1050] #np.arange(0, args.train_len)
     
     # ipdb.set_trace()
+
     mirror_easy = {
         'data_h5': args.data_path + '/mirror_train_h5py.h5', #'/tim_train_h5py.h5',
         'data_h5_v': args.data_path + '/v_mirror_train_h5py.h5',
@@ -624,7 +649,7 @@ def init_catalog(args, n_bullet=3):
     # ipdb.set_trace()
 
     # TODO: create validation indices
-    #ipdb.set_trace()
+    
     test_val_idx = [0] #np.arange(0, 1563) #[0] # required for rendering at training time?
     mirror_val = {
         'data_h5': args.data_path + '/mirror_val_h5py.h5',
@@ -1299,33 +1324,62 @@ def generate_skeleton_overlay(pose_h5, c2ws, focals, rest_pose, pose_keys,
 
 def generate_psnr_imgs(pose_h5, c2ws, focals, rest_pose, pose_keys,
                     selected_idxs, refined=None, n_bullet=30, bullet_ang=360,
-                    #centers=None,
+                    centers=None,
                     undo_rot=False, center_cam=True, center_kps=True,
                     idx_map=None, args=None):
 
 
-    """we need the global root position for PSNR images, so no root-centering"""
-    center_kps = False; center_cam= False
-    #import ipdb; ipdb.set_trace()
+    """we need the global root position for 3D skeleton overlay, so no root-centering, 
+    except you center the camera using the root location as well"""
+
+    undo_rot=False; center_cam=False; center_kps=True
+    #center_kps = False; center_cam= False
 
     # prepare camera
-    c2ws = c2ws[selected_idxs]
+    # c2ws = c2ws[selected_idxs]
     # centers = centers[selected_idxs]
+
+    try:
+        #ipdb.set_trace()
+        c2ws = c2ws[selected_idxs]
+
+        if isinstance(focals, float):
+            focals = np.array([focals] * len(selected_idxs))
+        else:
+            focals = focals[selected_idxs]
+
+        if isinstance(centers, float):
+            centers = np.array([centers] * len(selected_idxs))
+        else:
+            if len(centers.shape) > 2:
+                centers = centers[0][selected_idxs]
+            else:
+                centers = centers[selected_idxs]
+
+        #ipdb.set_trace()
+    except:
+        # import h5py
+        ipdb.set_trace()
 
     if center_cam:
         shift_x = c2ws[..., 0, -1].copy()
         shift_y = c2ws[..., 1, -1].copy()
         c2ws[..., :2, -1] = 0.
 
+    # ipdb.set_trace()
     # prepare pose
     # TODO: hard-coded for now so we can quickly view the outcomes!
-    if refined is None:
+    # if refined is None:
+    if not args.render_refined:
+        print("using *** initial optimized mirror poses ***")
         kps, bones = dd.io.load(pose_h5, pose_keys, sel=dd.aslice[selected_idxs, ...])
         selected_idxs = find_idxs_with_map(selected_idxs, idx_map)
         if args.switch_cam:
             print("are you using the right data path for pose_h5?")
             ipdb.set_trace()
+    
     else:
+        print("using *** refined mirror poses ***")
         selected_idxs = find_idxs_with_map(selected_idxs, idx_map)
         kps, bones = refined
         kps = kps[selected_idxs]
@@ -1333,7 +1387,7 @@ def generate_psnr_imgs(pose_h5, c2ws, focals, rest_pose, pose_keys,
     cam_idxs = selected_idxs[:, None].repeat(n_bullet, 1).reshape(-1)
     
 
-    #import ipdb; ipdb.set_trace()
+    # ipdb.set_trace()
     if center_kps:
         root = kps[..., :1, :].copy() # assume to be CMUSkeleton
         # move kps to 0 and cam to -root
@@ -1348,10 +1402,10 @@ def generate_psnr_imgs(pose_h5, c2ws, focals, rest_pose, pose_keys,
     c2ws = generate_bullet_time(c2ws, n_views=n_bullet, bullet_ang=bullet_ang).transpose(1, 0, 2, 3).reshape(-1, 4, 4)
     
 
-    if isinstance(focals, float):
-        focals = np.array([focals] * len(selected_idxs))
-    else:
-        focals = focals[selected_idxs]
+    # if isinstance(focals, float):
+    #     focals = np.array([focals] * len(selected_idxs))
+    # else:
+    #     focals = focals[selected_idxs]
 
     #import ipdb; ipdb.set_trace()
     #focals = focals[:, None].repeat(n_bullet, 1).reshape(-1,2)
@@ -1359,7 +1413,13 @@ def generate_psnr_imgs(pose_h5, c2ws, focals, rest_pose, pose_keys,
         focals = focals[:, None].repeat(n_bullet, 1).reshape(-1, 2)
     else:
         focals = focals[:, None].repeat(n_bullet, 1).reshape(-1)
-    print(f"focals {focals[0:1]}")
+    # print(f"focals {focals[0:1]}")
+
+    if len(centers.shape) == 2 and centers.shape[1] == 2:
+        centers = centers[:, None].repeat(n_bullet, 1).reshape(-1, 2)
+    else:
+        centers = centers[:, None].repeat(n_bullet, 1).reshape(-1)
+
 
     if undo_rot:
         bones[..., 0, :] = np.array([1.5708, 0., 0.], dtype=np.float32).reshape(1, 1, 3)
@@ -1718,7 +1778,7 @@ def run_render():
 
     # parse nerf model args
     nerf_args = txt_to_argstring(args.nerf_args)
-    #import ipdb; ipdb.set_trace()
+    # import ipdb; ipdb.set_trace()
     nerf_args, unknown_args = nerf_config_parser().parse_known_args(nerf_args)
     print(f'UNKNOWN ARGS: {unknown_args}')
 
@@ -1726,14 +1786,17 @@ def run_render():
     nerf_args.train_size =  args.train_size
     nerf_args.data_size = args.data_size
     # nerf_args.randomize_view_dir = args.randomize_view_dir
-
+    
     # load nerf model
     render_kwargs, poseopt_layer = load_nerf(args, nerf_args)
-    
 
     # prepare the required data
     render_data, gt_dict, selected_idxs = load_render_data(args, nerf_args, poseopt_layer, nerf_args.opt_framecode)
-
+    # import ipdb; ipdb.set_trace()
+    # TODO: args.selected_idxs is being modified silently, update this fix
+    # args.selected_idxs = selected_idxs
+    
+    
     # if args.switch_cam:
     #     print("switching real camera with virtual camera")
     #     # do you need data from other view? --------------------
@@ -1760,7 +1823,7 @@ def run_render():
     #     render_data['render_poses'] = v_cam
         # ------------------------------------------------------
 
-    #import ipdb; ipdb.set_trace()
+    # import ipdb; ipdb.set_trace()
     tensor_data = to_tensors(render_data)
 
     basedir = os.path.join(args.outputdir, args.runname)
@@ -1779,7 +1842,7 @@ def run_render():
                                       **tensor_data,
                                       args=args)
 
-    #ipdb.set_trace()
+    # ipdb.set_trace()
     
     
     if gt_dict['gt_paths'] is not None:
@@ -1972,18 +2035,29 @@ def run_render():
                                     *render_data['hwf'])
     
     else:
-        skeletons = draw_skeletons_3d(rgbs, render_data['kp'],
+        skeletons, skels_2d = draw_skeletons_3d(rgbs, render_data['kp'],
                                     render_data['render_poses'],
                                     *render_data['hwf'])
 
-    #ipdb.set_trace()
-    real_ids = args.selected_idxs
+    # ipdb.set_trace()
+    # selected_idxs = args.selected_idxs
     for i, (rgb, acc, skel) in enumerate(zip(rgbs, accs, skeletons)):
         #rel_idx = i
-        rel_idx = real_ids[i]
+        # rel_idx = real_ids[i]
         #print(f"i {i}")
         '''temp addition to the filename here'''
 
+        if args.n_bullet == 1:
+            rel_idx = selected_idxs[i]
+        else:
+            rel_idx = i
+
+        chk_img_url = f"{project_dir}/checkers/imgs"
+        start = timenow.time()
+        if args.outliers:
+            rgb, acc, skel = cca_image(skels_2d[i], BGR_img=rgb, acc_img=acc, plot=False, chk_folder=chk_img_url)
+            if i==0: print("cca took: %.2f seconds" %(timenow.time() - start))
+    
 
         # # plot overlay on original plain image 
         # rel_idx = selected_idxs[i]
