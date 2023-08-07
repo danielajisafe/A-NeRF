@@ -82,6 +82,14 @@ def config_parser():
                         help='use both masks')
     # parser.add_argument("--no_reload", action='store_true',
     #                     help='do not reload weights from saved ckpt?')
+    parser.add_argument("--render_folder", type=str, default='',
+                        help='use existing render folder')
+
+    # used to updated the same parameters copied/passed over from run_nerf 
+    parser.add_argument("--train_size", type=int, default=None,
+                        help='no of samples for training')
+    parser.add_argument("--data_size", type=int, default=None,
+                        help='no of samples for training')
 
     parser.add_argument('--entry', type=str, required=True,
                         help='entry in the dataset catalog to render')
@@ -96,7 +104,7 @@ def config_parser():
     parser.add_argument('--mesh_res', type=int, default=255,
                         help='resolution for marching cubes')
     # kp-related
-    parser.add_argument('--render_refined', action='store_true',
+    parser.add_argument('--render_refined', action='store_true', default=False,
                         help='render from refined poses')
     parser.add_argument('--subject_idx', type=int, default=0,
                         help='which subject to render (for MINeRF)')
@@ -192,8 +200,9 @@ def load_render_data(args, nerf_args, poseopt_layer=None, opt_framecode=True):
             print("Load smpl rest pose!")
 
 
+    # import ipdb; ipdb.set_trace()
     if args.render_refined:
-        #import ipdb; ipdb.set_trace()
+
         if 'refined' in catalog:
             print(f"loading refined poses from {catalog['refined']}")
             #poseopt_layer = load_poseopt_from_state_dict(torch.load(catalog['refined']))
@@ -288,20 +297,20 @@ def load_render_data(args, nerf_args, poseopt_layer=None, opt_framecode=True):
             print(f'Load data for evaluation!')
             kps, skts, c2ws, cam_idxs, focals, bones = eval_bullettime_kps(data_h5, c2ws, focals,
                                                                     rest_pose, pose_keys,
-                                                                    #centers=centers_n,
+                                                                    centers=centers_n,
                                                                     **render_data)
         elif args.generate_skeleton_overlay:
             print(f'Load data to overlay skeleton on GT images.')
             _, _, _, _, _, _ = generate_skeleton_overlay(data_h5, c2ws, focals,
                                                                     rest_pose, pose_keys,
-                                                                    #centers=centers_n,
+                                                                    centers=centers_n,
                                                                     **render_data)
         
         elif args.psnr_images:
             print(f'Load data to generate images.')
             kps, skts, c2ws, cam_idxs, focals, bones = generate_psnr_imgs(data_h5, c2ws, focals,
                                                                     rest_pose, pose_keys,
-                                                                    #centers=centers_n,
+                                                                    centers=centers_n,
                                                                     **render_data)
         else:
             print(f'Load data for bullet time effect!')
@@ -310,12 +319,12 @@ def load_render_data(args, nerf_args, poseopt_layer=None, opt_framecode=True):
                 v_focals = focals.copy()
                 kps, skts, c2ws, cam_idxs, focals, bones, root = load_bullettime(data_h5, c2ws, focals,
                                                                         rest_pose, pose_keys,
-                                                                        #centers=centers_n,
+                                                                        centers=centers_n,
                                                                         **render_data)
                 # ipdb.set_trace()
                 _, _, c2ws_virt, _, _, _, _ = load_bullettime(data_h5, v_cam, v_focals,
                                                                         rest_pose, pose_keys,
-                                                                        #centers=centers_n,
+                                                                        centers=centers_n,
                                                                         **render_data)
                 # combined real and virt rendering
                 #ipdb.set_trace()
@@ -324,7 +333,7 @@ def load_render_data(args, nerf_args, poseopt_layer=None, opt_framecode=True):
             else:
                 kps, skts, c2ws, cam_idxs, focals, bones, root = load_bullettime(data_h5, c2ws, focals,
                                                                     rest_pose, pose_keys,
-                                                                    #centers=centers_n,
+                                                                    centers=centers_n,
                                                                     **render_data)
 
         #import ipdb; ipdb.set_trace()
@@ -542,7 +551,7 @@ def init_catalog(args, n_bullet=3):
     elif args.psnr_images:
         
         import pickle#5 as pickle
-        with open(f'{args.--data_path}/calib{view}_20000iter_May_11.pickle', 'rb') as handle:
+        with open(f'{args.data_path}/calib{view}_20000iter_May_11.pickle', 'rb') as handle:
             from_pickle = pickle.load(handle)
 
         # spin_pickle = f"{args.data_path}/output.pkl"
@@ -600,7 +609,7 @@ def init_catalog(args, n_bullet=3):
     else: #render
         easy_idx = args.selected_idxs #[0] #rebuttal_tim #[406,466,340,600,900,814] # #[0, 465, 473, 467, 1467] # [10, 70, 350, 420, 490, 910, 980, 1050] #np.arange(0, args.train_len)
     
-
+    # ipdb.set_trace()
     mirror_easy = {
         'data_h5': args.data_path + '/mirror_train_h5py.h5', #'/tim_train_h5py.h5',
         'data_h5_v': args.data_path + '/v_mirror_train_h5py.h5',
@@ -1134,7 +1143,7 @@ def eval_bullettime_kps(pose_h5, c2ws, focals, rest_pose, pose_keys,
 
 def generate_skeleton_overlay(pose_h5, c2ws, focals, rest_pose, pose_keys,
                     selected_idxs, refined=None, n_bullet=30, bullet_ang=360,
-                    #centers=None,
+                    centers=None,
                     undo_rot=False, center_cam=True, center_kps=True,
                     idx_map=None, args=None):
 
@@ -1142,12 +1151,38 @@ def generate_skeleton_overlay(pose_h5, c2ws, focals, rest_pose, pose_keys,
     comb = args.data_path.split("/")[-2]
     view = comb.split("_cam_")[1]
 
-    """we need the global root position for 3D skeleton overlay, so no root-centering"""
-    center_kps = False; center_cam= False
+    """we need the global root position for 3D skeleton overlay, so no root-centering, 
+    except you center the camera using the root location as well"""
+
+    undo_rot=False; center_cam=False; center_kps=True
+    #center_kps = False; center_cam= False
 
     # prepare camera
-    c2ws = c2ws[selected_idxs]
+    # c2ws = c2ws[selected_idxs]
     # centers = centers[selected_idxs]
+
+    try:
+        #ipdb.set_trace()
+        c2ws = c2ws[selected_idxs]
+
+        if isinstance(focals, float):
+            focals = np.array([focals] * len(selected_idxs))
+        else:
+            focals = focals[selected_idxs]
+
+        if isinstance(centers, float):
+            centers = np.array([centers] * len(selected_idxs))
+        else:
+            if len(centers.shape) > 2:
+                centers = centers[0][selected_idxs]
+            else:
+                centers = centers[selected_idxs]
+
+        #ipdb.set_trace()
+    except:
+        # import h5py
+        ipdb.set_trace()
+
 
     if center_cam:
         shift_x = c2ws[..., 0, -1].copy()
@@ -1156,7 +1191,8 @@ def generate_skeleton_overlay(pose_h5, c2ws, focals, rest_pose, pose_keys,
 
     # prepare pose
     # TODO: hard-coded for now so we can quickly view the outcomes!
-    if refined is None:
+    # if refined is None:
+    if not args.render_refined:
         print("using *** initial optimized mirror poses ***")
         kps, bones = dd.io.load(pose_h5, pose_keys, sel=dd.aslice[selected_idxs, ...])
         selected_idxs = find_idxs_with_map(selected_idxs, idx_map)
@@ -1187,10 +1223,10 @@ def generate_skeleton_overlay(pose_h5, c2ws, focals, rest_pose, pose_keys,
     c2ws = generate_bullet_time(c2ws, n_views=n_bullet, bullet_ang=bullet_ang).transpose(1, 0, 2, 3).reshape(-1, 4, 4)
     
 
-    if isinstance(focals, float):
-        focals = np.array([focals] * len(selected_idxs))
-    else:
-        focals = focals[selected_idxs]
+    # if isinstance(focals, float):
+    #     focals = np.array([focals] * len(selected_idxs))
+    # else:
+    #     focals = focals[selected_idxs]
 
     #import ipdb; ipdb.set_trace()
     #focals = focals[:, None].repeat(n_bullet, 1).reshape(-1,2)
@@ -1198,10 +1234,16 @@ def generate_skeleton_overlay(pose_h5, c2ws, focals, rest_pose, pose_keys,
         focals = focals[:, None].repeat(n_bullet, 1).reshape(-1, 2)
     else:
         focals = focals[:, None].repeat(n_bullet, 1).reshape(-1)
-    print(f"focals {focals[0:1]}")
+    # print(f"focals {focals[0:1]}")
+
+    if len(centers.shape) == 2 and centers.shape[1] == 2:
+        centers = centers[:, None].repeat(n_bullet, 1).reshape(-1, 2)
+    else:
+        centers = centers[:, None].repeat(n_bullet, 1).reshape(-1)
 
     if undo_rot:
         bones[..., 0, :] = np.array([1.5708, 0., 0.], dtype=np.float32).reshape(1, 1, 3)
+
 
     l2ws = np.array([get_smpl_l2ws(bone, rest_pose, 1.0) for bone in bones])
     #import ipdb; ipdb.set_trace()
@@ -1228,7 +1270,7 @@ def generate_skeleton_overlay(pose_h5, c2ws, focals, rest_pose, pose_keys,
     for i in trange(len(selected_idxs)):
         idx = selected_idxs[i]
         from core.utils.skeleton_utils import draw_skeletons_3d
-        import imageio
+        # import imageio
 
         #img = dd.io.load(pose_h5, '/imgs', sel=dd.aslice[idx, ...])
         #center = dd.io.load(pose_h5, '/centers', sel=dd.aslice[idx, ...])
@@ -1237,12 +1279,18 @@ def generate_skeleton_overlay(pose_h5, c2ws, focals, rest_pose, pose_keys,
         img = img.copy() #* msk.copy()
         skel_img = draw_skeletons_3d(img[None], kps[i:i+1], c2ws[i][None], H, W, focals[i][None], centers[i][None])
         #skel_img = draw_skeletons_3d(img[None], kps[:1], c2w[None], H, W, focal[None], center[None])
-        # if refined is None:
-        #     save_dir = f"/scratch/st-rhodin-1/users/dajisafe/anerf_mirr/A-NeRF/checkers/initial_overlay/init_SPIN/{view}"
-        # else:
-        save_dir = f"/scratch/st-rhodin-1/users/dajisafe/anerf_mirr/A-NeRF/checkers/refined_overlay/mirror/{view}_ref_2023_01_03"
+
+        # ipdb.set_trace()
+        if not args.render_refined:
+            save_dir = f"/scratch/st-rhodin-1/users/dajisafe/anerf_mirr/A-NeRF/checkers/initial_overlay/mirror/{view}/init_2023_08_06/"
+        else:
+            save_dir = f"/scratch/st-rhodin-1/users/dajisafe/anerf_mirr/A-NeRF/checkers/refined_overlay/mirror/{view}/ref_2023_08_06"
+
+        os.makedirs(save_dir, exist_ok=True)
         imageio.imwrite(f'{save_dir}/{idx:05d}.png', skel_img.reshape(H, W, 3))
     print(cam_idxs)
+
+    print ("overlay complete...")
     ipdb.set_trace()
 
     #plt.savefig(f"/scratch/st-rhodin-1/users/dajisafe/anerf_mirr/A-NeRF/checkers/initial_overlay/init_SPIN/5/pixel_loc.jpg", dpi=300, bbox_inches='tight', pad_inches = 0)
@@ -1649,7 +1697,14 @@ def run_render():
 
     # check
     #import ipdb; ipdb.set_trace()
-    time = datetime.datetime.now().strftime("%Y-%m-%d-%H") # ("%Y-%m-%d-%H-%M-%S")
+    # time = datetime.datetime.now().strftime("%Y-%m-%d-%H") # ("%Y-%m-%d-%H-%M-%S")
+
+    if args.render_folder == '':
+        time = datetime.datetime.now().strftime("%Y-%m-%d-%H-%M-%S") # ("%Y-%m-%d-%H-%M-%S")
+        print(f"new render folder: {time}")
+    else:
+        time = args.render_folder
+        print(f"existing render folder: {time}")
 
     comb = args.data_path.split("/")[-2]
     view = comb.split("_cam_")[1]
@@ -1666,6 +1721,11 @@ def run_render():
     #import ipdb; ipdb.set_trace()
     nerf_args, unknown_args = nerf_config_parser().parse_known_args(nerf_args)
     print(f'UNKNOWN ARGS: {unknown_args}')
+
+    # update with parameters from run_render directly
+    nerf_args.train_size =  args.train_size
+    nerf_args.data_size = args.data_size
+    # nerf_args.randomize_view_dir = args.randomize_view_dir
 
     # load nerf model
     render_kwargs, poseopt_layer = load_nerf(args, nerf_args)

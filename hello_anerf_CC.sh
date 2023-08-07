@@ -171,9 +171,8 @@ export LD_LIBRARY_PATH=$LD_LIBRARY_PATH:~/miniconda3/lib
 
 # fresh start
 
-# indoor - Tim
+# indoor - Tim? or Chunjin
 # python run_nerf.py --config configs/mirror/mirror.txt --basedir logs/mirror --expname chunjin_model --data_path /scratch/dajisafe/anerf_mirr/A-NeRF/data/mirror/0/dbcd9ff7-202a-484a-bfc4-6faea8c14c27_cam_0/2022-11-01-13 --i_testset 5000 --i_pose_weights 5000 --i_weights 5000 --i_print 2500 --use_mirr --switch_cam --eval_metrics --no_reload
-
 
 # outdoor - chunjin
 # python run_nerf.py --config configs/mirror/mirror.txt --basedir logs/mirror --expname chunjin_model --data_path /scratch/dajisafe/anerf_mirr/A-NeRF/data/mirror/0/dbcd9ff7-202a-484a-bfc4-6faea8c14c27_cam_0/2022-11-01-13 --i_testset 5000 --i_pose_weights 5000 --i_weights 5000 --i_print 2500 --use_mirr --switch_cam --eval_metrics --no_reload
