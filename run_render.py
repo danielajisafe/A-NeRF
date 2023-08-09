@@ -8,10 +8,13 @@ import torch
 import shutil
 import imageio
 import datetime
+import platform
 import numpy as np
 import deepdish as dd
+import time as timenow
 from tqdm import trange
 from run_nerf import render_path
+from render.post_process import cca_image
 from run_nerf import config_parser as nerf_config_parser
 
 from core.pose_opt import load_poseopt_from_state_dict, pose_ckpt_to_pose_data
@@ -24,12 +27,21 @@ from core.utils.skeleton_utils import draw_skeletons_3d, rotate_x, rotate_y, axi
 from pytorch_msssim import SSIM
 
 
+device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+
+if  platform.node() == "naye":
+     project_dir = "path-to-project-directory"
+elif platform.node() == "baker":
+    project_dir =  "path-to-project-directory"
+elif platform.node() == "se061":
+    project_dir =  "/scratch/st-rhodin-1/users/dajisafe/anerf_mirr/A-NeRF"
+else:
+    project_dir = "/scratch/st-rhodin-1/users/dajisafe/anerf_mirr/A-NeRF"
+
 import sys
-sys.path.append("/scratch/st-rhodin-1/users/dajisafe/anerf_mirr/A-NeRF/core/utils")
+sys.path.append(f"{project_dir}/core/utils")
 sys.path.append("/scratch/dajisafe/smpl/Rebuttal/A-NeRF/core/utils")
 
-
-device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 GT_PREFIXES = {
     'h36m': 'data/h36m/',
@@ -64,7 +76,21 @@ def config_parser():
                         help='no of bubble views to render') 
     parser.add_argument('--bullet_ang', type=int, default=360,
                         help='angle of novel bullet view to render')
+    parser.add_argument("--render_folder", type=str, default='',
+                        help='use existing render folder')
+    parser.add_argument('--outliers', action='store_true', default=True,
+                         help='remove outliers during rendering. False if called')
 
+    # used to updated the same parameters copied/passed over from run_nerf 
+    parser.add_argument("--train_size", type=int, default=None,
+                        help='no of samples for training')
+    parser.add_argument("--data_size", type=int, default=None,
+                        help='no of samples for training')
+    parser.add_argument("--start_idx", type=int, default=None,
+                        help='start id for inference on sub sequence')
+    parser.add_argument("--stop_idx", type=int, default=None,
+                        help='stop id for inference on sub sequence')
+    
     parser.add_argument('--entry', type=str, required=True,
                         help='entry in the dataset catalog to render')
     parser.add_argument('--white_bkgd', action='store_true',
@@ -84,6 +110,8 @@ def config_parser():
                         help='which subject to render (for MINeRF)') 
     parser.add_argument('--top_expand_ratio', type=float, default=1.60,
                         help='margin for head joint e.g SMPL has no head joint')
+    parser.add_argument('--extend_mm', type=float, default=250,
+                        help='margin for extending box if too tight')
 
     # frame-related
     parser.add_argument('--train_len', type=int, default=0,
@@ -197,13 +225,16 @@ def load_render_data(args, nerf_args, poseopt_layer=None, opt_framecode=True):
 
     render_data['args'] = args
     pose_keys = ['/kp3d', '/bones']
-    cam_keys = ['/c2ws', '/focals']
+    cam_keys = ['/c2ws', '/focals', '/centers']
     # Do partial load here!
     # Need:
     # 1. kps: for root location
     # 2. bones: for bones
     # 3. camera stuff: focals, c2ws, ... etc
-    c2ws, focals = dd.io.load(data_h5, cam_keys)
+    
+    c2ws, focals, centers_n = dd.io.load(data_h5, cam_keys)
+    # c2ws, focals = dd.io.load(data_h5, cam_keys)
+    
     _, H, W, _ = dd.io.load(data_h5, ['/img_shape'])[0]
 
     
@@ -285,7 +316,7 @@ def load_render_data(args, nerf_args, poseopt_layer=None, opt_framecode=True):
             print(f'Load data to generate images.')
             kps, skts, c2ws, cam_idxs, focals, bones = generate_psnr_imgs(data_h5, c2ws, focals,
                                                                     rest_pose, pose_keys,
-                                                                    #centers=centers_n,
+                                                                    centers=centers_n,
                                                                     **render_data)
         else:
             print(f'Load data for bullet time effect!')
@@ -414,7 +445,7 @@ def load_render_data(args, nerf_args, poseopt_layer=None, opt_framecode=True):
                'bg_imgs': bg_imgs,
                'bg_indices': bg_indices}
 
-    return ret_dict, gt_dict
+    return ret_dict, gt_dict, render_data['selected_idxs']
 
 def init_catalog(args, n_bullet=10):
 
@@ -521,12 +552,72 @@ def init_catalog(args, n_bullet=10):
         args.selected_idxs = easy_idx
 
     elif args.psnr_images:
-        """interval indices for cam 6 only. Pass in explicit indices for other cameras e.g vanilla c5"""
-        easy_idx = np.arange(0, args.train_len, 20)
-        args.selected_idxs = easy_idx
+        # Temporary
+        if view == 6:
+            """interval indices for cam 6 only. Pass in explicit selected indices for other cameras e.g vanilla c5. see TODO below"""
+            if args.selected_idxs == None:
+                render_interval = 40
+                easy_idx = np.arange(0, args.train_len, render_interval)
+                args.selected_idxs = easy_idx
+            
+            else:
+                easy_idx = args.selected_idxs 
+
+
+    # TODO: think of this part deeply, update code below dynamically
+    # elif args.psnr_images:
+        
+    #     import pickle#5 as pickle
+
+    #     # get true indices from mirror counterpart and use idx corresponding to any required offset.
+    #     with open(f'{args.data_path}/calib{view}_20000iter_May_11.pickle', 'rb') as handle:
+    #         from_pickle = pickle.load(handle)
+
+    #     # spin_pickle = f"{args.data_path}/output.pkl"
+    #     # import deepdish as dd
+    #     # import pickle as pkl
+    #     # if spin_pickle.endswith(".pkl"):
+    #     #     spin_raw_data = pkl.load(open(spin_pickle, "rb"))
+    #     # else:
+    #     #     spin_raw_data = dd.io.load(spin_pickle)
+
+    #     mirrr_raw_idxs = from_pickle['chosen_frames'][:args.train_len]
+
+    #     #""" please update code: hard-coded vanilla indices here for now"""
+    #     # vanilla_raw_idxs = np.arange(1800) #spin_raw_data['valid_idxs']
+    #     # common_eval_pts = list(set(mirrr_raw_idxs).intersection(set(vanilla_raw_idxs)))
+
+    #     # mirr_sel_idxs = list(map(lambda x: mirrr_raw_idxs.index(x), common_eval_pts))
+    #     # mirr_sel_idxs = mirr_sel_idxs[:args.train_len]
+
+    #     # 20th images among common subset
+    #     #mirr_sel_idxs = mirrr_raw_idxs[:args.train_len]
+    #     #n = len(mirr_sel_idxs)
+    #     #sel_idxs = mirr_sel_idxs[::20]
+        
+    #     n = len(mirrr_raw_idxs)
+    #     offset_indices = []
+
+    #     render_interval = 40
+    #     for i in range(0,n,render_interval):
+    #         # look for corresponding offset for required frames
+    #         if args.selected_idxs != None:
+    #             if i not in args.selected_idxs:
+    #                 continue
+    #         index = mirrr_raw_idxs.index(i)
+    #         offset_indices.append(index)
+
+    #     #[-1:]
+    #     args.selected_idxs = easy_idx = offset_indices.copy()
+    #     # pick a subset that is common to both
+    #     # ipdb.set_trace()
+
 
     elif generate_skeleton_overlay:
-        easy_idx = args.selected_idxs
+        if args.start_idx is not None and args.stop_idx is not None:
+            easy_idx = np.arange(args.start_idx, args.stop_idx, 1)
+
+        ipdb.set_trace()
         #easy_idx = np.arange(0, args.train_len, 20)[-2:]
         #args.selected_idxs = easy_idx
 
@@ -534,7 +625,7 @@ def init_catalog(args, n_bullet=10):
         easy_idx = args.selected_idxs #, 20] #, 465, 473, 467, 1467] # [10, 70, 350, 420, 490, 910, 980, 1050] #np.arange(0, args.train_len)
 
     
-    #import ipdb; ipdb.set_trace()
+    # import ipdb; ipdb.set_trace()
 
     vanilla_easy = {
         'data_h5': args.data_path + '/vanilla_train_h5py.h5',
@@ -1245,32 +1336,47 @@ def generate_skeleton_overlay(pose_h5, c2ws, focals, rest_pose, pose_keys,
     return kps, skts, c2ws, cam_idxs, focals, bones
 
 def generate_psnr_imgs(pose_h5, c2ws, focals, rest_pose, pose_keys,
-                    selected_idxs, refined=None, n_bullet=30,
+                    selected_idxs, refined=None, n_bullet=30, bullet_ang=360,
+                    centers=None,
                     undo_rot=False, center_cam=False, center_kps=False,
                     idx_map=None, args=None):
 
-    """we need the global root position for PSNR images, so no root-centering"""
-    center_kps = False; center_cam= False
+    """we need the global root position for 3D skeleton overlay, so no root-centering, 
+    except you center the camera using the root location as well"""
+
+    undo_rot=False; center_cam=False; center_kps=True
+    #center_kps = False; center_cam= False
 
     # prepare camera
-    c2ws = c2ws[selected_idxs]
+    # c2ws = c2ws[selected_idxs]
+
+    try:
+        #ipdb.set_trace()
+        c2ws = c2ws[selected_idxs]
+
+        if isinstance(focals, float):
+            focals = np.array([focals] * len(selected_idxs))
+        else:
+            focals = focals[selected_idxs]
+
+        if isinstance(centers, float):
+            centers = np.array([centers] * len(selected_idxs))
+        else:
+            if len(centers.shape) > 2:
+                centers = centers[0][selected_idxs]
+            else:
+                centers = centers[selected_idxs]
+
+        #ipdb.set_trace()
+    except:
+        # import h5py
+        ipdb.set_trace()
+
+
     if center_cam:
         shift_x = c2ws[..., 0, -1].copy()
         shift_y = c2ws[..., 1, -1].copy()
         c2ws[..., :2, -1] = 0.
-    c2ws = generate_bullet_time(c2ws, n_bullet).transpose(1, 0, 2, 3).reshape(-1, 4, 4)
-
-    if isinstance(focals, float):
-        focals = np.array([focals] * len(selected_idxs))
-    else:
-        focals = focals[selected_idxs]
-    #focals = focals[:, None].repeat(n_bullet, 1).reshape(-1)
-
-    if len(focals.shape) == 2 and focals.shape[1] == 2:
-        focals = focals[:, None].repeat(n_bullet, 1).reshape(-1, 2)
-    else:
-        focals = focals[:, None].repeat(n_bullet, 1).reshape(-1)
-    print(f"focals {focals}")
 
     # prepare pose
     # TODO: hard-coded for now so we can quickly view the outcomes!
@@ -1288,9 +1394,34 @@ def generate_psnr_imgs(pose_h5, c2ws, focals, rest_pose, pose_keys,
     if center_kps:
         root = kps[..., :1, :].copy() # assume to be CMUSkeleton
         kps[..., :, :] -= root
+        # move kps to 0 and cam to -root
+        c2ws[..., :3, -1] -= root.reshape(-1,3)
+
     elif center_cam:
         kps[..., :, 0] -= shift_x[:, None]
         kps[..., :, 1] -= shift_y[:, None]
+
+    c2ws = generate_bullet_time(c2ws, n_bullet).transpose(1, 0, 2, 3).reshape(-1, 4, 4)
+
+
+    # if isinstance(focals, float):
+    #     focals = np.array([focals] * len(selected_idxs))
+    # else:
+    #     focals = focals[selected_idxs]
+    #focals = focals[:, None].repeat(n_bullet, 1).reshape(-1)
+
+    if len(focals.shape) == 2 and focals.shape[1] == 2:
+        focals = focals[:, None].repeat(n_bullet, 1).reshape(-1, 2)
+    else:
+        focals = focals[:, None].repeat(n_bullet, 1).reshape(-1)
+    # print(f"focals {focals}")
+
+    if len(centers.shape) == 2 and centers.shape[1] == 2:
+        centers = centers[:, None].repeat(n_bullet, 1).reshape(-1, 2)
+    else:
+        centers = centers[:, None].repeat(n_bullet, 1).reshape(-1)
+
+    
 
     if undo_rot:
         bones[..., 0, :] = np.array([1.5708, 0., 0.], dtype=np.float32).reshape(1, 1, 3)
@@ -1299,6 +1430,7 @@ def generate_psnr_imgs(pose_h5, c2ws, focals, rest_pose, pose_keys,
     l2ws[..., :3, -1] += kps[..., :1, :].copy()
     kps = l2ws[..., :3, -1]
     skts = np.linalg.inv(l2ws)
+
 
     # expand shape for repeat
     kps = kps[:, None].repeat(n_bullet, 1).reshape(len(selected_idxs) * n_bullet, -1, 3)
@@ -1662,18 +1794,31 @@ def run_render():
     comb = args.data_path.split("/")[-2]
     view = comb.split("_cam_")[1]
     print(f"camera: {view} comb: {comb}")
-    time = datetime.datetime.now().strftime("%Y-%m-%d-%H") # ("%Y-%m-%d-%H-%M-%S")
+    # time = datetime.datetime.now().strftime("%Y-%m-%d-%H") # ("%Y-%m-%d-%H-%M-%S")
+
+    if args.render_folder == '':
+        time = datetime.datetime.now().strftime("%Y-%m-%d-%H-%M-%S") # ("%Y-%m-%d-%H-%M-%S")
+        print(f"new render folder: {time}")
+    else:
+        time = args.render_folder
+        print(f"existing render folder: {time}")
 
     # parse nerf model args
     nerf_args = txt_to_argstring(args.nerf_args)
     nerf_args, unknown_args = nerf_config_parser().parse_known_args(nerf_args)
     print(f'UNKNOWN ARGS: {unknown_args}')
 
+    # update with parameters from run_render directly
+    nerf_args.train_size =  args.train_size
+    nerf_args.data_size = args.data_size
+
     # load nerf model
     render_kwargs, poseopt_layer = load_nerf(args, nerf_args)
 
     # prepare the required data
-    render_data, gt_dict = load_render_data(args, nerf_args, poseopt_layer, nerf_args.opt_framecode)
+    render_data, gt_dict, selected_idxs = load_render_data(args, nerf_args, poseopt_layer, nerf_args.opt_framecode)
+    # import ipdb; ipdb.set_trace()
+
     tensor_data = to_tensors(render_data)
 
     basedir = os.path.join(args.outputdir, args.runname)
@@ -1688,6 +1833,7 @@ def run_render():
                                       ret_acc=True,
                                       white_bkgd=args.white_bkgd,
                                       top_expand_ratio=args.top_expand_ratio,
+                                      extend_mm=args.extend_mm,
                                       **tensor_data)
     
     
@@ -1708,7 +1854,8 @@ def run_render():
 
     rgbs = (rgbs * 255).astype(np.uint8)
     accs = (accs * 255).astype(np.uint8)
-    skeletons = draw_skeletons_3d(rgbs, render_data['kp'],
+
+    skeletons, skels_2d = draw_skeletons_3d(rgbs, render_data['kp'],
                                   render_data['render_poses'],
                                   *render_data['hwf'])
 
@@ -1720,18 +1867,35 @@ def run_render():
     # os.makedirs(os.path.join(basedir, 'skel'), exist_ok=True)
     # os.makedirs(os.path.join(basedir, 'acc'), exist_ok=True)
 
-    real_ids = args.selected_idxs
+    # real_ids = args.selected_idxs
     for i, (rgb, acc, skel) in enumerate(zip(rgbs, accs, skeletons)):
-        i = real_ids[i]
-        imageio.imwrite(os.path.join(basedir, time, f'image_{view}', f'{i:05d}.png'), rgb)
-        imageio.imwrite(os.path.join(basedir, time, f'acc_{view}', f'{i:05d}.png'), acc)
-        imageio.imwrite(os.path.join(basedir, time, f'skel_{view}', f'{i:05d}.png'), skel)
+        # i = real_ids[i]
+
+        if args.n_bullet == 1:
+            rel_idx = selected_idxs[i]
+        else:
+            rel_idx = i
+
+        chk_img_url = f"{project_dir}/checkers/imgs"
+        start = timenow.time()
+        if args.outliers:
+            rgb, acc, skel = cca_image(skels_2d[i], BGR_img=rgb, acc_img=acc, plot=False, chk_folder=chk_img_url)
+            if i==0: print("cca took: %.2f seconds" %(timenow.time() - start))
+
+        imageio.imwrite(os.path.join(basedir, time, f'image_{view}', f'{rel_idx:05d}.png'), rgb)
+        imageio.imwrite(os.path.join(basedir, time, f'acc_{view}', f'{rel_idx:05d}.png'), acc)
+        imageio.imwrite(os.path.join(basedir, time, f'skel_{view}', f'{rel_idx:05d}.png'), skel)
 
         # imageio.imwrite(os.path.join(basedir, 'image', f'{i:05d}.png'), rgb)
         # imageio.imwrite(os.path.join(basedir, 'acc', f'{i:05d}.png'), acc)
         # imageio.imwrite(os.path.join(basedir, 'skel', f'{i:05d}.png'), skel)
+
     np.save(os.path.join(basedir, time, 'bboxes.npy'), bboxes, allow_pickle=True)
     imageio.mimwrite(os.path.join(basedir, time, "render_rgb.mp4"), rgbs, fps=args.fps)
+
+    # make the block size dynamic
+    kargs = { 'macro_block_size': None }
+    print("saving images only.....")
 
 
 

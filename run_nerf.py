@@ -35,7 +35,8 @@ def render_path(render_poses, hwf, chunk, render_kwargs,
                 gt_imgs=None, bg_imgs=None, bg_indices=None,
                 cams=None, subject_idxs=None, render_factor=0,
                 white_bkgd=False, ret_acc=False,
-                ext_scale=0.00035, base_bg=1.0, top_expand_ratio=1.60):
+                ext_scale=0.00035, base_bg=1.0, top_expand_ratio=1.60,
+                extend_mm=250):
 
     H, W, focal = hwf
 
@@ -59,7 +60,8 @@ def render_path(render_poses, hwf, chunk, render_kwargs,
                                                           focal, kps=kp, cylinder_params=cyls,
                                                           skts=skts, ext_scale=ext_scale,
                                                           centers=centers,
-                                                          top_expand_ratio=top_expand_ratio)
+                                                          top_expand_ratio=top_expand_ratio,
+                                                          extend_mm=extend_mm)
     else:
         rays, valid_idxs = None, None
 

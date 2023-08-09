@@ -1381,7 +1381,7 @@ def calculate_bone_length(kp, skel_type=SMPLSkeleton):
 def draw_skeletons_3d(imgs, skels, c2ws, H, W, focals, centers=None,
                       width=3, flip=False, skel_type=SMPLSkeleton):
     skels_2d = skeleton3d_to_2d(skels, c2ws, H, W, focals, centers)
-    return draw_skeletons(imgs, skels_2d, skel_type, width, flip)
+    return draw_skeletons(imgs, skels_2d, skel_type, width, flip), skels_2d
 
 def draw_skeletons(imgs, skels, skel_type=SMPLSkeleton, width=3, flip=False):
     skel_imgs = []

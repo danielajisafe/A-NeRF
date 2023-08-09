@@ -81,7 +81,7 @@ def ndc_rays(H, W, focal, near, rays_o, rays_d):
     return rays_o, rays_d
 
 def kp_to_valid_rays(poses, H, W, focal, kps=None, cylinder_params=None,
-                     skts=None, centers=None, ext_scale=0.00035, top_expand_ratio=1.60):
+                     skts=None, centers=None, ext_scale=0.00035, top_expand_ratio=1.60, extend_mm=250):
     if cylinder_params is None:
         assert kps is not None
         kps_np = kps.cpu().numpy()
@@ -91,7 +91,7 @@ def kp_to_valid_rays(poses, H, W, focal, kps=None, cylinder_params=None,
         #top_expand_ratio = 1.60
         # For Surreal
         #top_expand_ratio = 1.10
-        extend_mm = 250
+        # extend_mm = 250
 
         #print("kps_np[:,-1]",  kps_np[:,-1])
         #import ipdb; ipdb.set_trace()
