@@ -108,6 +108,10 @@ def config_parser():
                         help='no of samples for training')
     parser.add_argument("--data_size", type=int, default=None,
                         help='no of samples for training')
+    parser.add_argument("--start_idx", type=int, default=None,
+                        help='start id for inference on sub sequence')
+    parser.add_argument("--stop_idx", type=int, default=None,
+                        help='stop id for inference on sub sequence')
 
     parser.add_argument('--entry', type=str, required=True,
                         help='entry in the dataset catalog to render')
@@ -613,25 +617,106 @@ def init_catalog(args, n_bullet=3):
         # ipdb.set_trace()
 
     elif generate_skeleton_overlay:
-        # mirrr_raw_idxs = from_pickle['chosen_frames'][:args.train_len]
-
-        # #""" please update code: hard-coded vanilla indices here for now"""
-        # n = len(mirrr_raw_idxs)
-        # offset_indices = []
-
-        # for i in range(0,n,20):
-        #     index = mirrr_raw_idxs.index(i)
-        #     offset_indices.append(index)
-
-        # easy_idx = offset_indices[-1:]
-
         print("did you consider offset in selected idxs?")
         time.sleep(3)
+
+        import pickle#5 as pickle
+
+        ### ----- Tim sequence ---------
+        # Ti_subj3_ID = "e1531958-26bb-4f46-b3b4-bad1910798c9_cam_0" # refined with basic 1-view for danbo body model
+        Ti_subj3_ID = "f9f4444a-e75e-4196-bc97-e3558f504263_cam_0" # refined with two-view for anerf body model
+
+        uniq_id = args.data_path.split("/")[-2]
+        # ipdb.set_trace()
+
+        if uniq_id==Ti_subj3_ID:
+            print("old or recent Ti data?")
+            time.sleep(3)
+
+            # pick a subset that is common to both (both data currrently stored in vanilla Tim data path) though we are in mirror now
+            s3_pickle_path = f"/scratch/st-rhodin-1/users/dajisafe/anerf_mirr/DANBO-pytorch/data/vanilla/0/e1531958-26bb-4f46-b3b4-bad1910798c9_cam_0"
+            # s3_pickle_path = f"/scratch/dajisafe/anerf_mirr/DANBO-pytorch/data/vanilla/0/e1531958-26bb-4f46-b3b4-bad1910798c9_cam_0"
+
+            with open(f'{s3_pickle_path}/calib{view}_20000iter_mirror_rebuttal.pickle', 'rb') as handle:
+                mirror_pickle = pickle.load(handle)
+            # spin estimates pkl
+            with open(f'{s3_pickle_path}/output.pkl', 'rb') as handle:
+                spin_pickle = pickle.load(handle)
+
+            mirr_frames = mirror_pickle["chosen_frames"]
+            spin_frames = spin_pickle["valid_idxs"]
+            if "vanilla" in args.data_path:
+                target = spin_frames.tolist()
+            elif "mirror" in args.data_path:
+                target = mirr_frames
+            else:
+                print("what is the target method?")
+            # import ipdb; ipdb.set_trace()
+
+            common_global_idxs = sorted(set(mirr_frames) - set(spin_frames))
+            selected_global_idxs = common_global_idxs#[0:1]#[::20] #[1::2]
+
+            n = len(selected_global_idxs)
+            offset_local_indices = []
+
+            #idxs_set = set(selected_global_idxs)
+
+            # ipdb.set_trace()
+            # for idx in selected_global_idxs:
+            #         # you need specific global idx
+            #         if int(args.selected_idxs[0]) != -1:
+            #             specific_global_idx = [int(args.selected_idxs[0])]
+
+            #             if idx not in specific_global_idx:
+            #                 continue
+            #         index = target.index(idx)
+            #         offset_local_indices.append(index)
+
+            offset_local_indices = selected_global_idxs.copy()
+
+            # render batch by batch
+            if args.start_idx is not None and args.stop_idx is not None:
+                range_idx = np.arange(args.start_idx, args.stop_idx, 1)
+
+                # import ipdb; ipdb.set_trace()
+                offset_local_indices = np.array(offset_local_indices)[range_idx]
+                selected_global_idxs = np.array(selected_global_idxs)[range_idx]
+
+            args.selected_idxs = easy_idx = offset_local_indices
+
+        else:
+            ### ---- eval sequences ---------
+            with open(f'{args.data_path}/calib{view}_20000iter_May_11.pickle', 'rb') as handle:
+                from_pickle = pickle.load(handle)
+
+            mirrr_raw_idxs = from_pickle['chosen_frames'][:args.train_len]
+
+            n = len(mirrr_raw_idxs)
+            offset_indices = []
+
+            ipdb.set_trace()
+            render_interval = 1
+            for i in range(0,n,render_interval):
+                # look for corresponding offset for required frames
+                if args.selected_idxs != None:
+                    if i not in args.selected_idxs:
+                        continue
+                elif args.start_idx is not None and args.stop_idx is not None:
+                    range_idx = np.arange(args.start_idx, args.stop_idx, 1)
+                    if i not in range_idx:
+                        continue
+                
+                index = mirrr_raw_idxs.index(i)
+                offset_indices.append(index)
+
+            args.selected_idxs = easy_idx = offset_indices.copy()
+
+        
         easy_idx = args.selected_idxs
         # args.selected_idxs = easy_idx 
 
-    else: #render
-        easy_idx = args.selected_idxs #[0] #rebuttal_tim #[406,466,340,600,900,814] # #[0, 465, 473, 467, 1467] # [10, 70, 350, 420, 490, 910, 980, 1050] #np.arange(0, args.train_len)
+    # else: #render
+    #     easy_idx = args.selected_idxs #[0] #rebuttal_tim #[406,466,340,600,900,814] # #[0, 465, 473, 467, 1467] # [10, 70, 350, 420, 490, 910, 980, 1050] #np.arange(0, args.train_len)
     
     # ipdb.set_trace()
 
@@ -1302,14 +1387,14 @@ def generate_skeleton_overlay(pose_h5, c2ws, focals, rest_pose, pose_keys,
         img = gt_imgs[i].reshape(H, W, 3)
         #msk = gt_masks['sampling_masks'][idx].reshape(H, W, 1)
         img = img.copy() #* msk.copy()
-        skel_img = draw_skeletons_3d(img[None], kps[i:i+1], c2ws[i][None], H, W, focals[i][None], centers[i][None])
+        skel_img, _  = draw_skeletons_3d(img[None], kps[i:i+1], c2ws[i][None], H, W, focals[i][None], centers[i][None])
         #skel_img = draw_skeletons_3d(img[None], kps[:1], c2w[None], H, W, focal[None], center[None])
 
         # ipdb.set_trace()
         if not args.render_refined:
-            save_dir = f"/scratch/st-rhodin-1/users/dajisafe/anerf_mirr/A-NeRF/checkers/initial_overlay/mirror/{view}/init_2023_08_06/"
+            save_dir = f"/scratch/st-rhodin-1/users/dajisafe/anerf_mirr/A-NeRF/checkers/initial_overlay/mirror/{view}/init_{args.render_folder}/"
         else:
-            save_dir = f"/scratch/st-rhodin-1/users/dajisafe/anerf_mirr/A-NeRF/checkers/refined_overlay/mirror/{view}/ref_2023_08_06"
+            save_dir = f"/scratch/st-rhodin-1/users/dajisafe/anerf_mirr/A-NeRF/checkers/refined_overlay/mirror/{view}/ref_{args.render_folder}"
 
         os.makedirs(save_dir, exist_ok=True)
         imageio.imwrite(f'{save_dir}/{idx:05d}.png', skel_img.reshape(H, W, 3))
@@ -2055,7 +2140,11 @@ def run_render():
         chk_img_url = f"{project_dir}/checkers/imgs"
         start = timenow.time()
         if args.outliers:
-            rgb, acc, skel = cca_image(skels_2d[i], BGR_img=rgb, acc_img=acc, plot=False, chk_folder=chk_img_url)
+            rgb, acc, skel, out_stats = cca_image(skels_2d[i], BGR_img=rgb, acc_img=acc, plot=False, chk_folder=chk_img_url)
+            out_whole_kps_bool, out_count_per_whole_kps, out_count_H, out_count_W = out_stats
+            if out_whole_kps_bool:
+                print(f"i: {i} rel_idx: {rel_idx} out_count_per_whole_kps {out_count_per_whole_kps}, out_count_H {out_count_H}, out_count_W {out_count_W}")
+
             if i==0: print("cca took: %.2f seconds" %(timenow.time() - start))
     
 
