@@ -376,6 +376,7 @@ class BaseH5Dataset(Dataset):
             return
         print('init dataset')
 
+        # ipdb.set_trace()
         self.dataset = h5py.File(self.h5_path, 'r')
         self.dataset_v = h5py.File(self.h5_path_v, 'r')
 
@@ -404,6 +405,7 @@ class BaseH5Dataset(Dataset):
         img_shape = dataset['img_shape'][:]
         self._N_total_img = img_shape[0]
 
+        # ipdb.set_trace()
         assert (len(self._idx_map) == self._N_total_img), "h5py data size is not equal to len(idx_map) or args.data_size"
         self.HW = img_shape[1:3]
         mesh = np.meshgrid(np.arange(self.HW[1], dtype=np.float32),

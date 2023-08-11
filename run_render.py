@@ -100,8 +100,9 @@ def config_parser():
     #                     help='do not reload weights from saved ckpt?')
     parser.add_argument("--render_folder", type=str, default='',
                         help='use existing render folder')
-    parser.add_argument('--outliers', action='store_true', default=True,
+    parser.add_argument('--outliers', action='store_false', default=True,
                          help='remove outliers during rendering. False if called')
+    
 
     # used to updated the same parameters copied/passed over from run_nerf 
     parser.add_argument("--train_size", type=int, default=None,
@@ -130,6 +131,13 @@ def config_parser():
                         help='render from refined poses')
     parser.add_argument('--subject_idx', type=int, default=0,
                         help='which subject to render (for MINeRF)')
+    parser.add_argument('--top_expand_ratio', type=float, default=1.60,
+                        help='margin for head joint e.g SMPL has no head joint')    
+    parser.add_argument('--bot_expand_ratio', type=float, default=1.60,
+                        help='margin for head lower feet')   
+    parser.add_argument('--extend_mm', type=float, default=250,
+                        help='margin for extending box if too tight')
+
 
     # frame-related
     parser.add_argument('--train_len', type=int, default=0,
@@ -169,7 +177,7 @@ def load_nerf(args, nerf_args, skel_type=CMUSkeleton):
     # dig those out from state_dict directly
     nerf_sdict = torch.load(ckptpath)
 
-    #import ipdb; ipdb.set_trace()
+    # import ipdb; ipdb.set_trace()
     # get data_attrs used for training the models
     data_attrs = get_dataset(nerf_args).get_meta()
     if 'framecodes.codes.weight' in nerf_sdict['network_fn_state_dict']:
@@ -564,7 +572,7 @@ def init_catalog(args, n_bullet=3):
     # [1,209,212,250,280,340,368,369,406,428,438,993]
     # [449,624,644,680,705,746,998,1170]
 
-    #import ipdb; ipdb.set_trace()
+    # import ipdb; ipdb.set_trace()
     #rebuttal_tim = np.arange(800,1178) #[992,1027,1041,1087,1088,1133,1134,1172,1175] #[449,624,644,680,705,746,998,1170,1,209,212,250,280,340,368,369,406,428,438,993]  #np.arange(0, 500) #[500] #1177, 814]
     if args.evaluate_pose:
         ipdb.set_trace()
@@ -574,49 +582,52 @@ def init_catalog(args, n_bullet=3):
     elif args.psnr_images:
         
         import pickle#5 as pickle
-        with open(f'{args.data_path}/calib{view}_20000iter_May_11.pickle', 'rb') as handle:
-            from_pickle = pickle.load(handle)
+        pickle_file = f'{args.data_path}/calib{view}_20000iter_May_11.pickle'
 
-        # spin_pickle = f"{args.data_path}/output.pkl"
-        # import deepdish as dd
-        # import pickle as pkl
-        # if spin_pickle.endswith(".pkl"):
-        #     spin_raw_data = pkl.load(open(spin_pickle, "rb"))
-        # else:
-        #     spin_raw_data = dd.io.load(spin_pickle)
+        if os.path.isfile(pickle_file):
+            with open(pickle_file, 'rb') as handle:
+                from_pickle = pickle.load(handle)
 
-        mirrr_raw_idxs = from_pickle['chosen_frames'][:args.train_len]
+            # spin_pickle = f"{args.data_path}/output.pkl"
+            # import deepdish as dd
+            # import pickle as pkl
+            # if spin_pickle.endswith(".pkl"):
+            #     spin_raw_data = pkl.load(open(spin_pickle, "rb"))
+            # else:
+            #     spin_raw_data = dd.io.load(spin_pickle)
 
-        #""" please update code: hard-coded vanilla indices here for now"""
-        # vanilla_raw_idxs = np.arange(1800) #spin_raw_data['valid_idxs']
-        # common_eval_pts = list(set(mirrr_raw_idxs).intersection(set(vanilla_raw_idxs)))
+            mirrr_raw_idxs = from_pickle['chosen_frames'][:args.train_len]
 
-        # mirr_sel_idxs = list(map(lambda x: mirrr_raw_idxs.index(x), common_eval_pts))
-        # mirr_sel_idxs = mirr_sel_idxs[:args.train_len]
+            #""" please update code: hard-coded vanilla indices here for now"""
+            # vanilla_raw_idxs = np.arange(1800) #spin_raw_data['valid_idxs']
+            # common_eval_pts = list(set(mirrr_raw_idxs).intersection(set(vanilla_raw_idxs)))
 
-        # 20th images among common subset
-        #mirr_sel_idxs = mirrr_raw_idxs[:args.train_len]
-        #n = len(mirr_sel_idxs)
-        #sel_idxs = mirr_sel_idxs[::20]
-        
-        n = len(mirrr_raw_idxs)
-        offset_indices = []
+            # mirr_sel_idxs = list(map(lambda x: mirrr_raw_idxs.index(x), common_eval_pts))
+            # mirr_sel_idxs = mirr_sel_idxs[:args.train_len]
 
-        render_interval = 40
-        for i in range(0,n,render_interval):
-            # look for corresponding offset for required frames
-            if args.selected_idxs != None:
-                if i not in args.selected_idxs:
-                    continue
-            index = mirrr_raw_idxs.index(i)
-            offset_indices.append(index)
+            # 20th images among common subset
+            #mirr_sel_idxs = mirrr_raw_idxs[:args.train_len]
+            #n = len(mirr_sel_idxs)
+            #sel_idxs = mirr_sel_idxs[::20]
+            
+            n = len(mirrr_raw_idxs)
+            offset_indices = []
+
+            render_interval = 40
+            for i in range(0,n,render_interval):
+                # look for corresponding offset for required frames
+                if args.selected_idxs != None:
+                    if i not in args.selected_idxs:
+                        continue
+                index = mirrr_raw_idxs.index(i)
+                offset_indices.append(index)
 
         #[-1:]
         args.selected_idxs = easy_idx = offset_indices.copy()
         # pick a subset that is common to both
         # ipdb.set_trace()
 
-    elif generate_skeleton_overlay:
+    elif args.generate_skeleton_overlay:
         print("did you consider offset in selected idxs?")
         time.sleep(3)
 
@@ -680,7 +691,7 @@ def init_catalog(args, n_bullet=3):
 
                 # import ipdb; ipdb.set_trace()
                 offset_local_indices = np.array(offset_local_indices)[range_idx]
-                selected_global_idxs = np.array(selected_global_idxs)[range_idx]
+                # selected_global_idxs = np.array(selected_global_idxs)[range_idx]
 
             args.selected_idxs = easy_idx = offset_local_indices
 
@@ -701,7 +712,7 @@ def init_catalog(args, n_bullet=3):
                 if args.selected_idxs != None:
                     if i not in args.selected_idxs:
                         continue
-                elif args.start_idx is not None and args.stop_idx is not None:
+                elif args.start_idx != None and args.stop_idx != None:
                     range_idx = np.arange(args.start_idx, args.stop_idx, 1)
                     if i not in range_idx:
                         continue
@@ -709,11 +720,17 @@ def init_catalog(args, n_bullet=3):
                 index = mirrr_raw_idxs.index(i)
                 offset_indices.append(index)
 
-            args.selected_idxs = easy_idx = offset_indices.copy()
-
-        
+            args.selected_idxs = easy_idx = offset_indices.copy()  
         easy_idx = args.selected_idxs
         # args.selected_idxs = easy_idx 
+
+    
+    else: # all idxs are consecutive + normal rendering
+        if view !=3:
+            print("do you have the right offset indices?")
+            ipdb.set_trace()
+
+        args.selected_idxs = easy_idx = offset_indices = np.arange(args.start_idx, args.stop_idx)
 
     # else: #render
     #     easy_idx = args.selected_idxs #[0] #rebuttal_tim #[406,466,340,600,900,814] # #[0, 465, 473, 467, 1467] # [10, 70, 350, 420, 490, 910, 980, 1050] #np.arange(0, args.train_len)
@@ -1527,7 +1544,7 @@ def generate_psnr_imgs(pose_h5, c2ws, focals, rest_pose, pose_keys,
 
 def load_bullettime(pose_h5, c2ws, focals, rest_pose, pose_keys,
                     selected_idxs, refined=None, n_bullet=30, bullet_ang=360,
-                    #centers=None,
+                    centers=None,
                     undo_rot=False, center_cam=True, center_kps=True,
                     idx_map=None, args=None):
 
@@ -1536,8 +1553,31 @@ def load_bullettime(pose_h5, c2ws, focals, rest_pose, pose_keys,
     #import ipdb; ipdb.set_trace()
 
     # prepare camera
-    c2ws = c2ws[selected_idxs]
+    # c2ws = c2ws[selected_idxs]
     # centers = centers[selected_idxs]
+
+    try:
+        c2ws = c2ws[selected_idxs]
+
+        if isinstance(focals, float):
+            focals = np.array([focals] * len(selected_idxs))
+        else:
+            focals = focals[selected_idxs]
+
+        #import ipdb; ipdb.set_trace()
+        if isinstance(centers, float):
+            centers = np.array([centers] * len(selected_idxs))
+        else:
+            if len(centers.shape) > 2:
+                centers = centers[0][selected_idxs]
+            else:
+                centers = centers[selected_idxs]
+            # centers = centers[selected_idxs]
+
+    except:
+        ipdb.set_trace()
+
+
 
     if center_cam:
         shift_x = c2ws[..., 0, -1].copy()
@@ -1545,13 +1585,16 @@ def load_bullettime(pose_h5, c2ws, focals, rest_pose, pose_keys,
         c2ws[..., :2, -1] = 0.
 
     # prepare pose
+    # ipdb.set_trace()
     # TODO: hard-coded for now so we can quickly view the outcomes!
-    if refined is None:
+    # if refined is None:
+    if not args.render_refined:
         kps, bones = dd.io.load(pose_h5, pose_keys, sel=dd.aslice[selected_idxs, ...])
         selected_idxs = find_idxs_with_map(selected_idxs, idx_map)
-        if args.switch_cam:
-            print("are you using the right data path for pose_h5?")
-            ipdb.set_trace()
+        # if args.switch_cam:
+        #     print("are you using the right data path for pose_h5?")
+        #     ipdb.set_trace()
+
     else:
         selected_idxs = find_idxs_with_map(selected_idxs, idx_map)
         kps, bones = refined
@@ -1575,18 +1618,26 @@ def load_bullettime(pose_h5, c2ws, focals, rest_pose, pose_keys,
     c2ws = generate_bullet_time(c2ws, n_views=n_bullet, bullet_ang=bullet_ang).transpose(1, 0, 2, 3).reshape(-1, 4, 4)
     
 
-    if isinstance(focals, float):
-        focals = np.array([focals] * len(selected_idxs))
-    else:
-        focals = focals[selected_idxs]
-
-    #import ipdb; ipdb.set_trace()
-    #focals = focals[:, None].repeat(n_bullet, 1).reshape(-1,2)
     if len(focals.shape) == 2 and focals.shape[1] == 2:
         focals = focals[:, None].repeat(n_bullet, 1).reshape(-1, 2)
     else:
         focals = focals[:, None].repeat(n_bullet, 1).reshape(-1)
-    print(f"focals {focals[0:1]}")
+    # print(f"focals {focals[0:1]}")
+
+    if len(centers.shape) == 2 and centers.shape[1] == 2:
+        centers = centers[:, None].repeat(n_bullet, 1).reshape(-1, 2)
+    else:
+        centers = centers[:, None].repeat(n_bullet, 1).reshape(-1)
+
+
+    # if isinstance(focals, float):
+    #     focals = np.array([focals] * len(selected_idxs))
+    # else:
+    #     focals = focals[selected_idxs]
+
+    #import ipdb; ipdb.set_trace()
+    #focals = focals[:, None].repeat(n_bullet, 1).reshape(-1,2)
+
 
     if undo_rot:
         bones[..., 0, :] = np.array([1.5708, 0., 0.], dtype=np.float32).reshape(1, 1, 3)
@@ -1867,10 +1918,12 @@ def run_render():
     nerf_args, unknown_args = nerf_config_parser().parse_known_args(nerf_args)
     print(f'UNKNOWN ARGS: {unknown_args}')
 
+    # import ipdb; ipdb.set_trace()
     # update with parameters from run_render directly
     nerf_args.train_size =  args.train_size
     nerf_args.data_size = args.data_size
     # nerf_args.randomize_view_dir = args.randomize_view_dir
+    nerf_args.data_path =  args.data_path
     
     # load nerf model
     render_kwargs, poseopt_layer = load_nerf(args, nerf_args)
@@ -1917,13 +1970,16 @@ def run_render():
         render_mesh(basedir, render_kwargs, tensor_data, res=args.mesh_res, chunk=nerf_args.chunk, time=time)
         return
 
-    #import ipdb; ipdb.set_trace()
+    # import ipdb; ipdb.set_trace()
     print(f"render_path called in run_render.py")
     rgbs, _, accs, valid_idxs, bboxes = render_path(render_kwargs=render_kwargs,
                                       chunk=nerf_args.chunk//8, #added May 4
                                       ext_scale=nerf_args.ext_scale,
                                       ret_acc=True,
                                       white_bkgd=args.white_bkgd,
+                                      top_expand_ratio=args.top_expand_ratio,
+                                      bot_expand_ratio=args.bot_expand_ratio,
+                                      extend_mm=args.extend_mm,
                                       **tensor_data,
                                       args=args)
 
@@ -1968,6 +2024,7 @@ def run_render():
     os.makedirs(os.path.join(basedir, time, f'skel_{view}'), exist_ok=True)
     os.makedirs(os.path.join(basedir, time, f'acc_{view}'), exist_ok=True)
 
+    chk_img_url = f"{project_dir}/checkers/imgs"
     '''post-rendering real-virt blending'''
     
     def blend(real_imgs, acc_map_real, virt_imgs, acc_map_virt):
@@ -1975,7 +2032,21 @@ def run_render():
         h, w = render_data['hwf'][0], render_data['hwf'][1]
         n_size = real_imgs.shape[0]
 
-        bkgd_img = render_data['bg_imgs'].reshape(1, h, w, 3)
+        # import ipdb; ipdb.set_trace()
+        try:
+            bkgd_img = render_data['bg_imgs'].reshape(1, h, w, 3)
+        except:
+            # possible retargeting on diff background
+
+            if render_data['bg_imgs'] != None:
+                _, h,w,_  = render_data['bg_imgs'].shape
+                bkgd_img = render_data['bg_imgs'].reshape(1, h, w, 3)
+
+            else:
+                # ipdb.set_trace()
+                bkgd_img = np.ones_like(real_imgs).reshape(1, h, w, 3).astype(np.float32)
+
+
         bkgd_img = np.tile(bkgd_img, [n_size,1,1,1])
 
         '''overlay rendering: order - virtual first, then real'''
@@ -1990,7 +2061,7 @@ def run_render():
         I_render = I_bgkd + I_image
 
         # plt.imshow(I_render[0]); plt.axis("off")
-        # plt.savefig(f"/scratch/st-rhodin-1/users/dajisafe/anerf_mirr/A-NeRF/checkers/imgs/to_be_del_a_img.jpg", dpi=300, bbox_inches='tight', pad_inches = 0)
+        # plt.savefig(f"/scratch/st-rhodin-1/users/dajisafe/anerf_mirr/A-NeRF/checkers/debug/I_render.jpg", dpi=300, bbox_inches='tight', pad_inches = 0)
         # import ipdb; ipdb.set_trace() 
         
         #blended_img = (img1*alpha + img2*beta) + gamma
@@ -2001,121 +2072,71 @@ def run_render():
     if args.switch_cam:
         #alpha, beta, gamma = 1.0, 1.0, 0.0
 
-        # perform operation in 0,1 space
+        if args.outliers:
+            r_skels_2d = skeleton3d_to_2d(render_data['kp'], render_data['render_poses'][:half_size], *render_data['hwf'])
+            v_skels_2d = skeleton3d_to_2d(render_data['kp'], render_data['render_poses'][half_size:], *render_data['hwf'])
+            
+            temp_rgbs, temp_accs = np.ones_like(rgbs), np.ones_like(accs), 
+            start = timenow.time()
+            for h_i in range(half_size):
+                
+                r_rgb, r_acc, _, r_out_stats = cca_image(r_skels_2d[h_i], img=rgbs[:half_size][h_i], acc_img=accs[:half_size][h_i], plot=False, chk_folder=chk_img_url, white_bkgd=False)
+                v_rgb, v_acc, _, v_out_stats = cca_image(v_skels_2d[h_i], img=rgbs[half_size:][h_i], acc_img=accs[half_size:][h_i], plot=False, chk_folder=chk_img_url, white_bkgd=False)
+                if h_i==0: print("cca took: %.2f seconds" %(timenow.time() - start))
+
+                
+                # plt.imshow(r_rgb)
+                # plt.savefig(f"/scratch/st-rhodin-1/users/dajisafe/anerf_mirr/A-NeRF/checkers/debug/r_rgb.jpg", dpi=300, bbox_inches='tight', pad_inches = 0)
+                # plt.imshow(v_rgb)
+                # plt.savefig(f"/scratch/st-rhodin-1/users/dajisafe/anerf_mirr/A-NeRF/checkers/debug/v_rgb.jpg", dpi=300, bbox_inches='tight', pad_inches = 0)
+                # ipdb.set_trace()
+
+                # store items
+                temp_rgbs[h_i] = r_rgb
+                temp_rgbs[h_i + half_size] = v_rgb
+
+                temp_accs[h_i] = r_acc
+                temp_accs[h_i + half_size] = v_acc
+            
+            # ipdb.set_trace()
+            rgbs = temp_rgbs.copy()
+            accs = temp_accs.copy()
+
+        # perform blending (operation) in 0,1 space
         rgbs = rgbs/255.0
         accs = accs/255.0
-        #skeletons = skeletons/255.0
 
         rgbs = blend(rgbs[:half_size], accs[:half_size], rgbs[half_size:], accs[half_size:])
         #skeletons = blend(skeletons[:half_size], accs[:half_size], skeletons[half_size:], accs[half_size:])
         
         accs = np.clip(accs[:half_size] +  accs[half_size:], a_min=0, a_max=1)
         
+    # if not args.white_bkgd:    
+    #     '''converts from [0,1] float64bits (2^64) to [0,255] unsigned 8bits (2^8) - losses information
+    #     due to quantization'''
+    #     # rgbs = (rgbs * 255).astype(np.uint8)
+    #     # accs = (accs * 255).astype(np.uint8)
+    #     #skeletons = (skeletons * 255).astype(np.uint8)
 
-        # # move back to 0,255 space for saving image
-        # rgbs = (rgbs * 255.0).astype(np.uint8)
-        # accs = (accs * 255.0).astype(np.uint8)
-        # skeletons = (skeletons * 255.0).astype(np.uint8)
+    # else: 
+    #     '''if white background''' 
+    #     # I convert to np.uint8 but the red skeleton becomes white. imageio converts internally, red skeleton looks okay.
+    #     pass
 
-        # plt.imshow(skeletons[0])
-        # plt.axis("off")
-        # plt.savefig(f"/scratch/dajisafe/smpl/A_temp_folder/A-NeRF/checkers/imgs/to_be_del_a_img.jpg", dpi=300, bbox_inches='tight', pad_inches = 0)
-
-
-        #import ipdb; ipdb.set_trace() 
-        #H, W = render_data['hwf'][0], render_data['hwf'][1]
-        #valid_idxs = torch.stack(valid_idxs)
-
-        # if not args.white_bkgd:
-        #     # compositing both predictions on background image
-        #     bkgd_img = render_data['bg_imgs'].reshape(-1,3)
-        #     # bkgd_img = np.tile(bkgd_img, [half_size,1,1])
-
-        #     valid_idxs = valid_idxs
-        #     valid_idxs_real = valid_idxs[:half_size]
-        #     valid_idxs_virt = valid_idxs[half_size:]
-
-        #     def mini_container(accs, preds_on_img, bg_img, v_idxs_real, v_idxs_virt):
-        #         n_size = preds_on_img.shape[0]
-
-        #         #bg = (1. - accs.reshape(n_size,-1,1)) * bg_img[v_idxs_real + v_idxs_virt]
-        #         bg_img = np.tile(bg_img.reshape(1,H,W,3), [n_size,1,1,1])
-        #         bg = (1. - accs) * bg_img
-        #         #ipdb.set_trace()
-
-        #         # # set both persons spot to 0 
-        #         # bg_img[v_idxs_real.cpu().numpy(), :] = 0
-        #         # bg_img[v_idxs_virt.cpu().numpy(), :] = 0
-
-                
-        #         # bg_img = np.tile(bg_img.reshape(H,W,3), [n_size,1,1,1])
-        #         img_compose = preds_on_img + bg
-
-        #         #ipdb.set_trace()
-
-        #         plt.imshow(bg_img[0])
-        #         plt.axis("off")
-        #         plt.savefig(f"/scratch/st-rhodin-1/users/dajisafe/anerf_mirr/A-NeRF/checkers/imgs/to_be_del_a_img.jpg", dpi=300, bbox_inches='tight', pad_inches = 0)
-                
-        #         plt.imshow(accs[0])
-        #         plt.axis("off")
-        #         plt.savefig(f"/scratch/st-rhodin-1/users/dajisafe/anerf_mirr/A-NeRF/checkers/imgs/to_be_del_b_img.jpg", dpi=300, bbox_inches='tight', pad_inches = 0)
-
-
-        #         plt.imshow(preds_on_img[0])
-        #         plt.axis("off")
-        #         plt.savefig(f"/scratch/st-rhodin-1/users/dajisafe/anerf_mirr/A-NeRF/checkers/imgs/to_be_del_c_img.jpg", dpi=300, bbox_inches='tight', pad_inches = 0)
-            
-
-        #         plt.imshow(img_compose[0])
-        #         plt.axis("off") 
-        #         plt.savefig(f"/scratch/st-rhodin-1/users/dajisafe/anerf_mirr/A-NeRF/checkers/imgs/to_be_del_d_img.jpg", dpi=300, bbox_inches='tight', pad_inches = 0)
-            
-        #         ipdb.set_trace()
-        #         return img_compose
-
-
-        #     get background image with black person in parallel
-        #     rgbs_compose = list(map(lambda v_idxs_real, v_idxs_virt: mini_container(accs, rgbs, bkgd_img.copy(), v_idxs_real, v_idxs_virt), valid_idxs_real, valid_idxs_virt))
-        #     skeletons_compose = list(map(lambda v_idxs_real, v_idxs_virt: mini_container(accs, skeletons, bkgd_img.copy(), v_idxs_real, v_idxs_virt), valid_idxs_real, valid_idxs_virt))
-
-            
-        #     #ipdb.set_trace()
-        #     # stack images
-        #     rgbs = np.concatenate(rgbs_compose)
-        #     skeletons = np.concatenate(skeletons_compose)
-
-        # plt.imshow(skeletons[0])
-        # plt.axis("off")
-        # plt.savefig(f"/scratch/dajisafe/smpl/A_temp_folder/A-NeRF/checkers/imgs/to_be_del_skel.jpg", dpi=300, bbox_inches='tight', pad_inches = 0)
-
-
-    if not args.white_bkgd:    
-        '''converts from [0,1] float64bits (2^64) to [0,255] unsigned 8bits (2^8) - losses information
-        due to quantization'''
-        # rgbs = (rgbs * 255).astype(np.uint8)
-        # accs = (accs * 255).astype(np.uint8)
-        #skeletons = (skeletons * 255).astype(np.uint8)
-
-    else: 
-        '''if white background''' 
-        # I convert to np.uint8 but the red skeleton becomes white. imageio converts internally, red skeleton looks okay.
-        pass
-
-        # rgbs = (rgbs * 255)
-        # accs = (accs * 255)
-        #skeletons = (skeletons * 255)
+    #     # rgbs = (rgbs * 255)
+    #     # accs = (accs * 255)
+    #     #skeletons = (skeletons * 255)
 
 
     #ipdb.set_trace()
     # overlay on body reconstruction
     if args.switch_cam:
         # overlay on body reconstruction
-        skel_stage1 = draw_skeletons_3d(rgbs, render_data['kp'],
+        skel_stage1,_ = draw_skeletons_3d(rgbs, render_data['kp'],
                                     render_data['render_poses'][:half_size],
                                     *render_data['hwf'])
 
-        skeletons = draw_skeletons_3d(skel_stage1, render_data['kp'],
+        skeletons,_ = draw_skeletons_3d(skel_stage1, render_data['kp'],
                                     render_data['render_poses'][half_size:],
                                     *render_data['hwf'])
     
@@ -2126,6 +2147,8 @@ def run_render():
 
     # ipdb.set_trace()
     # selected_idxs = args.selected_idxs
+
+    bullet_idx = 0
     for i, (rgb, acc, skel) in enumerate(zip(rgbs, accs, skeletons)):
         #rel_idx = i
         # rel_idx = real_ids[i]
@@ -2134,19 +2157,22 @@ def run_render():
 
         if args.n_bullet == 1:
             rel_idx = selected_idxs[i]
+            b_idx = f"_{bullet_idx:04d}"
         else:
             rel_idx = i
+            bullet_idx = i
+            b_idx = f"_{bullet_idx:04d}"
 
-        chk_img_url = f"{project_dir}/checkers/imgs"
+        
         start = timenow.time()
-        if args.outliers:
-            rgb, acc, skel, out_stats = cca_image(skels_2d[i], BGR_img=rgb, acc_img=acc, plot=False, chk_folder=chk_img_url)
+        if args.outliers and not args.switch_cam:
+            rgb, acc, skel, out_stats = cca_image(skels_2d[i], img=rgb, acc_img=acc, plot=False, chk_folder=chk_img_url)
             out_whole_kps_bool, out_count_per_whole_kps, out_count_H, out_count_W = out_stats
             if out_whole_kps_bool:
                 print(f"i: {i} rel_idx: {rel_idx} out_count_per_whole_kps {out_count_per_whole_kps}, out_count_H {out_count_H}, out_count_W {out_count_W}")
 
             if i==0: print("cca took: %.2f seconds" %(timenow.time() - start))
-    
+
 
         # # plot overlay on original plain image 
         # rel_idx = selected_idxs[i]
@@ -2163,9 +2189,9 @@ def run_render():
         # rel_idx = i
         # plot overlay on volumetric reconstruction 
         #print(f"rgb {rgb.shape}")
-        imageio.imwrite(os.path.join(basedir, time, f'image_{view}', f'{rel_idx:05d}.png'), rgb)
-        imageio.imwrite(os.path.join(basedir, time, f'acc_{view}', f'{rel_idx:05d}.png'), acc)
-        imageio.imwrite(os.path.join(basedir, time, f'skel_{view}', f'{rel_idx:05d}.png'), skel)
+        imageio.imwrite(os.path.join(basedir, time, f'image_{view}', f'{rel_idx:05d}{b_idx}.png'), rgb)
+        imageio.imwrite(os.path.join(basedir, time, f'acc_{view}', f'{rel_idx:05d}{b_idx}.png'), acc)
+        imageio.imwrite(os.path.join(basedir, time, f'skel_{view}', f'{rel_idx:05d}{b_idx}.png'), skel)
     
     #import ipdb; ipdb.set_trace()
     np.save(os.path.join(basedir, time, 'bboxes.npy'), bboxes, allow_pickle=True)

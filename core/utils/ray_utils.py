@@ -89,17 +89,19 @@ def ndc_rays(H, W, focal, near, rays_o, rays_d):
     return rays_o, rays_d
 
 def kp_to_valid_rays(poses, H, W, focal, kps=None, cylinder_params=None,
-                     skts=None, centers=None, ext_scale=0.00035, args=None):
+                     skts=None, centers=None, ext_scale=0.00035, args=None,
+                     top_expand_ratio=1.60, bot_expand_ratio=1.10, extend_mm=250):
+    
     if cylinder_params is None:
         assert kps is not None
         kps_np = kps.cpu().numpy()
         #expand_ratio = 1.10
         bot_expand_ratio = 1.10
         # For MonoPerfCap Evaluation
-        top_expand_ratio = 1.60
+        # top_expand_ratio = 1.60
         # For Surreal
         #top_expand_ratio = 1.10
-        extend_mm = 250
+        # extend_mm = 250
 
         # neuralbody
         #bot_expand_ratio = 1.0

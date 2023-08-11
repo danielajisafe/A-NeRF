@@ -35,6 +35,10 @@ def render_path(render_poses, hwf, chunk, render_kwargs,
                 cams=None, subject_idxs=None, render_factor=1, root=None, # added 
                 white_bkgd=False, ret_acc=False,
                 ext_scale=0.00035, base_bg=1.0, index=None,
+                top_expand_ratio=1.60,
+                bot_expand_ratio = 1.10,
+                # randomize_view_dir=False,
+                extend_mm=250,
                 args=None):
 
 
@@ -84,8 +88,10 @@ def render_path(render_poses, hwf, chunk, render_kwargs,
                                                           focal, kps=kp, cylinder_params=cyls,
                                                           skts=skts, ext_scale=ext_scale,
                                                           #centers=centers
-                                                          args=args
-                                                          )
+                                                          args=args,
+                                                          top_expand_ratio=top_expand_ratio,
+                                                          bot_expand_ratio=bot_expand_ratio,
+                                                          extend_mm=extend_mm)
     else:
         rays, valid_idxs = None, None
 

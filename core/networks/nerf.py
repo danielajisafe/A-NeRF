@@ -170,7 +170,18 @@ class NeRF(nn.Module):
             depth_map: [num_rays]. Estimated distance to object.
         """
 
-        raw2alpha = lambda raw, dists, noise, act_fn=act_fn: 1.-torch.exp(-(act_fn(raw/B + noise))*dists)
+        # raw2alpha = lambda raw, dists, noise, act_fn=act_fn: 1.-torch.exp(-(act_fn(raw/B + noise))*dists)
+
+        def raw2alpha(raw_d, dists, noise):
+            density = act_fn(raw_d/B + noise); # print(density.mean()) # 0.5 mean
+            # import ipdb; ipdb.set_trace()
+
+            mean_density = density.mean(dim=1)
+            mask = torch.ones_like(mean_density)
+            mask[mean_density < 1.5] = 0
+            density = density * mask.unsqueeze(-1)
+
+            return 1.-torch.exp(-(density)*dists)
 
         dists = z_vals[...,1:] - z_vals[...,:-1]
         dists = torch.cat([dists, torch.Tensor([1e10]).expand(dists[...,:1].shape)], -1)  # [N_rays, N_samples]
