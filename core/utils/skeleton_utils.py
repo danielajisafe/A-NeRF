@@ -983,8 +983,11 @@ def create_kp_mask(mask, kp, H, W, extend_iter=3, skel_type=SMPLSkeleton):
 #################################
 
 def plot_skeleton3d(skel, fig=None, skel_id=None, skel_type=None,
-                    cam_loc=None, layout_kwargs=None, line_width=2,
-                    marker_size=3, blank=False):
+                    cam_eye_loc=[0,0,1], layout_kwargs=None, line_width=2,
+                    marker_size=3, blank=False, visible_x=False, 
+                    visible_y=False, visible_z=False, 
+                    cam_up_orient=[0,-1,0], zoom_x=1, zoom_y=1, zoom_z=1,
+                    ):
     """
     Plotting function for canonicalized skeleton
     """
@@ -1039,20 +1042,22 @@ def plot_skeleton3d(skel, fig=None, skel_id=None, skel_type=None,
         for d in data:
             fig.add_trace(d)
 
-    camera = dict(up=dict(x=0, y=1, z=0))
-    if cam_loc is not None:
-        camera['eye'] = dict(x=cam_loc[0], y=cam_loc[1], z=cam_loc[2])
+    camera = dict(up=dict(x=cam_up_orient[0], y=cam_up_orient[1], z=cam_up_orient[2]))
+    if cam_eye_loc is not None:
+        camera['eye'] = dict(x=cam_eye_loc[0]*zoom_x, y=cam_eye_loc[1]*zoom_y, z=cam_eye_loc[2]*zoom_z)
     fig.update_layout(scene_camera=camera)
     if blank:
         if layout_kwargs is not None:
             print('WARNING! layout_kwargs is overwritten by blank=True')
         fig.update_layout(scene=dict(
-            xaxis=dict(backgroundcolor='rgb(255, 255, 255)'),
-            yaxis=dict(backgroundcolor='rgb(255, 255, 255)'),
-            zaxis=dict(backgroundcolor='rgb(255, 255, 255)'),
+            xaxis=dict(backgroundcolor='rgb(255, 255, 255)', xaxis_title=""),
+            yaxis=dict(backgroundcolor='rgb(255, 255, 255)', visible=visible_y),
+            zaxis=dict(backgroundcolor='rgb(255, 255, 255)', visible=visible_z),
         ))
     elif layout_kwargs is not None:
-        fig.update_layout(**layout_kwargs)
+        fig.update_layout(**layout_kwargs, visible=False)
+    
+
     return fig
 
 def plot_skeleton2d(skel, skel_type=None, img=None):
