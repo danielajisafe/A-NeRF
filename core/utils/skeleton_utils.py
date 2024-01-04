@@ -27,15 +27,10 @@ from .extras import KinematicChain
 #         Skeleton Helpers      #
 #################################
 
-
-# def get_parent_idx(joint_names, joint_parents):
-#     # ref: VisualAILab
-#     return np.array([joint_names.index(i) for i in joint_parents])
-
 def normalize_batch_normal(n):
     assert len(n.shape)==2, "shape is not 2-dim or size 2"
     eps=1e-36
-    n_norm =  torch.norm(n, dim=1, keepdim=True) + eps ;
+    n_norm =  torch.norm(n, dim=1, keepdim=True) + eps;
     n_m = torch.div(n, n_norm);
     #import ipdb; ipdb.set_trace()
     return n_m
@@ -697,7 +692,7 @@ def get_kp_bounding_cylinder(kp, skel_type=None, ext_scale=0.00035,
     # h_axis: axis that is perpendicular to the ground
     # flip: to flip the height (if the sky is on the negative part)
     assert head is not None, 'need to specify the direction of ground plane (i.e., the direction when the person stand up straight)!'
-    print(f'Head direction: {head}')
+    # print(f'Head direction: {head}')
     if head.endswith('z'):
         g_axes = [0, 1]
         h_axis = 2
@@ -1425,9 +1420,7 @@ def get_surface_fig(kp, embedder, joint_names, n_sample=640, joint_idx=0,
                     freq=0, freq_skip=2, fig=None, sin=True,
                     x_offset=0, y_offset=0, z_offset=0, n_split=2,
                     x_only=False, y_only=False, z_only=False, v_range=2):
-    #xy_plane = create_plane(z=kp[joint_idx,2]+z_offset, n_sample=n_sample)
-    #yz_plane = create_plane(x=kp[joint_idx,0]+x_offset, n_sample=n_sample)
-    #xz_plane = create_plane(y=kp[joint_idx,1]+y_offset, n_sample=n_sample)
+
     xy_plane = create_plane(z=z_offset, n_sample=n_sample)
     yz_plane = create_plane(x=x_offset, n_sample=n_sample)
     xz_plane = create_plane(y=y_offset, n_sample=n_sample)
