@@ -5,6 +5,7 @@
 
 import os
 import cv2
+import math
 import time
 import ipdb
 import h5py
@@ -86,6 +87,10 @@ def config_parser():
                         help='no of bubble views to render')
     parser.add_argument('--bullet_ang', type=int, default=360,
     help='angle of novel bullet view to render') 
+
+    parser.add_argument('--bubble_ang', type=int, default=360,
+    help='angle of novel bullet view to render')
+
     parser.add_argument('--switch_cam', action='store_true', default=False,
                         help='replace (have both) real camera and virtual camera')
     parser.add_argument('--evaluate_pose', action='store_true', default=False,
@@ -113,6 +118,8 @@ def config_parser():
                         help='start id for inference on sub sequence')
     parser.add_argument("--stop_idx", type=int, default=None,
                         help='stop id for inference on sub sequence')
+    parser.add_argument("--render_interval", type=int, default=1,
+                        help='rendering interval for inference on sub sequence')
 
     parser.add_argument('--entry', type=str, required=True,
                         help='entry in the dataset catalog to render')
@@ -263,6 +270,8 @@ def load_render_data(args, nerf_args, poseopt_layer=None, opt_framecode=True):
     # 3. camera stuff: focals, c2ws, ... etc
     c2ws, focals, centers_n = dd.io.load(data_h5, cam_keys)
     #centers_n = centers_n.detach.numpy()
+
+    # ipdb.set_trace()
 
     if args.switch_cam:
         A_mirr =  dd.io.load(data_h5_v, '/A_dash')
@@ -498,6 +507,7 @@ def load_render_data(args, nerf_args, poseopt_layer=None, opt_framecode=True):
 def init_catalog(args, n_bullet=3):
     n_bullet = args.n_bullet
     bullet_ang = args.bullet_ang
+    bubble_ang = args.bubble_ang
     #import ipdb; ipdb.set_trace()
 
     RenderCatalog = {
@@ -576,10 +586,10 @@ def init_catalog(args, n_bullet=3):
     #rebuttal_tim = np.arange(800,1178) #[992,1027,1041,1087,1088,1133,1134,1172,1175] #[449,624,644,680,705,746,998,1170,1,209,212,250,280,340,368,369,406,428,438,993]  #np.arange(0, 500) #[500] #1177, 814]
     if args.evaluate_pose:
         ipdb.set_trace()
-        easy_idx = np.arange(0, args.train_len)
+        easy_idx = np.arange(0, args.train_len, args.render_interval)
         args.selected_idxs = easy_idx
 
-    elif args.psnr_images:
+    elif args.psnr_images and view!=0:
         
         import pickle#5 as pickle
         pickle_file = f'{args.data_path}/calib{view}_20000iter_May_11.pickle'
@@ -588,33 +598,13 @@ def init_catalog(args, n_bullet=3):
             with open(pickle_file, 'rb') as handle:
                 from_pickle = pickle.load(handle)
 
-            # spin_pickle = f"{args.data_path}/output.pkl"
-            # import deepdish as dd
-            # import pickle as pkl
-            # if spin_pickle.endswith(".pkl"):
-            #     spin_raw_data = pkl.load(open(spin_pickle, "rb"))
-            # else:
-            #     spin_raw_data = dd.io.load(spin_pickle)
-
             mirrr_raw_idxs = from_pickle['chosen_frames'][:args.train_len]
-
-            #""" please update code: hard-coded vanilla indices here for now"""
-            # vanilla_raw_idxs = np.arange(1800) #spin_raw_data['valid_idxs']
-            # common_eval_pts = list(set(mirrr_raw_idxs).intersection(set(vanilla_raw_idxs)))
-
-            # mirr_sel_idxs = list(map(lambda x: mirrr_raw_idxs.index(x), common_eval_pts))
-            # mirr_sel_idxs = mirr_sel_idxs[:args.train_len]
-
-            # 20th images among common subset
-            #mirr_sel_idxs = mirrr_raw_idxs[:args.train_len]
-            #n = len(mirr_sel_idxs)
-            #sel_idxs = mirr_sel_idxs[::20]
             
             n = len(mirrr_raw_idxs)
             offset_indices = []
 
-            render_interval = 40
-            for i in range(0,n,render_interval):
+            # render_interval = 1
+            for i in range(0,n,args.render_interval):
                 # look for corresponding offset for required frames
                 if args.selected_idxs != None:
                     if i not in args.selected_idxs:
@@ -623,11 +613,12 @@ def init_catalog(args, n_bullet=3):
                 offset_indices.append(index)
 
         #[-1:]
-        args.selected_idxs = easy_idx = offset_indices.copy()
+        # args.selected_idxs = 
+        easy_idx = offset_indices.copy()
         # pick a subset that is common to both
         # ipdb.set_trace()
 
-    elif args.generate_skeleton_overlay:
+    elif args.generate_skeleton_overlay or (args.psnr_images and view==0):
         print("did you consider offset in selected idxs?")
         time.sleep(3)
 
@@ -665,35 +656,42 @@ def init_catalog(args, n_bullet=3):
             # import ipdb; ipdb.set_trace()
 
             common_global_idxs = sorted(set(mirr_frames) - set(spin_frames))
-            selected_global_idxs = common_global_idxs#[0:1]#[::20] #[1::2]
+            #selected_global_idxs = common_global_idxs#[0:1]#[::20] #[1::2]
 
-            n = len(selected_global_idxs)
-            offset_local_indices = []
+            n = len(common_global_idxs)
+            
 
             #idxs_set = set(selected_global_idxs)
-
-            # ipdb.set_trace()
-            # for idx in selected_global_idxs:
-            #         # you need specific global idx
-            #         if int(args.selected_idxs[0]) != -1:
-            #             specific_global_idx = [int(args.selected_idxs[0])]
-
-            #             if idx not in specific_global_idx:
-            #                 continue
-            #         index = target.index(idx)
-            #         offset_local_indices.append(index)
-
-            offset_local_indices = selected_global_idxs.copy()
+            # offset_local_indices = selected_global_idxs.copy()
 
             # render batch by batch
             if args.start_idx is not None and args.stop_idx is not None:
-                range_idx = np.arange(args.start_idx, args.stop_idx, 1)
+                offset_local_indices = np.arange(args.start_idx, args.stop_idx, args.render_interval)
 
                 # import ipdb; ipdb.set_trace()
-                offset_local_indices = np.array(offset_local_indices)[range_idx]
+                selected_global_idxs = np.array(common_global_idxs)[offset_local_indices]
                 # selected_global_idxs = np.array(selected_global_idxs)[range_idx]
 
-            args.selected_idxs = easy_idx = offset_local_indices
+            else:
+                # ipdb.set_trace()
+                offset_local_indices = []
+                selected_global_idxs = []
+
+                # TODO: checked
+                for idx in common_global_idxs:
+                        # you need specific global idx
+                        if int(args.selected_idxs[0]) != -1:
+                            specific_global_idxs = args.selected_idxs
+
+                            if idx not in specific_global_idxs:
+                                continue
+                        index = target.index(idx)
+                        offset_local_indices.append(index)
+                        selected_global_idxs.append(idx)
+
+            # ipdb.set_trace()
+            args.selected_idxs = selected_global_idxs
+            easy_idx = offset_local_indices
 
         else:
             ### ---- eval sequences ---------
@@ -706,8 +704,8 @@ def init_catalog(args, n_bullet=3):
             offset_indices = []
 
             ipdb.set_trace()
-            render_interval = 1
-            for i in range(0,n,render_interval):
+            # render_interval = 1
+            for i in range(0,n,args.render_interval):
                 # look for corresponding offset for required frames
                 if args.selected_idxs != None:
                     if i not in args.selected_idxs:
@@ -721,16 +719,23 @@ def init_catalog(args, n_bullet=3):
                 offset_indices.append(index)
 
             args.selected_idxs = easy_idx = offset_indices.copy()  
-        easy_idx = args.selected_idxs
+        # easy_idx = args.selected_idxs
         # args.selected_idxs = easy_idx 
 
     
-    else: # all idxs are consecutive + normal rendering
+    else:
         if view !=3:
             print("do you have the right offset indices?")
             ipdb.set_trace()
 
-        args.selected_idxs = easy_idx = offset_indices = np.arange(args.start_idx, args.stop_idx)
+            args.selected_idxs = easy_idx = offset_indices = np.arange(args.start_idx, args.stop_idx)
+        
+        else:  # all idxs are consecutive + normal rendering
+            if args.start_idx != None and args.stop_idx != None:
+                easy_idx = np.arange(args.start_idx, args.stop_idx, args.render_interval)
+                args.selected_idxs = easy_idx 
+            else:
+                easy_idx = args.selected_idxs
 
     # else: #render
     #     easy_idx = args.selected_idxs #[0] #rebuttal_tim #[406,466,340,600,900,814] # #[0, 465, 473, 467, 1467] # [10, 70, 350, 420, 490, 910, 980, 1050] #np.arange(0, args.train_len)
@@ -742,7 +747,7 @@ def init_catalog(args, n_bullet=3):
         'data_h5_v': args.data_path + '/v_mirror_train_h5py.h5',
         'retarget': set_dict(easy_idx, length=25, skip=2, center_kps=True),
         'bullet': set_dict(easy_idx, n_bullet=args.n_bullet, bullet_ang=args.bullet_ang),
-        'bubble': set_dict(easy_idx, n_step=args.n_bubble),
+        'bubble': set_dict(easy_idx, n_step=args.n_bubble, bubble_ang=args.bubble_ang),
         'mesh': set_dict([0], length=1, skip=1),
     }
 
@@ -1687,6 +1692,7 @@ def load_selected(pose_h5, c2ws, focals, rest_pose, pose_keys,
 
 def load_bubble(pose_h5, c2ws, focals, rest_pose, pose_keys,
                 selected_idxs, x_deg=15., y_deg=25., z_t=0.1,
+                bubble_ang=30,
                 refined=None, n_step=5, center_kps=True, idx_map=None, args=None):
     x_rad = x_deg * np.pi / 180.
     y_rad = y_deg * np.pi / 180.
@@ -1720,7 +1726,7 @@ def load_bubble(pose_h5, c2ws, focals, rest_pose, pose_keys,
         focals = focals[selected_idxs]
     focals = focals[:, None].repeat(n_step, 1).reshape(-1,2)
 
-    motions = np.linspace(0., 2 * np.pi, n_step, endpoint=True)
+    motions = np.linspace(0., math.radians(bubble_ang), n_step, endpoint=True)
     x_motions = (np.cos(motions) - 1.) * x_rad
     y_motions = np.sin(motions) * y_rad
     z_trans = (np.sin(motions) + 1.) * z_t
@@ -2082,7 +2088,7 @@ def run_render():
                 
                 r_rgb, r_acc, _, r_out_stats = cca_image(r_skels_2d[h_i], img=rgbs[:half_size][h_i], acc_img=accs[:half_size][h_i], plot=False, chk_folder=chk_img_url, white_bkgd=False)
                 v_rgb, v_acc, _, v_out_stats = cca_image(v_skels_2d[h_i], img=rgbs[half_size:][h_i], acc_img=accs[half_size:][h_i], plot=False, chk_folder=chk_img_url, white_bkgd=False)
-                if h_i==0: print("cca took: %.2f seconds" %(timenow.time() - start))
+                # if h_i==0: print("cca took: %.2f seconds" %(timenow.time() - start))
 
                 
                 # plt.imshow(r_rgb)
@@ -2146,7 +2152,7 @@ def run_render():
                                     *render_data['hwf'])
 
     # ipdb.set_trace()
-    # selected_idxs = args.selected_idxs
+    selected_idxs = args.selected_idxs
 
     bullet_idx = 0
     for i, (rgb, acc, skel) in enumerate(zip(rgbs, accs, skeletons)):

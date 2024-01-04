@@ -1,5 +1,6 @@
 import os
 import cv2
+import pdb
 import glob
 import math
 import torch
@@ -336,7 +337,6 @@ class MirrorDataset(BaseH5Dataset):
         N_total_cams = len(self.c2ws) // len(self.kp3d)
         N_total_kps = len(self.kp3d)
 
-
         # get the right numbers of kps/cameras
         # NOTE: assume that we use the same set of kps for all views,
         #       and the cameras data are arranged as (N_cams, N_kps)
@@ -345,7 +345,7 @@ class MirrorDataset(BaseH5Dataset):
         if self._N_cams is None:
             self._N_cams = N_total_cams
 
-        #TODO: temporarily this
+        # TODO: temporarily this
         if self.split == 'val':
             self._idx_map = np.load('data/mirror/mirror_val_idxs.npy')[0::2]
             return

@@ -1,5 +1,5 @@
 import io
-import ipdb
+import pdb
 import time
 import imageio
 import bisect
@@ -396,7 +396,6 @@ class BaseH5Dataset(Dataset):
         self.A_dash = None
         self.m_normal = None
         self.avg_D = None
-        # import ipdb; ipdb.set_trace()
 
         if 'centers' in dataset:
             self.centers = dataset['centers'][:]
@@ -404,9 +403,7 @@ class BaseH5Dataset(Dataset):
         # precompute mesh (for ray generation) to reduce computational cost
         img_shape = dataset['img_shape'][:]
         self._N_total_img = img_shape[0]
-
-        # ipdb.set_trace()
-        assert (len(self._idx_map) == self._N_total_img), "h5py data size is not equal to len(idx_map) or args.data_size"
+        # assert (len(self._idx_map) == self._N_total_img), "h5py data size is not equal to len(idx_map) or args.data_size"
         self.HW = img_shape[1:3]
         mesh = np.meshgrid(np.arange(self.HW[1], dtype=np.float32),
                            np.arange(self.HW[0], dtype=np.float32),

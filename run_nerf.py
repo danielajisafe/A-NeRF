@@ -1,9 +1,10 @@
 import os, sys
-import numpy as np
+import pdb
 import time
 import torch
 import imageio
 import datetime
+import numpy as np
 import torch.nn as nn
 import torch.nn.functional as F
 import matplotlib.pyplot as plt
@@ -26,7 +27,7 @@ from core.load_data import load_data
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 np.random.seed(0)
 DEBUG = True
-
+os.environ[ 'MPLCONFIGDIR' ] = '/tmp/'
 
 @torch.no_grad()
 def render_path(render_poses, hwf, chunk, render_kwargs,
@@ -396,10 +397,8 @@ def config_parser():
                         help='shoot more intentional rays in overlap_rays areas')
     parser.add_argument("--layered_bkgd", action='store_true',
                         help='if overlap_rays occurs, render predicted mirror pixel under predicted real pixel instead of bkgd')
-    parser.add_argument("--eval_metrics", action='store_false', #default is true
+    parser.add_argument("--eval_metrics", action='store_false', # note that the default is true
                         help='evaluate the testset rendering (subset of train set) at training time (PSNR, SSIM etc)')
-    # parser.add_argument("--apples_compare", action='store_false', #default is true
-    #                     help='apples compare')
     parser.add_argument("--train_size", type=int, default=None,
                         help='no of samples for training')
     parser.add_argument("--data_size", type=int, default=None,
@@ -883,7 +882,6 @@ def train():
             else:
                 masked_gts = gt_imgs * gt_masks + (1 - gt_masks) * bg_imgs
 
-            #import ipdb; ipdb.set_trace()
             metrics, rgbs, disps = render_testset(pose_val, render_data["hwf"], args, render_kwargs_test, cams=cams_val,
                                                   kps=kp_val, skts=skt_val, bones=bone_val, subject_idxs=subject_val,
                                                   gt_imgs=masked_gts, gt_masks=gt_masks, vid_base=moviebase, centers=centers,
@@ -898,7 +896,7 @@ def train():
                 if args.render_factor != 0:
                     RH, RW = RH // args.render_factor, RW // args.render_factor
                     Rfocals = Rfocals / args.render_factor
-                skel_imgs = draw_skeletons_3d((rgbs * 255).astype(np.uint8), kp_val.cpu().numpy(), pose_val.cpu().numpy(),
+                skel_imgs, skels_2d = draw_skeletons_3d((rgbs * 255).astype(np.uint8), kp_val.cpu().numpy(), pose_val.cpu().numpy(),
                                               RH, RW, Rfocals)
                 writer.add_video("Val/Skeleton", torch.tensor(skel_imgs).permute(0, 3, 1, 2)[None], i, fps=fps)
             
